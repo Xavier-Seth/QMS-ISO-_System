@@ -1,7 +1,8 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\OFIController;          // ← ADD THIS
+use App\Http\Controllers\OFIController;
+use App\Http\Controllers\DocumentController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -18,15 +19,17 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
-    // Shared Auth Routes
-    Route::get('/dashboard', fn() => Inertia::render('Dashboard'));
-    Route::get('/dcr', fn() => Inertia::render('DCR'));
-    Route::get('/ofi-form', fn() => Inertia::render('OFIForm'));
+    Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
+    Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
+    Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
 
-    Route::post('/ofi/generate', [OFIController::class, 'generate']); // ← ADD THIS
+    Route::post('/ofi/generate', [OFIController::class, 'generate'])->name('ofi.generate');
 
-    // Admin Only
+    // Documents (Masterlist)
+    Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
+    Route::get('/documents/{documentType}', [DocumentController::class, 'show'])->name('documents.show');
+
     Route::middleware('can:admin-only')->group(function () {
-        Route::get('/admin/dashboard', fn() => Inertia::render('Dashboard'));
+        Route::get('/admin/dashboard', fn() => Inertia::render('Dashboard'))->name('admin.dashboard');
     });
 });

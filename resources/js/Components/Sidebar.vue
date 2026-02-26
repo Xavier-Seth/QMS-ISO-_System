@@ -2,12 +2,18 @@
 import { ref, computed } from 'vue'
 import { Link, usePage } from '@inertiajs/vue3'
 
-const openCreateDocuments = ref(false)
 const page = usePage()
-
 const currentPath = computed(() => page.url)
 
+// dropdown states
+const openCreateDocuments = ref(false)
+const openManual = ref(false)
+
+// exact match
 const isActive = (href) => currentPath.value === href
+
+// helpful for dropdown sections (any route starting with...)
+const isStartsWith = (prefix) => currentPath.value.startsWith(prefix)
 </script>
 
 <template>
@@ -24,7 +30,6 @@ const isActive = (href) => currentPath.value === href
 
     <div class="divider"></div>
 
-    <!-- Navigation — scrolls only if content overflows (e.g. dropdown open) -->
     <nav class="nav">
 
       <!-- Dashboard -->
@@ -47,7 +52,7 @@ const isActive = (href) => currentPath.value === href
         <button
           @click="openCreateDocuments = !openCreateDocuments"
           class="nav-item dropdown-trigger"
-          :class="{ active: openCreateDocuments }"
+          :class="{ active: openCreateDocuments || isStartsWith('/dcr') || isStartsWith('/ofi') }"
           type="button"
         >
           <div class="nav-item-left">
@@ -59,11 +64,8 @@ const isActive = (href) => currentPath.value === href
             </svg>
             <span>Create Documents</span>
           </div>
-          <svg
-            class="chevron"
-            :class="{ rotated: openCreateDocuments }"
-            viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          >
+
+          <svg class="chevron" :class="{ rotated: openCreateDocuments }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="6 9 12 15 18 9"/>
           </svg>
         </button>
@@ -76,6 +78,7 @@ const isActive = (href) => currentPath.value === href
           >
             Create DCR Forms
           </Link>
+
           <Link
             href="/ofi-form"
             class="dropdown-item"
@@ -99,6 +102,53 @@ const isActive = (href) => currentPath.value === href
           <line x1="16" y1="17" x2="8" y2="17"/>
         </svg>
         <span>Documents</span>
+      </Link>
+
+      <!-- ✅ Manual Dropdown (NEW) -->
+      <div class="dropdown-wrapper">
+        <button
+          @click="openManual = !openManual"
+          class="nav-item dropdown-trigger"
+          :class="{ active: openManual || isStartsWith('/manual') }"
+          type="button"
+        >
+          <div class="nav-item-left">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+              <line x1="8" y1="7" x2="18" y2="7"/>
+              <line x1="8" y1="11" x2="18" y2="11"/>
+            </svg>
+            <span>Manual</span>
+          </div>
+
+          <svg class="chevron" :class="{ rotated: openManual }" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+        </button>
+
+        <div v-if="openManual" class="dropdown-menu">
+          <!-- change these hrefs to your real routes -->
+          <Link href="/manual/asm" class="dropdown-item" :class="{ 'dropdown-item-active': isActive('/manual/asm') }">ASM</Link>
+          <Link href="/manual/qsm" class="dropdown-item" :class="{ 'dropdown-item-active': isActive('/manual/qsm') }">QSM</Link>
+          <Link href="/manual/hrm" class="dropdown-item" :class="{ 'dropdown-item-active': isActive('/manual/hrm') }">HRM</Link>
+          <Link href="/manual/riem" class="dropdown-item" :class="{ 'dropdown-item-active': isActive('/manual/riem') }">RIEM</Link>
+          <Link href="/manual/rem" class="dropdown-item" :class="{ 'dropdown-item-active': isActive('/manual/rem') }">REM</Link>
+        </div>
+      </div>
+
+      <!-- ✅ Upload (NEW) -->
+      <Link
+        href="/upload"
+        class="nav-item"
+        :class="{ active: isActive('/upload') }"
+      >
+        <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="17 8 12 3 7 8"/>
+          <line x1="12" y1="3" x2="12" y2="15"/>
+        </svg>
+        <span>Upload</span>
       </Link>
 
       <!-- Inbox -->
@@ -139,14 +189,9 @@ const isActive = (href) => currentPath.value === href
 
     </nav>
 
-    <!-- Logout — always pinned to bottom -->
+    <!-- Logout -->
     <div class="logout-section">
-      <Link
-        href="/logout"
-        method="post"
-        as="button"
-        class="logout-btn"
-      >
+      <Link href="/logout" method="post" as="button" class="logout-btn">
         <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
           <polyline points="16 17 21 12 16 7"/>
