@@ -12,4 +12,10 @@ class DocumentType extends Model
     {
         return $this->belongsTo(DocumentSeries::class, 'series_id');
     }
+
+    // For counting and fetching uploads
+    public function uploads()
+    {
+        return $this->hasMany(DocumentUpload::class, 'document_type_id');
+    }
 }

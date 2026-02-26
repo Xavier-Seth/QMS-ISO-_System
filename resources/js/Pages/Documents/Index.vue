@@ -4,7 +4,7 @@ import { computed, ref, watch } from 'vue'
 import { router, Link } from '@inertiajs/vue3'
 
 const props = defineProps({
-  documentTypes: { // from backend
+  documentTypes: {
     type: Array,
     default: () => [],
   },
@@ -12,10 +12,10 @@ const props = defineProps({
     type: Object,
     default: () => ({
       q: '',
-      fileType: 'All',      // All | Physical | Electronic | -
-      hasUploads: 'All',    // All | Yes | No
-      sort: 'code_asc',     // code_asc | name_asc | uploads_desc | latest_desc
-      view: 'group',        // group | table
+      fileType: 'All',
+      hasUploads: 'All',
+      sort: 'code_asc',
+      view: 'group',
     }),
   },
 })
@@ -65,25 +65,21 @@ function resetFilters() {
 const normalized = computed(() => {
   let rows = [...props.documentTypes]
 
-  // search
   const needle = (q.value || '').trim().toLowerCase()
   if (needle) {
     rows = rows.filter((r) => `${r.code} ${r.name}`.toLowerCase().includes(needle))
   }
 
-  // file type filter
   if (fileType.value !== 'All') {
     const ft = fileType.value.toLowerCase()
     rows = rows.filter((r) => (r.file_type || '').toLowerCase().includes(ft))
   }
 
-  // uploads filter
   if (hasUploads.value !== 'All') {
     const want = hasUploads.value === 'Yes'
     rows = rows.filter((r) => ((r.documents_count || 0) > 0) === want)
   }
 
-  // sort
   const byCode = (a, b) => (a.code || '').localeCompare(b.code || '')
   const byName = (a, b) => (a.name || '').localeCompare(b.name || '')
   const byUploads = (a, b) => (b.documents_count || 0) - (a.documents_count || 0)
@@ -148,20 +144,31 @@ function formatDate(d) {
             </div>
 
             <div class="flex items-center gap-2">
-              <button
+              <!-- <button
                 type="button"
                 @click="resetFilters"
                 class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm border border-white/10"
               >
                 Reset
-              </button>
+              </button> -->
 
-              <Link
-                href="/documents/upload"
+              <!-- ✅ Upload now opens a document type page (Show.vue has the upload modal) -->
+              <!-- <Link
+                v-if="normalized.length"
+                :href="`/documents/${normalized[0].id}`"
                 class="px-3 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-medium"
               >
                 Upload
-              </Link>
+              </Link> -->
+
+              <!-- <button
+                v-else
+                type="button"
+                disabled
+                class="px-3 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium opacity-60 cursor-not-allowed"
+              >
+                Upload
+              </button> -->
             </div>
           </div>
         </div>
@@ -290,9 +297,9 @@ function formatDate(d) {
                     <span class="text-xs font-semibold text-slate-900 bg-slate-100 rounded-md px-2 py-1">
                       {{ row.code }}
                     </span>
-                    <span class="text-xs rounded-full px-2 py-1 ring-1" :class="pillClass(row.file_type)">
+                    <!-- <span class="text-xs rounded-full px-2 py-1 ring-1" :class="pillClass(row.file_type)">
                       {{ row.file_type || '—' }}
-                    </span>
+                    </span> -->
                   </div>
 
                   <div class="mt-2 font-semibold text-slate-900 truncate">
@@ -317,8 +324,9 @@ function formatDate(d) {
                   Open
                 </Link>
 
+                <!-- ✅ Upload opens the same Show page -->
                 <Link
-                  :href="`/documents/${row.id}/upload`"
+                  :href="`/documents/${row.id}`"
                   class="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-sm"
                   title="Upload under this code"
                 >
@@ -368,6 +376,7 @@ function formatDate(d) {
                   {{ formatDate(row.latest_upload_at) }}
                 </td>
                 <td class="px-4 py-3 text-right">
+                  <!-- ✅ Open Show page (upload is inside Show) -->
                   <Link
                     :href="`/documents/${row.id}`"
                     class="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 text-xs"

@@ -19,6 +19,7 @@ import Sidebar from '@/Components/Sidebar.vue'
 }
 
 .main-content {
+  position: relative;
   margin-left: 280px;   /* offset for fixed sidebar */
   flex: 1;
   min-width: 0;

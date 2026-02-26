@@ -29,6 +29,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
     Route::get('/documents/{documentType}', [DocumentController::class, 'show'])->name('documents.show');
 
+    // Upload under a document type (used by Show.vue modal)
+    Route::post('/documents/{documentType}/upload', [DocumentController::class, 'upload'])
+        ->name('documents.upload');
+
     Route::middleware('can:admin-only')->group(function () {
         Route::get('/admin/dashboard', fn() => Inertia::render('Dashboard'))->name('admin.dashboard');
     });
