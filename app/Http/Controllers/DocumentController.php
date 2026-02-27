@@ -16,42 +16,48 @@ class DocumentController extends Controller
     public function index(Request $request)
     {
         $q = trim((string) $request->get('q', ''));
-        $fileType = $request->get('fileType', 'All');
-        $hasUploads = $request->get('hasUploads', 'All');
+        $seriesCode = $request->get('series', 'All'); // <-- NEW (replaces fileType/hasUploads)
         $sort = $request->get('sort', 'code_asc');
         $view = $request->get('view', 'group');
 
-        // Get R-QMS series
-        $series = DocumentSeries::where('code_prefix', 'R-QMS')->firstOrFail();
+        // ✅ Series dropdown options (exclude MANUAL)
+        $seriesOptions = DocumentSeries::query()
+            ->where('code_prefix', '!=', 'MANUAL')
+            ->orderBy('code_prefix')
+            ->get(['id', 'code_prefix', 'name'])
+            ->map(fn($s) => [
+                'id' => $s->id,
+                'code_prefix' => $s->code_prefix,
+                'name' => $s->name,
+            ])
+            ->values();
 
         $query = DocumentType::query()
-            ->where('series_id', $series->id)
+            ->with('series:id,code_prefix,name')
             ->withCount('uploads')
-            ->withMax('uploads', 'created_at'); // -> uploads_max_created_at
+            ->withMax('uploads', 'created_at'); // uploads_max_created_at
 
+        // ✅ Filter by selected series (R-QMS / F-QMS / IPCR)
+        if ($seriesCode !== 'All') {
+            $selected = DocumentSeries::where('code_prefix', $seriesCode)->first();
+            if ($selected) {
+                $query->where('series_id', $selected->id);
+            } else {
+                // if someone passes an invalid series, show nothing
+                $query->whereRaw('1=0');
+            }
+        } else {
+            // If "All", still exclude MANUAL results
+            $query->whereHas('series', fn($qq) => $qq->where('code_prefix', '!=', 'MANUAL'));
+        }
+
+        // ✅ Search
         if ($q !== '') {
             $query->where(function ($qq) use ($q) {
                 $qq->where('code', 'like', "%{$q}%")
                     ->orWhere('title', 'like', "%{$q}%")
                     ->orWhere('storage', 'like', "%{$q}%");
             });
-        }
-
-        if ($fileType !== 'All') {
-            if ($fileType === '-') {
-                $query->where(function ($qq) {
-                    $qq->whereNull('storage')->orWhere('storage', '=', '-');
-                });
-            } else {
-                $query->where('storage', 'like', "%{$fileType}%");
-            }
-        }
-
-        // ✅ Uploaded filter (server-side)
-        if ($hasUploads === 'Yes') {
-            $query->has('uploads');
-        } elseif ($hasUploads === 'No') {
-            $query->doesntHave('uploads');
         }
 
         // ✅ Sorting
@@ -72,18 +78,22 @@ class DocumentController extends Controller
                 'id' => $t->id,
                 'code' => $t->code,
                 'name' => $t->title,
-                'file_type' => $t->storage,
+                'file_type' => $t->storage, // keep if you still want to display it somewhere
                 'documents_count' => (int) $t->uploads_count,
                 'latest_upload_at' => $t->uploads_max_created_at,
+                'series' => [
+                    'code_prefix' => $t->series?->code_prefix,
+                    'name' => $t->series?->name,
+                ],
             ];
         });
 
         return Inertia::render('Documents/Index', [
             'documentTypes' => $documentTypes,
+            'seriesOptions' => $seriesOptions, // ✅ NEW
             'filters' => [
                 'q' => $q,
-                'fileType' => $fileType,
-                'hasUploads' => $hasUploads,
+                'series' => $seriesCode, // ✅ NEW
                 'sort' => $sort,
                 'view' => $view,
             ],
