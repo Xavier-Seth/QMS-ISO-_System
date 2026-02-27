@@ -24,7 +24,7 @@ const requiresRevision = computed(() => {
 })
 
 /* ===============================
-   Search + Filters
+   Search + Filters (now in header)
 ================================ */
 const search = ref('')
 const statusFilter = ref('All') // All | Active | Obsolete (only when requiresRevision)
@@ -48,7 +48,7 @@ const filteredDocuments = computed(() => {
   }
 
   if (requiresRevision.value && statusFilter.value !== 'All') {
-    docs = docs.filter(doc => doc.status === statusFilter.value)
+    docs = docs.filter((doc) => doc.status === statusFilter.value)
   }
 
   return docs
@@ -134,8 +134,8 @@ function statusClass(status) {
   return 'bg-rose-50 text-rose-700 ring-rose-200'
 }
 
-const activeCount = computed(() => (props.documents || []).filter(d => d.status === 'Active').length)
-const obsoleteCount = computed(() => (props.documents || []).filter(d => d.status === 'Obsolete').length)
+const activeCount = computed(() => (props.documents || []).filter((d) => d.status === 'Active').length)
+const obsoleteCount = computed(() => (props.documents || []).filter((d) => d.status === 'Obsolete').length)
 
 const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 </script>
@@ -143,13 +143,14 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 <template>
   <AdminLayout>
     <div class="p-6 space-y-6">
-
       <!-- ================= HEADER ================= -->
       <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-6 py-6 bg-gradient-to-r from-slate-900 to-slate-800">
-          <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div class="flex items-center gap-3">
+          <!-- NEW HEADER LAYOUT: Left (title) | Middle (search/filter) | Right (buttons) -->
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <!-- LEFT: Code + Title -->
+            <div class="min-w-0">
+              <div class="flex items-center gap-3 flex-wrap">
                 <span class="text-xs font-semibold bg-white/10 text-white px-3 py-1 rounded-md">
                   {{ documentType?.code }}
                 </span>
@@ -167,7 +168,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 </span>
               </div>
 
-              <h1 class="text-2xl font-semibold text-white mt-3">
+              <h1 class="text-2xl font-semibold text-white mt-3 truncate">
                 {{ documentType?.name }}
               </h1>
 
@@ -176,7 +177,40 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               </p>
             </div>
 
-            <div class="flex items-center gap-2">
+            <!-- MIDDLE: Compact Search + Status -->
+            <div class="w-full lg:w-[520px]">
+              <div class="grid grid-cols-1 sm:grid-cols-12 gap-2">
+                <!-- Search -->
+                <div :class="requiresRevision ? 'sm:col-span-8' : 'sm:col-span-12'">
+                  <div class="relative">
+                    <input
+                      v-model="search"
+                      type="text"
+                      :placeholder="requiresRevision ? 'Search file or revision...' : 'Search file...'"
+                      class="w-full rounded-xl bg-white/10 border border-white/15 text-white placeholder:text-slate-300 px-4 py-2.5 pr-10
+                             focus:outline-none focus:ring-2 focus:ring-white/20"
+                    />
+                    <div class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-200">🔍</div>
+                  </div>
+                </div>
+
+                <!-- Status Filter (only for revision-controlled) -->
+                <div v-if="requiresRevision" class="sm:col-span-4">
+                  <select
+                    v-model="statusFilter"
+                    class="w-full rounded-xl bg-white/10 border border-white/15 text-white px-3 py-2.5
+                           focus:outline-none focus:ring-2 focus:ring-white/20"
+                  >
+                    <option class="text-slate-900" value="All">All</option>
+                    <option class="text-slate-900" value="Active">Active</option>
+                    <option class="text-slate-900" value="Obsolete">Obsolete</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- RIGHT: Buttons -->
+            <div class="flex items-center gap-2 justify-end">
               <Link
                 href="/documents"
                 class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm border border-white/10"
@@ -225,40 +259,6 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               Note: This type is treated as a record (no revision control).
             </div>
           </template>
-        </div>
-      </div>
-
-      <!-- ================= SEARCH + FILTER (ALWAYS VISIBLE) ================= -->
-      <div class="bg-white rounded-2xl border border-slate-200 p-5">
-        <div class="grid grid-cols-1 md:grid-cols-12 gap-4">
-
-          <!-- Search -->
-          <div :class="requiresRevision ? 'md:col-span-8' : 'md:col-span-12'">
-            <label class="text-xs font-medium text-slate-600">Search File</label>
-            <div class="mt-2 relative">
-              <input
-                v-model="search"
-                type="text"
-                :placeholder="requiresRevision ? 'Search by file name or revision...' : 'Search by file name...'"
-                class="w-full rounded-xl border border-slate-200 px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-slate-300"
-              />
-              <div class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</div>
-            </div>
-          </div>
-
-          <!-- Status Filter -->
-          <div v-if="requiresRevision" class="md:col-span-4">
-            <label class="text-xs font-medium text-slate-600">Status</label>
-            <select
-              v-model="statusFilter"
-              class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-            >
-              <option value="All">All</option>
-              <option value="Active">Active</option>
-              <option value="Obsolete">Obsolete</option>
-            </select>
-          </div>
-
         </div>
       </div>
 
@@ -328,17 +328,19 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 </td>
 
                 <td class="px-5 py-4 text-right space-x-2">
+                  <!-- ✅ View (Preview) -->
                   <a
-                    :href="doc.file_url"
+                    :href="doc.preview_url || doc.file_url"
                     target="_blank"
+                    rel="noopener"
                     class="px-3 py-1.5 rounded-lg bg-slate-900 text-white hover:bg-slate-800 text-xs"
                   >
                     View
                   </a>
 
+                  <!-- ✅ Download (Force download) -->
                   <a
-                    :href="doc.file_url"
-                    download
+                    :href="doc.download_url || doc.file_url"
                     class="px-3 py-1.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs"
                   >
                     Download
@@ -386,7 +388,10 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
             </div>
 
             <div class="px-6 py-5 space-y-4">
-              <div v-if="uploadError" class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3">
+              <div
+                v-if="uploadError"
+                class="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-4 py-3"
+              >
                 {{ uploadError }}
               </div>
 
@@ -398,9 +403,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                   class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
                 />
-                <p class="mt-2 text-xs text-slate-500">
-                  Allowed: PDF, Word, Excel, images.
-                </p>
+                <p class="mt-2 text-xs text-slate-500">Allowed: PDF, Word, Excel, images.</p>
               </div>
 
               <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
@@ -448,7 +451,6 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
           </div>
         </div>
       </div>
-
     </div>
   </AdminLayout>
 </template>

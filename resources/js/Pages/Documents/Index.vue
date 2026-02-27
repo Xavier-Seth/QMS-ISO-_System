@@ -134,10 +134,10 @@ function formatDate(d) {
 
       <!-- Top header (matches your dark theme) -->
       <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-        <div class="px-6 py-5 bg-gradient-to-r from-slate-900 to-slate-800">
+        <div class="px-4 py-2 bg-gradient-to-r from-slate-900 to-slate-800">
           <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 class="text-xl sm:text-2xl font-semibold text-white">Documents</h1>
+              <h1 class="text-base sm:text-x1 font-semibold text-white">Documents</h1>
               <p class="text-sm text-slate-300 mt-1">
                 Find documents by code (R-QMS-###) or name. Open a code to view all uploads under it.
               </p>
@@ -174,7 +174,7 @@ function formatDate(d) {
         </div>
 
         <!-- Controls -->
-        <div class="px-6 py-5">
+        <div class="px-4 py-2">
           <div class="grid grid-cols-1 md:grid-cols-12 gap-3">
             <!-- Search -->
             <div class="md:col-span-6">
@@ -184,7 +184,7 @@ function formatDate(d) {
                   v-model="q"
                   type="text"
                   placeholder="Search: R-QMS-001, Filing Chart, OFI, DCR..."
-                  class="w-full rounded-xl border border-slate-200 px-4 py-2.5 pr-10 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  class="w-full rounded-xl border border-slate-200 px-4 py-1.5 pr-10 focus:outline-none focus:ring-2 focus:ring-slate-300"
                 />
                 <div class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <svg v-if="!isFiltering" xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none"
@@ -206,7 +206,7 @@ function formatDate(d) {
               <label class="text-xs font-medium text-slate-600">File Type</label>
               <select
                 v-model="fileType"
-                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
                 <option value="All">All</option>
                 <option value="Physical">Physical</option>
@@ -220,7 +220,7 @@ function formatDate(d) {
               <label class="text-xs font-medium text-slate-600">Uploaded</label>
               <select
                 v-model="hasUploads"
-                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
                 <option value="All">All</option>
                 <option value="Yes">Has uploads</option>
@@ -233,7 +233,7 @@ function formatDate(d) {
               <label class="text-xs font-medium text-slate-600">Sort</label>
               <select
                 v-model="sort"
-                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
                 <option value="code_asc">Code (A–Z)</option>
                 <option value="name_asc">Name (A–Z)</option>
