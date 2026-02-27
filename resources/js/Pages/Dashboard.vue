@@ -1,90 +1,62 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
-import { ref } from 'vue'
+import { computed } from 'vue'
 
-const stats = [
-  {
-    label: 'Total Documents',
-    value: '284',
-    change: '+12 this month',
-    trend: 'up',
-    icon: 'docs',
-    color: '#6366f1',
-    bg: 'rgba(99,102,241,0.12)',
+/**
+ * These props come from DashboardController via Inertia:
+ * - stats: array of 4 cards
+ * - recentActivity: latest uploads mapped as activity rows
+ * - pendingDocs: latest DCR/OFI uploads mapped as table rows
+ * - authUser: logged-in user info for header/profile
+ */
+const props = defineProps({
+  stats: { type: Array, default: () => [] },
+  recentActivity: { type: Array, default: () => [] },
+  pendingDocs: { type: Array, default: () => [] },
+  authUser: {
+    type: Object,
+    default: () => ({ name: 'User', role: 'User' }),
   },
-  {
-    label: 'Pending DCR Forms',
-    value: '17',
-    change: '4 awaiting review',
-    trend: 'neutral',
-    icon: 'dcr',
-    color: '#f59e0b',
-    bg: 'rgba(245,158,11,0.12)',
-  },
-  {
-    label: 'Open OFI Items',
-    value: '9',
-    change: '-3 from last week',
-    trend: 'down',
-    icon: 'ofi',
-    color: '#10b981',
-    bg: 'rgba(16,185,129,0.12)',
-  },
-  {
-    label: 'Active Users',
-    value: '43',
-    change: '+5 new this week',
-    trend: 'up',
-    icon: 'users',
-    color: '#3b82f6',
-    bg: 'rgba(59,130,246,0.12)',
-  },
-]
+})
 
-const recentActivity = [
-  { user: 'John Doe', action: 'submitted a DCR Form', doc: 'DCR-2025-0042', time: '2 mins ago', type: 'dcr' },
-  { user: 'Marco Reyes', action: 'created an OFI Form', doc: 'OFI-2025-0018', time: '14 mins ago', type: 'ofi' },
-  { user: 'Liza Fernandez', action: 'approved document', doc: 'QMS-DOC-2025-119', time: '1 hr ago', type: 'approve' },
-  { user: 'Jose Tan', action: 'submitted a DCR Form', doc: 'DCR-2025-0041', time: '3 hrs ago', type: 'dcr' },
-  { user: 'Maria Santos', action: 'reviewed OFI Form', doc: 'OFI-2025-0017', time: '5 hrs ago', type: 'ofi' },
-]
-
-const pendingDocs = [
-  { id: 'DCR-2025-0042', type: 'DCR', dept: 'Academic Affairs', submitted: 'Feb 24, 2025', status: 'For Review' },
-  { id: 'DCR-2025-0041', type: 'DCR', dept: 'Finance Office', submitted: 'Feb 23, 2025', status: 'For Review' },
-  { id: 'OFI-2025-0018', type: 'OFI', dept: 'IT Services', submitted: 'Feb 23, 2025', status: 'In Progress' },
-  { id: 'OFI-2025-0017', type: 'OFI', dept: 'Registrar', submitted: 'Feb 22, 2025', status: 'For Review' },
-]
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 18) return 'Good afternoon'
+  return 'Good evening'
+})
 </script>
 
 <template>
   <AdminLayout>
     <div class="dashboard">
-
       <!-- Header -->
       <div class="dash-header">
         <div class="header-left">
-          <p class="welcome-sub">Good morning 👋</p>
-          <h1 class="welcome-title">John Doe</h1>
-          <p class="welcome-role">Administrator · Quality Management System</p>
+          <p class="welcome-sub">{{ greeting }} 👋</p>
+          <h1 class="welcome-title">{{ props.authUser?.name ?? 'User' }}</h1>
+          <p class="welcome-role">
+            {{ props.authUser?.role ?? 'User' }} · Quality Management System
+          </p>
         </div>
 
         <!-- Right: icons + profile -->
         <div class="header-right">
-
           <!-- Mail icon -->
-          <button class="icon-btn" title="Messages">
+          <button class="icon-btn" title="Messages" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-              <polyline points="22,6 12,13 2,6"/>
+              <path
+                d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"
+              />
+              <polyline points="22,6 12,13 2,6" />
             </svg>
           </button>
 
           <!-- Bell icon with red dot -->
-          <button class="icon-btn has-notif" title="Notifications">
+          <button class="icon-btn has-notif" title="Notifications" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
             </svg>
             <span class="notif-dot"></span>
           </button>
@@ -96,53 +68,98 @@ const pendingDocs = [
           <div class="profile-card">
             <img :src="`/images/LNU_logo.png`" alt="LNU Logo" class="profile-avatar" />
             <div class="profile-info">
-              <span class="profile-name">John Doe</span>
-              <span class="profile-role">Admin</span>
+              <span class="profile-name">{{ props.authUser?.name ?? 'User' }}</span>
+              <span class="profile-role">{{ props.authUser?.role ?? 'User' }}</span>
             </div>
           </div>
-
         </div>
       </div>
 
       <!-- Stats Grid -->
       <div class="stats-grid">
         <div
-          v-for="stat in stats"
+          v-for="stat in props.stats"
           :key="stat.label"
           class="stat-card"
           :style="{ '--accent': stat.color, '--accent-bg': stat.bg }"
         >
           <div class="stat-icon-wrap">
-            <svg v-if="stat.icon === 'docs'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
+            <svg
+              v-if="stat.icon === 'docs'"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="16" y1="13" x2="8" y2="13" />
+              <line x1="16" y1="17" x2="8" y2="17" />
             </svg>
-            <svg v-if="stat.icon === 'dcr'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="12" y1="18" x2="12" y2="12"/>
-              <line x1="9" y1="15" x2="15" y2="15"/>
+
+            <svg
+              v-if="stat.icon === 'dcr'"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+              <line x1="12" y1="18" x2="12" y2="12" />
+              <line x1="9" y1="15" x2="15" y2="15" />
             </svg>
-            <svg v-if="stat.icon === 'ofi'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
+
+            <svg
+              v-if="stat.icon === 'ofi'"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
             </svg>
-            <svg v-if="stat.icon === 'users'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+
+            <svg
+              v-if="stat.icon === 'users'"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.8"
+            >
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
             </svg>
           </div>
+
           <div class="stat-body">
             <span class="stat-label">{{ stat.label }}</span>
             <span class="stat-value">{{ stat.value }}</span>
             <span class="stat-change" :class="stat.trend">
-              <svg v-if="stat.trend === 'up'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="trend-icon"><polyline points="18 15 12 9 6 15"/></svg>
-              <svg v-if="stat.trend === 'down'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="trend-icon"><polyline points="6 9 12 15 18 9"/></svg>
+              <svg
+                v-if="stat.trend === 'up'"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                class="trend-icon"
+              >
+                <polyline points="18 15 12 9 6 15" />
+              </svg>
+              <svg
+                v-if="stat.trend === 'down'"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.5"
+                class="trend-icon"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
               {{ stat.change }}
             </span>
           </div>
@@ -151,23 +168,33 @@ const pendingDocs = [
 
       <!-- Two Column Layout -->
       <div class="two-col">
-
         <!-- Recent Activity -->
         <div class="panel">
           <div class="panel-header">
             <h2 class="panel-title">Recent Activity</h2>
             <span class="panel-badge">Live</span>
           </div>
+
           <ul class="activity-list">
-            <li v-for="act in recentActivity" :key="act.doc" class="activity-item">
+            <li
+              v-for="(act, idx) in props.recentActivity"
+              :key="`${act.doc}-${idx}`"
+              class="activity-item"
+            >
               <div class="act-dot" :class="act.type"></div>
+
               <div class="act-body">
                 <p class="act-text">
                   <strong>{{ act.user }}</strong> {{ act.action }}
                 </p>
                 <p class="act-doc">{{ act.doc }}</p>
               </div>
+
               <span class="act-time">{{ act.time }}</span>
+            </li>
+
+            <li v-if="props.recentActivity.length === 0" class="empty-row">
+              No recent activity yet.
             </li>
           </ul>
         </div>
@@ -176,8 +203,10 @@ const pendingDocs = [
         <div class="panel">
           <div class="panel-header">
             <h2 class="panel-title">Pending Documents</h2>
+            <!-- keep as placeholder for now; later point to filtered Documents page -->
             <a href="#" class="panel-link">View all</a>
           </div>
+
           <div class="table-wrap">
             <table class="doc-table">
               <thead>
@@ -188,30 +217,35 @@ const pendingDocs = [
                   <th>Status</th>
                 </tr>
               </thead>
+
               <tbody>
-                <tr v-for="doc in pendingDocs" :key="doc.id">
+                <tr v-for="doc in props.pendingDocs" :key="doc.id">
                   <td class="doc-id">{{ doc.id }}</td>
                   <td>
-                    <span class="type-badge" :class="doc.type.toLowerCase()">{{ doc.type }}</span>
+                    <span class="type-badge" :class="doc.type.toLowerCase()">
+                      {{ doc.type }}
+                    </span>
                   </td>
                   <td class="doc-dept">{{ doc.dept }}</td>
                   <td>
                     <span class="status-badge">{{ doc.status }}</span>
                   </td>
                 </tr>
+
+                <tr v-if="props.pendingDocs.length === 0">
+                  <td colspan="4" class="empty-cell">No pending documents yet.</td>
+                </tr>
               </tbody>
             </table>
           </div>
         </div>
-
       </div>
-
     </div>
   </AdminLayout>
 </template>
 
 <style scoped>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Sora:wght@400;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=DM+Mono:wght@400;500&family=Sora:wght@400;600;700&display=swap');
 
 .dashboard {
   padding: 36px 40px;
@@ -266,7 +300,7 @@ const pendingDocs = [
   border-radius: 50%;
   background: #fff;
   border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -278,7 +312,7 @@ const pendingDocs = [
 
 .icon-btn:hover {
   background: #f8fafc;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .icon-btn svg {
@@ -322,13 +356,13 @@ const pendingDocs = [
   border: 1px solid #e2e8f0;
   border-radius: 14px;
   padding: 8px 14px 8px 8px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
   cursor: pointer;
   transition: box-shadow 0.15s;
 }
 
 .profile-card:hover {
-  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.1);
 }
 
 .profile-avatar {
@@ -370,7 +404,7 @@ const pendingDocs = [
   align-items: flex-start;
   gap: 16px;
   border: 1px solid #e8edf3;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   transition: transform 0.2s, box-shadow 0.2s;
   position: relative;
   overflow: hidden;
@@ -379,7 +413,9 @@ const pendingDocs = [
 .stat-card::before {
   content: '';
   position: absolute;
-  top: 0; left: 0; right: 0;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 3px;
   background: var(--accent);
   opacity: 0.7;
@@ -387,7 +423,7 @@ const pendingDocs = [
 
 .stat-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.08);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
 }
 
 .stat-icon-wrap {
@@ -439,10 +475,17 @@ const pendingDocs = [
   color: #94a3b8;
 }
 
-.stat-change.up { color: #10b981; }
-.stat-change.down { color: #f59e0b; }
+.stat-change.up {
+  color: #10b981;
+}
+.stat-change.down {
+  color: #f59e0b;
+}
 
-.trend-icon { width: 13px; height: 13px; }
+.trend-icon {
+  width: 13px;
+  height: 13px;
+}
 
 /* ── Two Column ── */
 .two-col {
@@ -456,7 +499,7 @@ const pendingDocs = [
   background: #fff;
   border-radius: 16px;
   border: 1px solid #e8edf3;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   overflow: hidden;
 }
 
@@ -480,7 +523,7 @@ const pendingDocs = [
   font-size: 11px;
   font-weight: 600;
   color: #10b981;
-  background: rgba(16,185,129,0.1);
+  background: rgba(16, 185, 129, 0.1);
   padding: 3px 9px;
   border-radius: 20px;
   letter-spacing: 0.04em;
@@ -499,8 +542,13 @@ const pendingDocs = [
 }
 
 @keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
 }
 
 .panel-link {
@@ -509,10 +557,16 @@ const pendingDocs = [
   text-decoration: none;
   font-weight: 500;
 }
-.panel-link:hover { text-decoration: underline; }
+.panel-link:hover {
+  text-decoration: underline;
+}
 
 /* ── Activity List ── */
-.activity-list { list-style: none; margin: 0; padding: 8px 0; }
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px 0;
+}
 
 .activity-item {
   display: flex;
@@ -523,8 +577,12 @@ const pendingDocs = [
   transition: background 0.15s;
 }
 
-.activity-item:last-child { border-bottom: none; }
-.activity-item:hover { background: #f8fafc; }
+.activity-item:last-child {
+  border-bottom: none;
+}
+.activity-item:hover {
+  background: #f8fafc;
+}
 
 .act-dot {
   width: 9px;
@@ -534,24 +592,65 @@ const pendingDocs = [
   flex-shrink: 0;
 }
 
-.act-dot.dcr { background: #6366f1; }
-.act-dot.ofi { background: #10b981; }
-.act-dot.approve { background: #3b82f6; }
+.act-dot.dcr {
+  background: #6366f1;
+}
+.act-dot.ofi {
+  background: #10b981;
+}
+.act-dot.approve {
+  background: #3b82f6;
+}
 
-.act-body { flex: 1; }
+.act-body {
+  flex: 1;
+}
 
-.act-text { font-size: 13px; color: #334155; margin: 0 0 2px; line-height: 1.4; }
-.act-text strong { color: #0f172a; font-weight: 600; }
+.act-text {
+  font-size: 13px;
+  color: #334155;
+  margin: 0 0 2px;
+  line-height: 1.4;
+}
+.act-text strong {
+  color: #0f172a;
+  font-weight: 600;
+}
 
-.act-doc { font-size: 11.5px; color: #94a3b8; margin: 0; font-family: 'DM Mono', monospace; }
+.act-doc {
+  font-size: 11.5px;
+  color: #94a3b8;
+  margin: 0;
+  font-family: 'DM Mono', monospace;
+}
 
-.act-time { font-size: 11.5px; color: #94a3b8; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
+.act-time {
+  font-size: 11.5px;
+  color: #94a3b8;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.empty-row {
+  padding: 14px 24px;
+  color: #94a3b8;
+  font-size: 12.5px;
+}
 
 /* ── Table ── */
-.table-wrap { overflow-x: auto; }
+.table-wrap {
+  overflow-x: auto;
+}
 
-.doc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.doc-table thead tr { background: #f8fafc; }
+.doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.doc-table thead tr {
+  background: #f8fafc;
+}
 
 .doc-table th {
   padding: 11px 20px;
@@ -564,16 +663,84 @@ const pendingDocs = [
   border-bottom: 1px solid #f1f5f9;
 }
 
-.doc-table td { padding: 13px 20px; color: #334155; border-bottom: 1px solid #f8fafc; }
-.doc-table tbody tr:last-child td { border-bottom: none; }
-.doc-table tbody tr:hover td { background: #f8fafc; }
+.doc-table td {
+  padding: 13px 20px;
+  color: #334155;
+  border-bottom: 1px solid #f8fafc;
+}
+.doc-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.doc-table tbody tr:hover td {
+  background: #f8fafc;
+}
 
-.doc-id { font-family: 'DM Mono', monospace; font-size: 12.5px; color: #0f172a; font-weight: 500; }
-.doc-dept { color: #64748b; }
+.doc-id {
+  font-family: 'DM Mono', monospace;
+  font-size: 12.5px;
+  color: #0f172a;
+  font-weight: 500;
+}
+.doc-dept {
+  color: #64748b;
+}
 
-.type-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; letter-spacing: 0.04em; }
-.type-badge.dcr { background: rgba(99,102,241,0.1); color: #6366f1; }
-.type-badge.ofi { background: rgba(16,185,129,0.1); color: #10b981; }
+.type-badge {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 9px;
+  border-radius: 6px;
+  letter-spacing: 0.04em;
+}
+.type-badge.dcr {
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366f1;
+}
+.type-badge.ofi {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
 
-.status-badge { font-size: 11.5px; color: #f59e0b; background: rgba(245,158,11,0.1); padding: 3px 10px; border-radius: 20px; font-weight: 500; }
+.status-badge {
+  font-size: 11.5px;
+  color: #f59e0b;
+  background: rgba(245, 158, 11, 0.1);
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+.empty-cell {
+  padding: 18px 20px;
+  color: #94a3b8;
+  font-size: 12.5px;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1100px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .dashboard {
+    padding: 22px 18px;
+  }
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+  .dash-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .header-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+}
 </style>
