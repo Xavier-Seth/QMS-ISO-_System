@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
+use Illuminate\Support\Facades\File;
 
 class DocumentController extends Controller
 {
@@ -170,9 +171,8 @@ class DocumentController extends Controller
         abort_unless($disk->exists($upload->file_path), 404);
 
         $absolutePath = $disk->path($upload->file_path);
-        $mime = $disk->mimeType($upload->file_path) ?? 'application/octet-stream';
+        $mime = File::mimeType($absolutePath) ?? 'application/octet-stream';
 
-        // Force INLINE preview (works for PDF/images; Office files may still download due to browser limits)
         return response()->file($absolutePath, [
             'Content-Type' => $mime,
             'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($upload->file_name) . '"',
