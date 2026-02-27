@@ -262,7 +262,7 @@ async function generateDocx() {
                 <div class="fu-top-date"></div>
                 <div class="fu-top-status"></div>
                 <div class="fu-top-effective">Effective?</div>
-                <div class="fu-top-auditor">Signature</div>
+                <div class="fu-top-auditor"></div>
                 <div class="fu-top-rep"></div>
               </div>
               <div class="fu-bottom-labels">
