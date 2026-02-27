@@ -16,6 +16,11 @@ class DocumentUpload extends Model
         'remarks',
     ];
 
+    public function documentType()
+    {
+        return $this->belongsTo(DocumentType::class, 'document_type_id');
+    }
+
     public function uploader()
     {
         return $this->belongsTo(User::class, 'uploaded_by');
