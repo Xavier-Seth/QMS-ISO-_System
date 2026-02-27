@@ -8,12 +8,15 @@ const props = defineProps({
     type: Array,
     default: () => [],
   },
+  seriesOptions: {
+    type: Array,
+    default: () => [],
+  },
   filters: {
     type: Object,
     default: () => ({
       q: '',
-      fileType: 'All',
-      hasUploads: 'All',
+      series: 'All',
       sort: 'code_asc',
       view: 'group',
     }),
@@ -21,8 +24,7 @@ const props = defineProps({
 })
 
 const q = ref(props.filters.q ?? '')
-const fileType = ref(props.filters.fileType ?? 'All')
-const hasUploads = ref(props.filters.hasUploads ?? 'All')
+const series = ref(props.filters.series ?? 'All') // ✅ NEW
 const sort = ref(props.filters.sort ?? 'code_asc')
 const view = ref(props.filters.view ?? 'group')
 const isFiltering = ref(false)
@@ -34,8 +36,7 @@ function applyFilters() {
     '/documents',
     {
       q: q.value || undefined,
-      fileType: fileType.value !== 'All' ? fileType.value : undefined,
-      hasUploads: hasUploads.value !== 'All' ? hasUploads.value : undefined,
+      series: series.value !== 'All' ? series.value : undefined, // ✅ NEW
       sort: sort.value || undefined,
       view: view.value || undefined,
     },
@@ -48,36 +49,28 @@ function applyFilters() {
   )
 }
 
-watch([q, fileType, hasUploads, sort, view], () => {
+watch([q, series, sort, view], () => {
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(applyFilters, 220)
 })
 
 function resetFilters() {
   q.value = ''
-  fileType.value = 'All'
-  hasUploads.value = 'All'
+  series.value = 'All'
   sort.value = 'code_asc'
   view.value = 'group'
   applyFilters()
 }
 
+// ✅ No more client-side filtering for series/uploads.
+// Controller already filtered and returned `documentTypes` based on query params.
 const normalized = computed(() => {
   let rows = [...props.documentTypes]
 
+  // Still keep quick local search filtering for instant UI feel (optional)
   const needle = (q.value || '').trim().toLowerCase()
   if (needle) {
     rows = rows.filter((r) => `${r.code} ${r.name}`.toLowerCase().includes(needle))
-  }
-
-  if (fileType.value !== 'All') {
-    const ft = fileType.value.toLowerCase()
-    rows = rows.filter((r) => (r.file_type || '').toLowerCase().includes(ft))
-  }
-
-  if (hasUploads.value !== 'All') {
-    const want = hasUploads.value === 'Yes'
-    rows = rows.filter((r) => ((r.documents_count || 0) > 0) === want)
   }
 
   const byCode = (a, b) => (a.code || '').localeCompare(b.code || '')
@@ -97,25 +90,28 @@ const normalized = computed(() => {
   return rows
 })
 
+/**
+ * ✅ Grouping is now dynamic based on selected series.
+ * - R-QMS keeps your original two groups
+ * - F-QMS / IPCR will go under "All Items" unless you want specific grouping rules
+ */
 const grouped = computed(() => {
-  const groups = { 'R-QMS-001 to R-QMS-061': [], 'R-QMS-100 to R-QMS-112': [], Other: [] }
-  for (const r of normalized.value) {
-    const m = (r.code || '').match(/R-QMS-(\d+)/i)
-    const n = m ? parseInt(m[1], 10) : null
-    if (n !== null && n >= 1 && n <= 61) groups['R-QMS-001 to R-QMS-061'].push(r)
-    else if (n !== null && n >= 100 && n <= 112) groups['R-QMS-100 to R-QMS-112'].push(r)
-    else groups.Other.push(r)
+  // If series is R-QMS or All, keep the original ranges
+  if (series.value === 'R-QMS' || series.value === 'All') {
+    const groups = { 'R-QMS-001 to R-QMS-061': [], 'R-QMS-100 to R-QMS-112': [], Other: [] }
+    for (const r of normalized.value) {
+      const m = (r.code || '').match(/R-QMS-(\d+)/i)
+      const n = m ? parseInt(m[1], 10) : null
+      if (n !== null && n >= 1 && n <= 61) groups['R-QMS-001 to R-QMS-061'].push(r)
+      else if (n !== null && n >= 100 && n <= 112) groups['R-QMS-100 to R-QMS-112'].push(r)
+      else groups.Other.push(r)
+    }
+    return groups
   }
-  return groups
-})
 
-function pillClass(text) {
-  const t = (text || '').toLowerCase()
-  if (t.includes('physical') && t.includes('electronic')) return 'bg-indigo-50 text-indigo-700 ring-indigo-200'
-  if (t.includes('physical')) return 'bg-amber-50 text-amber-700 ring-amber-200'
-  if (t.includes('electronic')) return 'bg-sky-50 text-sky-700 ring-sky-200'
-  return 'bg-slate-100 text-slate-700 ring-slate-200'
-}
+  // For F-QMS / IPCR: show a single group
+  return { 'All Items': normalized.value }
+})
 
 function statusClass(count) {
   if (!count) return 'bg-rose-50 text-rose-700 ring-rose-200'
@@ -132,7 +128,7 @@ function formatDate(d) {
   <AdminLayout>
     <div class="p-6 space-y-6">
 
-      <!-- Top header (matches your dark theme) -->
+      <!-- Top header -->
       <div class="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
         <div class="px-4 py-2 bg-gradient-to-r from-slate-900 to-slate-800">
           <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -144,31 +140,16 @@ function formatDate(d) {
             </div>
 
             <div class="flex items-center gap-2">
-              <!-- <button
+              <!-- optional reset button if you want it back -->
+              <!--
+              <button
                 type="button"
                 @click="resetFilters"
                 class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-white text-sm border border-white/10"
               >
                 Reset
-              </button> -->
-
-              <!-- ✅ Upload now opens a document type page (Show.vue has the upload modal) -->
-              <!-- <Link
-                v-if="normalized.length"
-                :href="`/documents/${normalized[0].id}`"
-                class="px-3 py-2 rounded-lg bg-indigo-500 hover:bg-indigo-400 text-white text-sm font-medium"
-              >
-                Upload
-              </Link> -->
-
-              <!-- <button
-                v-else
-                type="button"
-                disabled
-                class="px-3 py-2 rounded-lg bg-indigo-500 text-white text-sm font-medium opacity-60 cursor-not-allowed"
-              >
-                Upload
-              </button> -->
+              </button>
+              -->
             </div>
           </div>
         </div>
@@ -201,30 +182,26 @@ function formatDate(d) {
               </div>
             </div>
 
-            <!-- File Type -->
+            <!-- (EMPTY SLOT where old File Type was) -->
+            <div class="md:col-span-2">
+              <!-- optional: leave blank to keep spacing like your screenshot -->
+            </div>
+
+            <!-- ✅ Document Series (MOVED into Uploaded position) -->
             <div class="md:col-span-2">
               <label class="text-xs font-medium text-slate-600">File Type</label>
               <select
-                v-model="fileType"
+                v-model="series"
                 class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
                 <option value="All">All</option>
-                <option value="Physical">Physical</option>
-                <option value="Electronic">Electronic</option>
-                <option value="-">-</option>
-              </select>
-            </div>
-
-            <!-- Uploaded -->
-            <div class="md:col-span-2">
-              <label class="text-xs font-medium text-slate-600">Uploaded</label>
-              <select
-                v-model="hasUploads"
-                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-slate-300"
-              >
-                <option value="All">All</option>
-                <option value="Yes">Has uploads</option>
-                <option value="No">No uploads</option>
+                <option
+                  v-for="s in seriesOptions"
+                  :key="s.id"
+                  :value="s.code_prefix"
+                >
+                  {{ s.code_prefix }}
+                </option>
               </select>
             </div>
 
@@ -297,9 +274,6 @@ function formatDate(d) {
                     <span class="text-xs font-semibold text-slate-900 bg-slate-100 rounded-md px-2 py-1">
                       {{ row.code }}
                     </span>
-                    <!-- <span class="text-xs rounded-full px-2 py-1 ring-1" :class="pillClass(row.file_type)">
-                      {{ row.file_type || '—' }}
-                    </span> -->
                   </div>
 
                   <div class="mt-2 font-semibold text-slate-900 truncate">
@@ -324,7 +298,6 @@ function formatDate(d) {
                   Open
                 </Link>
 
-                <!-- ✅ Upload opens the same Show page -->
                 <Link
                   :href="`/documents/${row.id}`"
                   class="px-3 py-2 rounded-xl border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 text-sm"
@@ -346,7 +319,6 @@ function formatDate(d) {
               <tr class="text-left">
                 <th class="px-4 py-3 font-semibold text-slate-700">Code</th>
                 <th class="px-4 py-3 font-semibold text-slate-700">File Name</th>
-                <th class="px-4 py-3 font-semibold text-slate-700">File Type</th>
                 <th class="px-4 py-3 font-semibold text-slate-700">Uploads</th>
                 <th class="px-4 py-3 font-semibold text-slate-700">Latest</th>
                 <th class="px-4 py-3 font-semibold text-slate-700 text-right">Action</th>
@@ -363,11 +335,6 @@ function formatDate(d) {
                   {{ row.name }}
                 </td>
                 <td class="px-4 py-3">
-                  <span class="text-xs rounded-full px-2 py-1 ring-1" :class="pillClass(row.file_type)">
-                    {{ row.file_type || '—' }}
-                  </span>
-                </td>
-                <td class="px-4 py-3">
                   <span class="text-xs rounded-full px-2 py-1 ring-1" :class="statusClass(row.documents_count)">
                     {{ row.documents_count || 0 }}
                   </span>
@@ -376,7 +343,6 @@ function formatDate(d) {
                   {{ formatDate(row.latest_upload_at) }}
                 </td>
                 <td class="px-4 py-3 text-right">
-                  <!-- ✅ Open Show page (upload is inside Show) -->
                   <Link
                     :href="`/documents/${row.id}`"
                     class="inline-flex items-center justify-center px-3 py-2 rounded-xl bg-slate-900 text-white hover:bg-slate-800 text-xs"
