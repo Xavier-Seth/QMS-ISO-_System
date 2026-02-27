@@ -17,6 +17,9 @@ Route::middleware('guest')->group(function () {
 
 // Authenticated Routes
 Route::middleware('auth')->group(function () {
+
+    Route::get('/upload', fn() => Inertia::render('Upload'))->name('upload');
+
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
