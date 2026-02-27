@@ -25,13 +25,24 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/ofi/generate', [OFIController::class, 'generate'])->name('ofi.generate');
 
+    // =========================
     // Documents (Masterlist)
+    // =========================
     Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
     Route::get('/documents/{documentType}', [DocumentController::class, 'show'])->name('documents.show');
 
     // Upload under a document type (used by Show.vue modal)
     Route::post('/documents/{documentType}/upload', [DocumentController::class, 'upload'])
         ->name('documents.upload');
+
+    // =========================
+    // NEW: Preview & Download Routes
+    // =========================
+    Route::get('/documents/uploads/{upload}/preview', [DocumentController::class, 'preview'])
+        ->name('documents.uploads.preview');
+
+    Route::get('/documents/uploads/{upload}/download', [DocumentController::class, 'download'])
+        ->name('documents.uploads.download');
 
     Route::middleware('can:admin-only')->group(function () {
         Route::get('/admin/dashboard', fn() => Inertia::render('Dashboard'))->name('admin.dashboard');
