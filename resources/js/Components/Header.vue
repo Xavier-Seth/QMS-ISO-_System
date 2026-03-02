@@ -23,17 +23,22 @@ const hasNotif = true;
 
 <template>
   <header class="w-full bg-[#f4f6f8]">
-    <!-- same horizontal margin as pages -->
     <div class="px-10 py-6">
-      <!-- ✅ top-align everything so icons sit higher like your ideal -->
-      <div class="flex justify-between items-start">
-        <!-- LEFT: Search -->
-        <div class="w-[520px]">
+      <!-- top-align like your ideal -->
+      <div class="flex justify-between items-start gap-6">
+        <!-- LEFT: Search (responsive but capped) -->
+        <div class="w-[420px] shrink-0">
           <div
             v-if="showSearch"
             class="flex items-center gap-2 bg-white rounded-full px-4 py-2 shadow-sm border border-slate-200"
           >
-            <svg class="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <svg
+              class="w-4 h-4 text-slate-400"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+            >
               <circle cx="11" cy="11" r="7" />
               <path d="M21 21l-4.3-4.3" />
             </svg>
@@ -49,15 +54,21 @@ const hasNotif = true;
         </div>
 
         <!-- RIGHT: icons + profile -->
-        <div class="flex items-start gap-6">
-          <!-- ✅ icons aligned near top -->
+        <div class="flex items-start gap-6 shrink-0">
+          <!-- icons (slightly higher) -->
           <div class="flex items-center gap-3 pt-1">
             <button
               class="w-10 h-10 rounded-full bg-white border border-slate-200 shadow-sm grid place-items-center"
               type="button"
               title="Messages"
             >
-              <svg class="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <svg
+                class="w-4 h-4 text-slate-500"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
                 <path d="M4 4h16v16H4z" />
                 <path d="M22 6l-10 7L2 6" />
               </svg>
@@ -68,17 +79,32 @@ const hasNotif = true;
               type="button"
               title="Notifications"
             >
-              <span v-if="hasNotif" class="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500"></span>
-              <svg class="w-4 h-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
+              <span
+                v-if="hasNotif"
+                class="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500"
+              ></span>
+
+              <svg
+                class="w-4 h-4 text-slate-500"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <path
+                  d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7"
+                />
                 <path d="M13.73 21a2 2 0 01-3.46 0" />
               </svg>
             </button>
           </div>
 
-          <!-- ✅ profile pic ABOVE, name UNDER -->
+          <!-- profile (avatar above, name below) -->
           <div class="flex flex-col items-center">
-            <div class="w-12 h-12 rounded-full bg-slate-200 grid place-items-center overflow-hidden">
+            <div
+              class="w-12 h-12 rounded-full bg-slate-200 grid place-items-center overflow-hidden"
+              title="Logged in user"
+            >
               <span class="text-slate-600 text-sm font-semibold">
                 {{ (me?.name || "U").slice(0, 1).toUpperCase() }}
               </span>

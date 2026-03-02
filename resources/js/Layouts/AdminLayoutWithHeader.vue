@@ -15,14 +15,12 @@ const emit = defineEmits(["search"]);
     <Sidebar />
 
     <main class="main-content">
-      <!-- Header: full width of content area (sidebar already offset) -->
       <Header
         :showSearch="showSearch"
         :searchValue="searchValue"
         @search="(v) => emit('search', v)"
       />
 
-      <!-- Page controls its own padding/width (your table stays the same) -->
       <slot />
     </main>
   </div>
@@ -38,7 +36,7 @@ const emit = defineEmits(["search"]);
 .main-content {
   margin-left: 280px; /* fixed sidebar */
   flex: 1;
-  min-width: 0;
+  min-width: 0; /* important: prevents flex children stretching weirdly */
   height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
