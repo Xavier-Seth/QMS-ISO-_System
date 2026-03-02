@@ -2,7 +2,7 @@
 import Sidebar from "@/Components/Sidebar.vue";
 import Header from "@/Components/Header.vue";
 
-const props = defineProps({
+defineProps({
   showSearch: { type: Boolean, default: false },
   searchValue: { type: String, default: "" },
 });
@@ -13,15 +13,17 @@ const emit = defineEmits(["search"]);
 <template>
   <div class="layout-wrapper">
     <Sidebar />
+
     <main class="main-content">
+      <!-- Header: full width of content area (sidebar already offset) -->
       <Header
         :showSearch="showSearch"
         :searchValue="searchValue"
-        @search="(val) => emit('search', val)"
+        @search="(v) => emit('search', v)"
       />
-      <div class="page-content">
-        <slot />
-      </div>
+
+      <!-- Page controls its own padding/width (your table stays the same) -->
+      <slot />
     </main>
   </div>
 </template>
@@ -34,8 +36,7 @@ const emit = defineEmits(["search"]);
 }
 
 .main-content {
-  position: relative;
-  margin-left: 280px;
+  margin-left: 280px; /* fixed sidebar */
   flex: 1;
   min-width: 0;
   height: 100vh;
@@ -43,9 +44,5 @@ const emit = defineEmits(["search"]);
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
-}
-
-.page-content {
-  padding: 32px 40px;
 }
 </style>

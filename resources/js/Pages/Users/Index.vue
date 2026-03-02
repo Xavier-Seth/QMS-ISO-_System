@@ -10,58 +10,32 @@ const props = defineProps({
 
 const q = ref(props.filters?.q ?? "");
 
-const onSearch = (value) => {
-  q.value = value;
+// ✅ only one open at a time
+const expandedId = ref(null);
+const toggleExpand = (id) => {
+  expandedId.value = expandedId.value === id ? null : id;
+};
+const isExpanded = (id) => expandedId.value === id;
+
+// search
+const runSearch = () => {
   router.get("/users", { q: q.value }, { preserveState: true, replace: true, preserveScroll: true });
 };
-
-// expanded rows
-const expanded = ref(new Set());
-const toggleExpand = (id) => {
-  const s = new Set(expanded.value);
-  s.has(id) ? s.delete(id) : s.add(id);
-  expanded.value = s;
+const onHeaderSearch = (value) => {
+  q.value = value ?? "";
+  runSearch();
 };
-const isExpanded = (id) => expanded.value.has(id);
 
+// pagination
 const goTo = (url) => {
   if (!url) return;
   router.get(url, {}, { preserveState: true, preserveScroll: true });
 };
 </script>
 
-
 <template>
-  <AdminLayout :showSearch="true" :searchValue="q" @search="onSearch">
+  <AdminLayout :showSearch="true" :searchValue="q" @search="onHeaderSearch">
     <div class="px-10 py-8">
-      <!-- ✅ Search row (only search; icons/profile are already in Header.vue) -->
-      <div class="mb-6">
-        <div class="w-[420px]">
-          <div
-            class="flex items-center gap-2 bg-white rounded-full px-4 py-2 shadow-sm border border-slate-200"
-          >
-            <svg
-              class="w-4 h-4 text-slate-400"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-            >
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
-
-            <input
-              v-model="q"
-              @keyup.enter="runSearch"
-              type="text"
-              placeholder="Search..."
-              class="w-full outline-none text-sm text-slate-700 placeholder:text-slate-400"
-            />
-          </div>
-        </div>
-      </div>
-
       <!-- Table container -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <!-- Header -->
@@ -97,8 +71,6 @@ const goTo = (url) => {
               >
                 <div class="flex items-center justify-center gap-2">
                   <input type="checkbox" class="accent-indigo-500" />
-
-                  <!-- ✅ caret flips to ^ when expanded -->
                   <button
                     class="text-slate-500 hover:text-slate-800"
                     @click="toggleExpand(u.id)"
@@ -106,9 +78,8 @@ const goTo = (url) => {
                     title="Expand"
                   >
                     <svg
-                      class="w-4 h-4 transition-transform duration-200"
+                      class="w-4 h-4 transition-transform"
                       :class="isExpanded(u.id) ? 'rotate-180' : ''"
-                      style="transform-origin: 50% 50%;"
                       viewBox="0 0 24 24"
                       fill="none"
                       stroke="currentColor"
@@ -130,28 +101,14 @@ const goTo = (url) => {
 
                 <div class="flex items-center justify-center gap-4 text-slate-500">
                   <button class="hover:text-slate-800" type="button" title="Edit">
-                    <svg
-                      class="w-4 h-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M12 20h9" />
-                      <path
-                        d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z"
-                      />
+                      <path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4 12.5-12.5z" />
                     </svg>
                   </button>
 
                   <button class="hover:text-red-600" type="button" title="Delete">
-                    <svg
-                      class="w-4 h-4"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="2"
-                    >
+                    <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M3 6h18" />
                       <path d="M8 6V4h8v2" />
                       <path d="M19 6l-1 14H6L5 6" />
@@ -160,7 +117,7 @@ const goTo = (url) => {
                 </div>
               </div>
 
-              <!-- Expanded details row -->
+              <!-- Expanded details -->
               <div v-if="isExpanded(u.id)" class="mt-3">
                 <div class="border border-indigo-300 rounded-lg bg-white px-6 py-4">
                   <div class="grid gap-10 md:grid-cols-2">
@@ -169,16 +126,8 @@ const goTo = (url) => {
                         Office Location
                       </div>
                       <div class="flex items-start gap-2 text-sm text-slate-600">
-                        <svg
-                          class="w-4 h-4 mt-[2px]"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <path
-                            d="M12 21s-6-5.3-6-10a6 6 0 1112 0c0 4.7-6 10-6 10z"
-                          />
+                        <svg class="w-4 h-4 mt-[2px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                          <path d="M12 21s-6-5.3-6-10a6 6 0 1112 0c0 4.7-6 10-6 10z" />
                           <circle cx="12" cy="11" r="2" />
                         </svg>
                         <span>{{ u.office_location ?? "-" }}</span>
@@ -190,14 +139,8 @@ const goTo = (url) => {
                         Account
                       </div>
                       <div class="text-sm text-slate-600">
-                        <div>
-                          <span class="text-slate-500">Username:</span>
-                          {{ u.username }}
-                        </div>
-                        <div class="mt-1">
-                          <span class="text-slate-500">Role:</span>
-                          {{ u.role }}
-                        </div>
+                        <div><span class="text-slate-500">Username:</span> {{ u.username }}</div>
+                        <div class="mt-1"><span class="text-slate-500">Role:</span> {{ u.role }}</div>
                       </div>
                     </div>
                   </div>
@@ -227,6 +170,7 @@ const goTo = (url) => {
             >
               Prev
             </button>
+
             <button
               class="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white text-slate-700 disabled:opacity-50"
               :disabled="!users.next_page_url"
