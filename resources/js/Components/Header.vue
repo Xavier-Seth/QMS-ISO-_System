@@ -13,7 +13,10 @@ const page = usePage();
 const me = computed(() => page.props.auth?.user);
 
 const q = ref(props.searchValue);
-watch(() => props.searchValue, (v) => (q.value = v ?? ""));
+watch(
+  () => props.searchValue,
+  (v) => (q.value = v ?? "")
+);
 
 const submit = () => emit("search", q.value);
 
@@ -24,38 +27,44 @@ const hasNotif = true;
 <template>
   <header class="w-full bg-[#f4f6f8]">
     <div class="px-10 py-6">
-      <!-- top-align like your ideal -->
       <div class="flex justify-between items-start gap-6">
-        <!-- LEFT: Search (responsive but capped) -->
-        <div class="w-[420px] shrink-0">
-          <div
-            v-if="showSearch"
-            class="flex items-center gap-2 bg-white rounded-full px-4 py-2 shadow-sm border border-slate-200"
-          >
-            <svg
-              class="w-4 h-4 text-slate-400"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
+        <!-- LEFT -->
+        <div class="min-w-0">
+          <!-- If showSearch, show fixed search -->
+          <div v-if="showSearch" class="w-[420px] shrink-0">
+            <div
+              class="flex items-center gap-2 bg-white rounded-full px-4 py-2 shadow-sm border border-slate-200"
             >
-              <circle cx="11" cy="11" r="7" />
-              <path d="M21 21l-4.3-4.3" />
-            </svg>
+              <svg
+                class="w-4 h-4 text-slate-400"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+              >
+                <circle cx="11" cy="11" r="7" />
+                <path d="M21 21l-4.3-4.3" />
+              </svg>
 
-            <input
-              v-model="q"
-              @keyup.enter="submit"
-              type="text"
-              placeholder="Search..."
-              class="w-full bg-transparent outline-none text-sm text-slate-700 placeholder:text-slate-400"
-            />
+              <input
+                v-model="q"
+                @keyup.enter="submit"
+                type="text"
+                placeholder="Search..."
+                class="w-full bg-transparent outline-none text-sm text-slate-700 placeholder:text-slate-400"
+              />
+            </div>
+          </div>
+
+          <!-- If NOT showSearch, render custom left content -->
+          <div v-else>
+            <slot name="left" />
           </div>
         </div>
 
         <!-- RIGHT: icons + profile -->
         <div class="flex items-start gap-6 shrink-0">
-          <!-- icons (slightly higher) -->
+          <!-- icons -->
           <div class="flex items-center gap-3 pt-1">
             <button
               class="w-10 h-10 rounded-full bg-white border border-slate-200 shadow-sm grid place-items-center"
