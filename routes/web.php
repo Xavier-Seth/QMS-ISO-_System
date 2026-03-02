@@ -3,6 +3,7 @@
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\OFIController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\UsersController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -36,7 +37,7 @@ Route::middleware('auth')->group(function () {
         ->name('documents.upload');
 
     // =========================
-    // NEW: Preview & Download Routes
+    // Preview & Download Routes
     // =========================
     Route::get('/documents/uploads/{upload}/preview', [DocumentController::class, 'preview'])
         ->name('documents.uploads.preview');
@@ -44,7 +45,13 @@ Route::middleware('auth')->group(function () {
     Route::get('/documents/uploads/{upload}/download', [DocumentController::class, 'download'])
         ->name('documents.uploads.download');
 
+    // =========================
+    // Admin Only Routes
+    // =========================
     Route::middleware('can:admin-only')->group(function () {
         Route::get('/admin/dashboard', fn() => Inertia::render('Dashboard'))->name('admin.dashboard');
+
+        // ✅ Users tab (ADMIN ONLY)
+        Route::get('/users', [UsersController::class, 'index'])->name('users.index');
     });
 });
