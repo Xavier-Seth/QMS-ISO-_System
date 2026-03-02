@@ -80,7 +80,8 @@ class OFIFormGenerator
      *   verifiedBy2   string
      *
      * ─── SECTION 5 — Follow-up rows (4 rows) ─────────────────────────────────
-     *   followUp  array of up to 4 items, each with keys:
+     *   followSig  string  Signature in Section 5
+     *   followUp   array of up to 4 items, each with keys:
      *             date, status, effective, auditor, rep
      *
      * ─── SECTION 6 — Case Closed ──────────────────────────────────────────────
@@ -127,7 +128,7 @@ class OFIFormGenerator
             'sourceSurvey' => $check($d('sourceSurvey', false)),
             'sourceSystem' => $check($d('sourceSystem', false)),
             'sourceOthersCheck' => $check($d('sourceOthersCheck', false)),
-            'sourceOthersText' => $d('sourceOthersText') . str_repeat(" ", max(0, 30 - mb_strlen($d('sourceOthersText')))),
+            'sourceOthersText' => $d('sourceOthersText') . str_repeat(" ", max(0, 30 - mb_strlen($d('sourceOthersText')))),
 
             // Section 1
             'suggestion' => $d('suggestion'),
@@ -153,6 +154,9 @@ class OFIFormGenerator
             's4aYes' => $s4aYes,
             'dcrUpdated' => $d('dcrUpdated'),
             'verifiedBy2' => $d('verifiedBy2'),
+
+            // ✅ Section 5 — Signature (template placeholder: ${followsig})
+            'followsig' => $d('followSig'),
 
             // Section 6
             'imrSig' => $d('imrSig'),

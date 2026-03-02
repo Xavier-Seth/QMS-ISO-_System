@@ -17,6 +17,7 @@ class OFIController extends Controller
             'to' => 'nullable|string',
             'ofiNo' => 'nullable|string',
             'from' => 'nullable|string',
+            'followSig' => 'nullable|string', // ✅ added
         ]);
 
         if ($validator->fails()) {
@@ -65,6 +66,9 @@ class OFIController extends Controller
             'qmsUpdateYes' => $request->input('imsUpdate') === 'YES',
             'dcrUpdated' => $request->input('dcrNo', ''),
             'verifiedBy2' => $request->input('verifiedBy2', ''),
+
+            // ✅ Section 5 - Follow-up signature
+            'followSig' => $request->input('followSig', ''),
 
             // Section 5 - Follow-up rows
             'followUp' => $request->input('followUp', []),
