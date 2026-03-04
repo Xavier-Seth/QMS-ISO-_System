@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\OFIController;
+use App\Http\Controllers\DCRController; // ✅ ADD THIS
 use App\Http\Controllers\DocumentController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -23,7 +24,11 @@ Route::middleware('auth')->group(function () {
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
     Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
 
+    // ✅ OFI generate (existing)
     Route::post('/ofi/generate', [OFIController::class, 'generate'])->name('ofi.generate');
+
+    // ✅ DCR generate (NEW)
+    Route::post('/dcr/generate', [DCRController::class, 'generate'])->name('dcr.generate');
 
     // =========================
     // Documents (Masterlist)
