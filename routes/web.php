@@ -25,6 +25,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
 
+    // =========================
+    // OFI
+    // =========================
+
     // OFI Form UI page (Create/Edit UI page)
     Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
 
@@ -42,7 +46,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/ofi/records/{ofiRecord}/publish', [OfiRecordController::class, 'publish'])
         ->name('ofi.records.publish');
 
-    // DCR generate
+    // =========================
+    // DCR
+    // =========================
     Route::post('/dcr/generate', [DCRController::class, 'generate'])->name('dcr.generate');
 
     // =========================

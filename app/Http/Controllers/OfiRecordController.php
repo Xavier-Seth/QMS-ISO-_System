@@ -92,10 +92,15 @@ class OfiRecordController extends Controller
      */
     public function publish(Request $request, OfiRecord $ofiRecord)
     {
+        // ✅ validate optional custom filename
+        $data = $request->validate([
+            'remarks' => ['nullable', 'string', 'max:1000'],
+            'file_name' => ['nullable', 'string', 'max:200'], // user chosen name
+        ]);
+
         // Optional: update record with latest data before publishing
         if ($request->has('data')) {
             $payload = (array) $request->input('data', []);
-
             $ofiRecord->update([
                 'ofi_no' => $payload['ofiNo'] ?? $ofiRecord->ofi_no,
                 'ref_no' => $payload['refNo'] ?? $ofiRecord->ref_no,
@@ -107,39 +112,58 @@ class OfiRecordController extends Controller
         }
 
         $templatePath = base_path('templates/F-QMS-007_template_fixed_v6.docx');
-        $generator = new OFIFormGenerator($templatePath);
+        $generator = new \App\Services\OFIFormGenerator($templatePath);
 
         // 1) Generate DOCX to temp
         $tmpDir = storage_path('app/ofi_forms_tmp');
-        if (!is_dir($tmpDir)) {
+        if (!is_dir($tmpDir))
             mkdir($tmpDir, 0755, true);
+
+        // ✅ decide filename:
+        // - if user provided, use it
+        // - else fallback to ofi_no or timestamp
+        $raw = $data['file_name'] ?? null;
+
+        if ($raw) {
+            // remove .docx if user typed it
+            $raw = preg_replace('/\.docx$/i', '', trim($raw));
+            // sanitize: keep letters/numbers/space/_-()
+            $raw = preg_replace('/[^A-Za-z0-9 _\-\(\)]/', '', $raw);
+            $raw = trim(preg_replace('/\s+/', ' ', $raw));
         }
 
-        $safeNo = $ofiRecord->ofi_no
+        $fallbackBase = $ofiRecord->ofi_no
             ? preg_replace('/[^A-Za-z0-9_\-]/', '_', $ofiRecord->ofi_no)
             : now()->format('Ymd_His');
 
-        // If you publish multiple times, this will overwrite same file name.
-        // If you want unique each time, append: '_' . now()->format('His')
-        $fileName = "OFI_{$safeNo}.docx";
+        $baseName = $raw ?: "OFI_{$fallbackBase}";
+        $fileName = "{$baseName}.docx";
 
         $tmpPath = $tmpDir . '/' . $fileName;
         $generator->generate($ofiRecord->data, $tmpPath);
 
         // 2) Store in public disk
         $publicPath = 'documents/ofi/' . $fileName;
-        Storage::disk('public')->put($publicPath, file_get_contents($tmpPath));
+
+        // ✅ avoid overwriting (optional)
+        $disk = Storage::disk('public');
+        if ($disk->exists($publicPath)) {
+            $fileName = "{$baseName}_" . now()->format('His') . ".docx";
+            $publicPath = 'documents/ofi/' . $fileName;
+        }
+
+        $disk->put($publicPath, file_get_contents($tmpPath));
 
         // 3) Create upload row
-        $upload = DocumentUpload::create([
+        $upload = \App\Models\DocumentUpload::create([
             'document_type_id' => $this->rQms018TypeId(),
             'uploaded_by' => auth()->id(),
             'ofi_record_id' => $ofiRecord->id,
-            'revision' => null,         // R-QMS no revision
-            'status' => null,           // R-QMS no Active/Obsolete
+            'revision' => null,
+            'status' => null,
             'file_name' => $fileName,
             'file_path' => $publicPath,
-            'remarks' => $request->input('remarks'),
+            'remarks' => $data['remarks'] ?? null,
         ]);
 
         @unlink($tmpPath);
@@ -148,6 +172,7 @@ class OfiRecordController extends Controller
             'ok' => true,
             'upload_id' => $upload->id,
             'ofi_record_id' => $ofiRecord->id,
+            'file_name' => $fileName,
         ]);
     }
 }
