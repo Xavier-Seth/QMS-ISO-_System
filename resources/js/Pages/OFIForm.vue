@@ -1,12 +1,24 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
-import { reactive, onMounted, ref } from 'vue'
+import { reactive, onMounted, ref, computed } from 'vue'
 import axios from 'axios'
 import logo from '@/images/LNU_logo.png'
 
 const suggestionBox = ref(null)
-const isGenerating = ref(false)
+
+// states
+const recordId = ref(null)
+const isSaving = ref(false)
+const isGenerating = ref(false) // used for Download DOCX
+const isPublishing = ref(false)
 const errorMessage = ref('')
+const successMessage = ref('')
+
+// publish filename (used by rename modal + publish request)
+const publishFileName = ref('')
+
+// ✅ rename modal
+const showPublishRenameModal = ref(false)
 
 const form = reactive({
   date: '',
@@ -48,48 +60,313 @@ const form = reactive({
   notedBy: '',
 })
 
+/* =========================
+   ✅ CLEAN HELPERS
+   ========================= */
+
+const suggestedPublishName = computed(() => `OFI_${form.ofiNo || recordId.value || 'record'}`)
+
+function clearMessages() {
+  errorMessage.value = ''
+  successMessage.value = ''
+}
+
+function currentFileLabel() {
+  return (
+    publishFileName.value?.trim() ||
+    (form.ofiNo ? `OFI_${form.ofiNo}` : '') ||
+    (recordId.value ? `OFI_${recordId.value}` : 'OFI_record')
+  )
+}
+
+function withDocx(name) {
+  const n = (name || '').trim()
+  if (!n) return null
+  return n.toLowerCase().endsWith('.docx') ? n : `${n}.docx`
+}
+
+function downloadBlob(blobData, filename) {
+  const url = window.URL.createObjectURL(new Blob([blobData]))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+async function runTask(flagRef, task) {
+  flagRef.value = true
+  clearMessages()
+  try {
+    return await task()
+  } finally {
+    flagRef.value = false
+  }
+}
+
+/* =========================
+   ✅ FORM DATA FILL
+   ========================= */
+
+function applyDataToForm(data) {
+  Object.keys(form).forEach((k) => {
+    if (k === 'followUp') return
+    if (data?.[k] !== undefined) form[k] = data[k]
+  })
+
+  if (Array.isArray(data?.followUp)) {
+    for (let i = 0; i < 4; i++) {
+      const row = data.followUp[i] || {}
+      form.followUp[i].date = row.date ?? ''
+      form.followUp[i].status = row.status ?? ''
+      form.followUp[i].effective = row.effective ?? ''
+      form.followUp[i].auditor = row.auditor ?? ''
+      form.followUp[i].rep = row.rep ?? ''
+    }
+  }
+
+  if (suggestionBox.value) suggestionBox.value.innerText = form.suggestion || ''
+
+  // default publish name
+  if (!publishFileName.value && (data?.ofiNo || form.ofiNo)) {
+    publishFileName.value = `OFI_${data?.ofiNo || form.ofiNo}`
+  }
+}
+
+function getRecordIdFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const v = params.get('record')
+  return v ? Number(v) : null
+}
+
+async function loadRecord(id) {
+  clearMessages()
+  try {
+    const res = await axios.get(`/ofi/records/${id}`)
+    recordId.value = id
+    applyDataToForm(res.data.data || {})
+
+    // ✅ friendlier message
+    const fileShown = withDocx(currentFileLabel()) || `Record #${id}`
+    successMessage.value = `Loaded saved: ${fileShown}`
+  } catch (err) {
+    console.error(err)
+    errorMessage.value = 'Failed to load saved record.'
+  }
+}
+
+/* =========================
+   ✅ RECORD HELPERS (SAVE/UPDATE)
+   ========================= */
+
+// create or update record, and return id
+async function upsertRecord(status = 'draft') {
+  if (!recordId.value) {
+    const res = await axios.post('/ofi/records', { ...form, status })
+    recordId.value = res.data.id
+
+    // keep ?record= in url
+    const url = new URL(window.location.href)
+    url.searchParams.set('record', recordId.value)
+    window.history.replaceState({}, '', url)
+  } else {
+    await axios.put(`/ofi/records/${recordId.value}`, { ...form, status })
+  }
+
+  // default publish name once we have id/ofiNo
+  if (!publishFileName.value) publishFileName.value = currentFileLabel()
+
+  return recordId.value
+}
+
+async function ensureDraftSaved() {
+  const id = await upsertRecord('draft')
+  return id
+}
+
+/* =========================
+   ✅ ACTIONS
+   ========================= */
+
+async function saveDraft() {
+  await runTask(isSaving, async () => {
+    const wasNew = !recordId.value
+    const id = await upsertRecord('draft')
+
+    const name = currentFileLabel()
+    successMessage.value = wasNew
+      ? `Saved draft: ${name} (Record #${id})`
+      : `Updated draft: ${name} (Record #${id})`
+  }).catch((err) => {
+    console.error(err)
+    errorMessage.value = 'Failed to save draft. Please try again.'
+  })
+}
+
+/**
+ * ✅ ONE DOWNLOAD BUTTON:
+ * Download DOCX = auto-save draft first, then generate+download
+ */
+async function downloadDocx() {
+  await runTask(isGenerating, async () => {
+    // ensure DB is updated + record exists
+    await ensureDraftSaved()
+
+    // generate from current form
+    const res = await axios.post('/ofi/generate', form, { responseType: 'blob' })
+
+    const name = withDocx(currentFileLabel()) || 'OFI.docx'
+    downloadBlob(res.data, name)
+    successMessage.value = `Downloaded: ${name}`
+  }).catch((err) => {
+    console.error(err)
+    errorMessage.value = 'Failed to download DOCX. Please try again.'
+  })
+}
+
+async function publishToUploads() {
+  if (!recordId.value) {
+    errorMessage.value = 'Save the record first before publishing.'
+    return
+  }
+
+  await runTask(isPublishing, async () => {
+    const id = await ensureDraftSaved()
+
+    const res = await axios.post(`/ofi/records/${id}/publish`, {
+      file_name: publishFileName.value?.trim() || null,
+      remarks: 'Published from OFI form',
+    })
+
+    const fn = res?.data?.file_name || withDocx(currentFileLabel()) || 'DOCX'
+    successMessage.value = `Published: ${fn} (Upload #${res.data.upload_id})`
+  }).catch((err) => {
+    console.error(err)
+    errorMessage.value = 'Failed to publish to uploads. Please try again.'
+  })
+}
+
+/* =========================
+   ✅ PUBLISH RENAME MODAL FLOW
+   ========================= */
+
+function openPublishRenameModal() {
+  if (!recordId.value) {
+    errorMessage.value = 'Save the record first before publishing.'
+    return
+  }
+  if (!publishFileName.value) publishFileName.value = suggestedPublishName.value
+  showPublishRenameModal.value = true
+}
+
+async function confirmPublish() {
+  showPublishRenameModal.value = false
+  await publishToUploads()
+}
+
+function closePublishModal() {
+  showPublishRenameModal.value = false
+}
+
+function onKeydown(e) {
+  if (e.key === 'Escape') closePublishModal()
+}
+
 onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+
   if (suggestionBox.value && form.suggestion) {
     suggestionBox.value.innerText = form.suggestion
   }
-})
 
-async function generateDocx() {
-  isGenerating.value = true
-  errorMessage.value = ''
-  try {
-    const response = await axios.post('/ofi/generate', form, { responseType: 'blob' })
-    const url = window.URL.createObjectURL(new Blob([response.data]))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `OFI_${form.ofiNo || 'form'}.docx`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.URL.revokeObjectURL(url)
-  } catch (err) {
-    console.error('Error generating DOCX:', err)
-    errorMessage.value = 'Failed to generate document. Please try again.'
-  } finally {
-    isGenerating.value = false
-  }
-}
+  const id = getRecordIdFromUrl()
+  if (id) loadRecord(id)
+})
 </script>
 
 <template>
   <AdminLayout>
+    <!-- ✅ Publish Rename Modal -->
+    <div
+      v-if="showPublishRenameModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      @click.self="closePublishModal"
+    >
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">Rename file before publishing</h3>
+            <p class="mt-1 text-sm text-slate-500">Enter a filename (no need to add <b>.docx</b>).</p>
+          </div>
+
+          <button
+            class="rounded-lg px-3 py-1 text-sm text-slate-500 hover:bg-slate-100 disabled:opacity-60"
+            @click="closePublishModal"
+            :disabled="isPublishing"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="mt-4">
+          <label class="text-sm font-semibold text-slate-700">Filename</label>
+          <input
+            v-model="publishFileName"
+            type="text"
+            class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            placeholder="e.g. OFI_2026-001"
+          />
+          <p class="mt-2 text-xs text-slate-500">
+            Suggested: <span class="font-mono">{{ suggestedPublishName }}</span>
+          </p>
+        </div>
+
+        <div class="mt-6 flex justify-end gap-2">
+          <button
+            class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            @click="closePublishModal"
+            :disabled="isPublishing"
+          >
+            Cancel
+          </button>
+
+          <button
+            class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+            @click="confirmPublish"
+            :disabled="isPublishing"
+          >
+            <span v-if="!isPublishing">Publish</span>
+            <span v-else>Publishing...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="h-screen overflow-hidden bg-slate-100 font-sans">
-      <!-- Page Container -->
       <div class="flex h-full flex-col gap-6 px-10 py-8">
         <!-- Page Header -->
         <div class="flex flex-wrap items-end justify-between gap-3 shrink-0">
-          <div>
-            <h1 class="text-2xl font-bold tracking-tight text-slate-900">Create OFI Form</h1>
-            <p class="mt-1 text-[13px] text-slate-400">
-              Opportunities for Improvement · Leyte Normal University
-            </p>
+          <div class="min-w-0">
+            <div class="flex items-center gap-3">
+              <h1 class="text-2xl font-bold tracking-tight text-slate-900 truncate">Create OFI Form</h1>
+
+              <span
+                v-if="recordId"
+                class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-semibold text-slate-600"
+              >
+                Record #{{ recordId }}
+              </span>
+            </div>
+
+            <p class="mt-1 text-[13px] text-slate-400">Opportunities for Improvement · Leyte Normal University</p>
+
+            <p v-if="successMessage" class="mt-2 text-xs text-green-600">{{ successMessage }}</p>
+            <p v-if="errorMessage" class="mt-2 text-xs text-red-500">{{ errorMessage }}</p>
           </div>
 
+          <!-- ✅ Clean Buttons: Cancel | Save Draft | Download DOCX | Publish -->
           <div class="flex flex-wrap items-center gap-2.5">
             <button
               class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
@@ -99,42 +376,31 @@ async function generateDocx() {
             </button>
 
             <button
-              class="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:bg-slate-400"
-              @click="generateDocx"
-              :disabled="isGenerating"
+              class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="saveDraft"
+              :disabled="isSaving"
             >
-              <svg
-                v-if="!isGenerating"
-                class="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-
-              <svg
-                v-else
-                class="h-4 w-4 animate-spin"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path
-                  d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"
-                />
-              </svg>
-
-              <span>{{ isGenerating ? 'Generating...' : 'Save & Download DOCX' }}</span>
+              <span v-if="!isSaving">{{ recordId ? 'Update Draft' : 'Save Draft' }}</span>
+              <span v-else>Saving...</span>
             </button>
 
-            <p v-if="errorMessage" class="m-0 text-xs text-red-500">
-              {{ errorMessage }}
-            </p>
+            <button
+              class="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:bg-slate-400"
+              @click="downloadDocx"
+              :disabled="isGenerating"
+              title="Auto-saves draft, then generates & downloads DOCX"
+            >
+              <span>{{ isGenerating ? 'Downloading...' : 'Download DOCX' }}</span>
+            </button>
+
+            <button
+              class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="openPublishRenameModal"
+              :disabled="isPublishing || !recordId"
+              title="Saves DOCX to uploads list (R-QMS-018)"
+            >
+              <span>{{ isPublishing ? 'Publishing...' : 'Publish' }}</span>
+            </button>
           </div>
         </div>
 
@@ -143,10 +409,7 @@ async function generateDocx() {
           class="flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)] flex justify-center items-start"
         >
           <!-- Document (A4 width) -->
-          <div
-            class="w-[210mm] border-2 border-black bg-white text-black flex flex-col"
-            style="font-family: Arial, Helvetica, sans-serif;"
-          >
+          <div class="w-[210mm] border-2 border-black bg-white text-black flex flex-col" style="font-family: Arial, Helvetica, sans-serif;">
             <!-- Header -->
             <header class="flex items-center border-b-2 border-black px-2 py-[2px]">
               <div class="mr-2 flex h-[0.57in] w-[0.57in]">
@@ -154,20 +417,15 @@ async function generateDocx() {
               </div>
               <div class="flex flex-col">
                 <h2 class="mt-[19px] text-[12pt] font-bold leading-[1.1]">LEYTE NORMAL UNIVERSITY</h2>
-                <h1 class="text-[12pt] font-bold leading-[1.1]">
-                  OPPORTUNITIES FOR IMPROVEMENT FORM (OFI)
-                </h1>
+                <h1 class="text-[12pt] font-bold leading-[1.1]">OPPORTUNITIES FOR IMPROVEMENT FORM (OFI)</h1>
               </div>
             </header>
 
             <!-- Metadata -->
             <section class="border-b-2 border-black px-3 py-2.5">
               <div class="grid grid-cols-[55%_45%] gap-y-2.5">
-                <!-- DATE -->
                 <div class="flex items-start pr-10">
-                  <div class="w-[50px]">
-                    <label class="text-[10pt] font-normal">DATE</label>
-                  </div>
+                  <div class="w-[50px]"><label class="text-[10pt] font-normal">DATE</label></div>
                   <span class="mr-3 text-[10pt]">:</span>
                   <input
                     type="date"
@@ -176,11 +434,8 @@ async function generateDocx() {
                   />
                 </div>
 
-                <!-- REF NO -->
                 <div class="flex items-start">
-                  <div class="w-[80px]">
-                    <label class="text-[10pt] font-normal">REF. NO</label>
-                  </div>
+                  <div class="w-[80px]"><label class="text-[10pt] font-normal">REF. NO</label></div>
                   <span class="mr-3 text-[10pt]">:</span>
                   <input
                     type="text"
@@ -189,11 +444,8 @@ async function generateDocx() {
                   />
                 </div>
 
-                <!-- TO -->
                 <div class="flex items-start pr-10">
-                  <div class="w-[50px]">
-                    <label class="text-[10pt] font-normal">TO</label>
-                  </div>
+                  <div class="w-[50px]"><label class="text-[10pt] font-normal">TO</label></div>
                   <span class="mr-3 text-[10pt]">:</span>
                   <div class="flex flex-1 flex-col items-center">
                     <input
@@ -205,11 +457,8 @@ async function generateDocx() {
                   </div>
                 </div>
 
-                <!-- OFI NO -->
                 <div class="flex items-start">
-                  <div class="w-[80px]">
-                    <label class="text-[10pt] font-normal">OFI NO.</label>
-                  </div>
+                  <div class="w-[80px]"><label class="text-[10pt] font-normal">OFI NO.</label></div>
                   <span class="mr-3 text-[10pt]">:</span>
                   <input
                     type="text"
@@ -218,11 +467,8 @@ async function generateDocx() {
                   />
                 </div>
 
-                <!-- FROM -->
                 <div class="flex items-start pr-10">
-                  <div class="w-[50px]">
-                    <label class="text-[10pt] font-normal">FROM</label>
-                  </div>
+                  <div class="w-[50px]"><label class="text-[10pt] font-normal">FROM</label></div>
                   <span class="mr-3 text-[10pt]">:</span>
                   <input
                     type="text"
@@ -231,7 +477,6 @@ async function generateDocx() {
                   />
                 </div>
 
-                <!-- ISO Clause -->
                 <div class="flex items-start">
                   <div class="w-[80px] flex flex-col">
                     <label class="text-[10pt] font-normal">ISO Clause</label>
@@ -377,9 +622,7 @@ async function generateDocx() {
                     v-model="form.deptRepDate2"
                     class="border-0 border-b border-black bg-transparent text-center text-[10pt] outline-none"
                   />
-                  <label class="mt-0.5 text-[9pt] leading-[1.2]">
-                    Department Representative/Date
-                  </label>
+                  <label class="mt-0.5 text-[9pt] leading-[1.2]">Department Representative/Date</label>
                 </div>
 
                 <div class="w-[45%] flex flex-col">
@@ -403,9 +646,7 @@ async function generateDocx() {
                 <label class="relative inline-flex items-center gap-1 cursor-pointer">
                   <input type="radio" v-model="form.assessmentUpdate" value="NO" class="hidden" />
                   <span class="inline-block h-[10px] w-[20px] border-b border-black relative">
-                    <span v-if="form.assessmentUpdate === 'NO'" class="absolute left-[2px] -top-[13px] text-[9pt]"
-                      >✔</span
-                    >
+                    <span v-if="form.assessmentUpdate === 'NO'" class="absolute left-[2px] -top-[13px] text-[9pt]">✔</span>
                   </span>
                   <span>NO</span>
                 </label>
@@ -413,9 +654,7 @@ async function generateDocx() {
                 <label class="relative inline-flex items-center gap-1 cursor-pointer">
                   <input type="radio" v-model="form.assessmentUpdate" value="YES" class="hidden" />
                   <span class="inline-block h-[10px] w-[20px] border-b border-black relative">
-                    <span v-if="form.assessmentUpdate === 'YES'" class="absolute left-[2px] -top-[13px] text-[9pt]"
-                      >✔</span
-                    >
+                    <span v-if="form.assessmentUpdate === 'YES'" class="absolute left-[2px] -top-[13px] text-[9pt]">✔</span>
                   </span>
                   <span>YES,</span>
                 </label>
@@ -473,9 +712,8 @@ async function generateDocx() {
               </div>
             </section>
 
-            <!-- Section 5 (✅ improved positioning) -->
+            <!-- Section 5 -->
             <section class="border-b-2 border-black px-2.5 py-1.5 pb-1">
-              <!-- Title + Signature aligned like Word -->
               <div class="flex items-start justify-between mb-2">
                 <h3 class="text-[10pt] font-bold leading-[1.1]">5. FOLLOW-UP</h3>
 
@@ -488,7 +726,6 @@ async function generateDocx() {
                 </div>
               </div>
 
-              <!-- header labels -->
               <div class="flex flex-col text-center text-[9pt] leading-[1.2]">
                 <div class="flex items-end">
                   <div class="w-[8%]"></div>
@@ -506,7 +743,6 @@ async function generateDocx() {
                 </div>
               </div>
 
-              <!-- rows -->
               <div class="mt-0.5 flex flex-col gap-1.5">
                 <div class="flex min-h-[18px] items-end" v-for="(row, index) in form.followUp" :key="index">
                   <div class="w-[8%] border-b border-black px-0.5 py-[1px]">
@@ -518,17 +754,11 @@ async function generateDocx() {
                   </div>
 
                   <div class="w-[9%] border-b border-black px-0.5 py-[1px]">
-                    <input
-                      v-model="row.effective"
-                      class="h-4 w-full bg-transparent text-center text-[9pt] outline-none"
-                    />
+                    <input v-model="row.effective" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
                   </div>
 
                   <div class="w-[19%] border-b border-black px-0.5 py-[1px]">
-                    <input
-                      v-model="row.auditor"
-                      class="h-4 w-full bg-transparent text-center text-[9pt] outline-none"
-                    />
+                    <input v-model="row.auditor" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
                   </div>
 
                   <div class="w-[19%] border-b border-black px-0.5 py-[1px]">
@@ -549,7 +779,11 @@ async function generateDocx() {
                 </div>
 
                 <div class="w-[30%] flex flex-col">
-                  <input type="date" v-model="form.caseClosedDate" class="border-0 border-b border-black bg-transparent text-center text-[10pt] outline-none" />
+                  <input
+                    type="date"
+                    v-model="form.caseClosedDate"
+                    class="border-0 border-b border-black bg-transparent text-center text-[10pt] outline-none"
+                  />
                   <label class="mt-0.5 text-[9pt] leading-[1.2]">Date</label>
                 </div>
 
@@ -560,7 +794,6 @@ async function generateDocx() {
               </div>
             </section>
 
-            <!-- Footer -->
             <footer class="border-t-2 border-black px-2.5 py-1 text-[9px]">F-QMS-007 Rev. 1 (11-23-22)</footer>
           </div>
         </div>
