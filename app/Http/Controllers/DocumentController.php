@@ -99,6 +99,7 @@ class DocumentController extends Controller
             ],
         ]);
     }
+
     // Show documents under a document type
     public function show(DocumentType $documentType)
     {
@@ -114,7 +115,10 @@ class DocumentController extends Controller
                 'uploaded_by_name' => $d->uploader?->name ?? '—',
                 'created_at' => $d->created_at,
 
-                // ✅ NEW: Use preview & download routes
+                // ✅ ADD THIS so Show.vue can display an Edit button for OFI-based uploads
+                'ofi_record_id' => $d->ofi_record_id,
+
+                // ✅ Use preview & download routes
                 'preview_url' => route('documents.uploads.preview', $d->id),
                 'download_url' => route('documents.uploads.download', $d->id),
             ]);
@@ -172,7 +176,7 @@ class DocumentController extends Controller
     }
 
     // =========================
-    // NEW: Preview file in browser
+    // Preview file in browser
     // =========================
     public function preview(DocumentUpload $upload)
     {
@@ -190,7 +194,7 @@ class DocumentController extends Controller
     }
 
     // =========================
-    // NEW: Force file download
+    // Force file download
     // =========================
     public function download(DocumentUpload $upload)
     {

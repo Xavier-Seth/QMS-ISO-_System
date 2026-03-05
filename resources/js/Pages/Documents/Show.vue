@@ -328,6 +328,16 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 </td>
 
                 <td class="px-5 py-4 text-right space-x-2">
+                  <!-- ✅ Edit (only for R-QMS records generated from OFI) -->
+                  <Link
+                    v-if="!requiresRevision && doc.ofi_record_id"
+                    :href="`/ofi-form?record=${doc.ofi_record_id}`"
+                    class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-500 text-xs"
+                    title="Edit this OFI record"
+                  >
+                    Edit
+                  </Link>
+
                   <!-- ✅ View (Preview) -->
                   <a
                     :href="doc.preview_url || doc.file_url"

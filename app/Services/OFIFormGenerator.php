@@ -38,56 +38,11 @@ class OFIFormGenerator
      * Map incoming $data keys to every ${placeholder} in the template.
      * All keys are optional; missing ones default to an empty string.
      *
-     * ─── SECTION 1 — Header metadata ──────────────────────────────────────────
-     *   date            string  e.g. "November 23, 2022"
-     *   refNo           string  Reference number
-     *   to              string  Area Concerned
-     *   ofiNo           string  OFI number
-     *   from            string  Sender/office
-     *   isoClause       string  ISO clause (if applicable)
-     *
-     * ─── SOURCE checkboxes ────────────────────────────────────────────────────
-     *   sourceIqa          bool  true → "✔", false → ""
-     *   sourceFeedback     bool
-     *   sourceSurvey       bool
-     *   sourceSystem       bool
-     *   sourceOthersCheck  bool
-     *   sourceOthersText   string  Label shown after Others checkbox
-     *
-     * ─── SECTION 1 — Suggestion ───────────────────────────────────────────────
-     *   suggestion      string
-     *   deptRepSig1     string  Department Representative name/signature
-     *   requestedBySig  string  Requested By name/signature
-     *   agreedDate      string  Agreed date for 1st follow-up
-     *
-     * ─── SECTION 2 — Analysis ─────────────────────────────────────────────────
-     *   beneficialImpact  string
-     *   associatedRisks   string
-     *   action            string
-     *   deptRepDate2      string
-     *   deptHeadDate2     string
-     *
-     * ─── SECTION 3 — Risk/Opportunity Assessment ──────────────────────────────
-     *   assessmentUpdateNo   bool
-     *   assessmentUpdateYes  bool
-     *   dateUpdated          string
-     *   verifiedBy1          string
-     *
-     * ─── SECTION 4 — QMS Update ───────────────────────────────────────────────
-     *   qmsUpdateNo   bool
-     *   qmsUpdateYes  bool
-     *   dcrUpdated    string
-     *   verifiedBy2   string
-     *
-     * ─── SECTION 5 — Follow-up rows (4 rows) ─────────────────────────────────
-     *   followSig  string  Signature in Section 5
-     *   followUp   array of up to 4 items, each with keys:
-     *             date, status, effective, auditor, rep
-     *
-     * ─── SECTION 6 — Case Closed ──────────────────────────────────────────────
-     *   imrSig          string  Quality Management Representative
-     *   caseClosedDate  string
-     *   notedBy         string  Department Head
+     * Supports BOTH:
+     *  - "generate controller" style booleans:
+     *      assessmentUpdateNo/Yes, qmsUpdateNo/Yes, dcrUpdated
+     *  - "saved JSON" style raw fields from Vue:
+     *      assessmentUpdate ("NO"/"YES"), imsUpdate ("NO"/"YES"), dcrNo
      */
     private function buildValues(array $data): array
     {
@@ -106,12 +61,29 @@ class OFIFormGenerator
             $rows["f{$i}_rep"] = $row['rep'] ?? '';
         }
 
-        // Section 3 uses ${s3aNo} / ${s3aYes}
-        // Section 4 uses ${s4aNo} / ${s4aYes} — fully independent
-        $s3aNo = $check($d('assessmentUpdateNo', false));
-        $s3aYes = $check($d('assessmentUpdateYes', false));
-        $s4aNo = $check($d('qmsUpdateNo', false));
-        $s4aYes = $check($d('qmsUpdateYes', false));
+        /**
+         * Section 3 uses template placeholders: ${s3aNo} / ${s3aYes}
+         * Section 4 uses template placeholders: ${s4aNo} / ${s4aYes}
+         *
+         * Support two input styles:
+         *  A) boolean keys (from your current controller):
+         *     assessmentUpdateNo/Yes, qmsUpdateNo/Yes
+         *  B) radio value keys (from Vue / DB JSON):
+         *     assessmentUpdate: "NO"|"YES"
+         *     imsUpdate: "NO"|"YES"
+         */
+        $assessmentRadio = $d('assessmentUpdate', null); // "NO" | "YES" | null
+        $imsRadio = $d('imsUpdate', null);               // "NO" | "YES" | null
+
+        $s3aNo = $check($d('assessmentUpdateNo', false) || $assessmentRadio === 'NO');
+        $s3aYes = $check($d('assessmentUpdateYes', false) || $assessmentRadio === 'YES');
+
+        $s4aNo = $check($d('qmsUpdateNo', false) || $imsRadio === 'NO');
+        $s4aYes = $check($d('qmsUpdateYes', false) || $imsRadio === 'YES');
+
+        // DCR No placeholder in template is ${dcrUpdated}
+        // Support either 'dcrUpdated' (controller) OR 'dcrNo' (Vue/DB JSON)
+        $dcrUpdated = $d('dcrUpdated', $d('dcrNo'));
 
         return array_merge([
             // Header
@@ -152,10 +124,10 @@ class OFIFormGenerator
             // Section 4 — independent placeholders
             's4aNo' => $s4aNo,
             's4aYes' => $s4aYes,
-            'dcrUpdated' => $d('dcrUpdated'),
+            'dcrUpdated' => $dcrUpdated,
             'verifiedBy2' => $d('verifiedBy2'),
 
-            // ✅ Section 5 — Signature (template placeholder: ${followsig})
+            // Section 5 — Signature (template placeholder: ${followsig})
             'followsig' => $d('followSig'),
 
             // Section 6

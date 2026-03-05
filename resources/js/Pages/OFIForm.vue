@@ -5,8 +5,14 @@ import axios from 'axios'
 import logo from '@/images/LNU_logo.png'
 
 const suggestionBox = ref(null)
+
+// states
+const recordId = ref(null)
+const isSaving = ref(false)
 const isGenerating = ref(false)
+const isPublishing = ref(false) // ✅ NEW
 const errorMessage = ref('')
+const successMessage = ref('')
 
 const form = reactive({
   date: '',
@@ -48,15 +54,155 @@ const form = reactive({
   notedBy: '',
 })
 
-onMounted(() => {
-  if (suggestionBox.value && form.suggestion) {
-    suggestionBox.value.innerText = form.suggestion
-  }
-})
+function applyDataToForm(data) {
+  // assign only known keys (avoid weird payload)
+  Object.keys(form).forEach((k) => {
+    if (k === 'followUp') return
+    if (data?.[k] !== undefined) form[k] = data[k]
+  })
 
+  // followUp array (safe)
+  if (Array.isArray(data?.followUp)) {
+    for (let i = 0; i < 4; i++) {
+      const row = data.followUp[i] || {}
+      form.followUp[i].date = row.date ?? ''
+      form.followUp[i].status = row.status ?? ''
+      form.followUp[i].effective = row.effective ?? ''
+      form.followUp[i].auditor = row.auditor ?? ''
+      form.followUp[i].rep = row.rep ?? ''
+    }
+  }
+
+  // contenteditable sync
+  if (suggestionBox.value) {
+    suggestionBox.value.innerText = form.suggestion || ''
+  }
+}
+
+function getRecordIdFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const v = params.get('record')
+  return v ? Number(v) : null
+}
+
+async function loadRecord(id) {
+  errorMessage.value = ''
+  successMessage.value = ''
+  try {
+    const res = await axios.get(`/ofi/records/${id}`)
+    recordId.value = id
+    applyDataToForm(res.data.data || {})
+    successMessage.value = `Loaded saved OFI record #${id}`
+  } catch (err) {
+    console.error(err)
+    errorMessage.value = 'Failed to load saved record.'
+  }
+}
+
+async function saveDraft() {
+  isSaving.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  try {
+    // store (new) or update (existing)
+    if (!recordId.value) {
+      const res = await axios.post('/ofi/records', {
+        ...form,
+        status: 'draft',
+      })
+      recordId.value = res.data.id
+      successMessage.value = `Saved! Record #${recordId.value}`
+
+      // optional: put record id into URL so refresh keeps edit mode
+      const url = new URL(window.location.href)
+      url.searchParams.set('record', recordId.value)
+      window.history.replaceState({}, '', url)
+    } else {
+      await axios.put(`/ofi/records/${recordId.value}`, {
+        ...form,
+        status: 'draft',
+      })
+      successMessage.value = `Updated! Record #${recordId.value}`
+    }
+  } catch (err) {
+    console.error(err)
+    errorMessage.value = 'Failed to save draft. Please try again.'
+  } finally {
+    isSaving.value = false
+  }
+}
+
+async function downloadFromSavedRecord() {
+  if (!recordId.value) {
+    errorMessage.value = 'Save the record first before downloading from the database.'
+    return
+  }
+
+  isGenerating.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  try {
+    const response = await axios.get(`/ofi/records/${recordId.value}/download`, {
+      responseType: 'blob',
+    })
+
+    const url = window.URL.createObjectURL(new Blob([response.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `OFI_${form.ofiNo || recordId.value}.docx`
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error(err)
+    errorMessage.value = 'Failed to download from saved record.'
+  } finally {
+    isGenerating.value = false
+  }
+}
+
+// ✅ NEW: publish saved record into document_uploads (R-QMS-018)
+async function publishToUploads() {
+  if (!recordId.value) {
+    errorMessage.value = 'Save the record first before publishing.'
+    return
+  }
+
+  isPublishing.value = true
+  errorMessage.value = ''
+  successMessage.value = ''
+
+  try {
+    // Ensure latest values are stored before publishing
+    await axios.put(`/ofi/records/${recordId.value}`, {
+      ...form,
+      status: 'draft',
+    })
+
+    const res = await axios.post(`/ofi/records/${recordId.value}/publish`, {
+      remarks: 'Published from OFI form',
+    })
+
+    successMessage.value = `Published! Upload #${res.data.upload_id} (Record #${res.data.ofi_record_id})`
+
+    // Redirect to documents list (you can change this to R-QMS-018 show page if you want)
+    window.location.href = '/documents'
+  } catch (err) {
+    console.error(err)
+    errorMessage.value = 'Failed to publish to uploads. Please try again.'
+  } finally {
+    isPublishing.value = false
+  }
+}
+
+// existing generate (from current form - not DB)
 async function generateDocx() {
   isGenerating.value = true
   errorMessage.value = ''
+  successMessage.value = ''
   try {
     const response = await axios.post('/ofi/generate', form, { responseType: 'blob' })
     const url = window.URL.createObjectURL(new Blob([response.data]))
@@ -74,6 +220,17 @@ async function generateDocx() {
     isGenerating.value = false
   }
 }
+
+onMounted(() => {
+  // initial contenteditable sync (if any)
+  if (suggestionBox.value && form.suggestion) {
+    suggestionBox.value.innerText = form.suggestion
+  }
+
+  // if /ofi-form?record=123 => load saved
+  const id = getRecordIdFromUrl()
+  if (id) loadRecord(id)
+})
 </script>
 
 <template>
@@ -83,10 +240,31 @@ async function generateDocx() {
       <div class="flex h-full flex-col gap-6 px-10 py-8">
         <!-- Page Header -->
         <div class="flex flex-wrap items-end justify-between gap-3 shrink-0">
-          <div>
-            <h1 class="text-2xl font-bold tracking-tight text-slate-900">Create OFI Form</h1>
+          <div class="min-w-0">
+            <div class="flex items-center gap-3">
+              <h1 class="text-2xl font-bold tracking-tight text-slate-900 truncate">
+                Create OFI Form
+              </h1>
+
+              <!-- OPTIONAL: record badge -->
+              <span
+                v-if="recordId"
+                class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-semibold text-slate-600"
+              >
+                Record #{{ recordId }}
+              </span>
+            </div>
+
             <p class="mt-1 text-[13px] text-slate-400">
               Opportunities for Improvement · Leyte Normal University
+            </p>
+
+            <!-- Messages -->
+            <p v-if="successMessage" class="mt-2 text-xs text-green-600">
+              {{ successMessage }}
+            </p>
+            <p v-if="errorMessage" class="mt-2 text-xs text-red-500">
+              {{ errorMessage }}
             </p>
           </div>
 
@@ -98,6 +276,38 @@ async function generateDocx() {
               Cancel
             </button>
 
+            <!-- ✅ Save Draft / Update Draft -->
+            <button
+              class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="saveDraft"
+              :disabled="isSaving"
+            >
+              <span v-if="!isSaving">{{ recordId ? 'Update Draft' : 'Save Draft' }}</span>
+              <span v-else>Saving...</span>
+            </button>
+
+            <!-- ✅ Download (Saved Record) -->
+            <button
+              class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="downloadFromSavedRecord"
+              :disabled="isGenerating || !recordId"
+              title="Downloads DOCX from the saved database record"
+            >
+              Download (Saved)
+            </button>
+
+            <!-- ✅ NEW: Publish to Uploads (R-QMS-018) -->
+            <button
+              class="rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-2 text-[13.5px] font-semibold text-indigo-700 transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="publishToUploads"
+              :disabled="isPublishing || !recordId"
+              title="Creates an upload entry in R-QMS-018 and stores the generated DOCX"
+            >
+              <span v-if="!isPublishing">Publish (R-QMS-018)</span>
+              <span v-else>Publishing...</span>
+            </button>
+
+            <!-- Existing generate (from current inputs) -->
             <button
               class="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:bg-slate-400"
               @click="generateDocx"
@@ -131,10 +341,6 @@ async function generateDocx() {
 
               <span>{{ isGenerating ? 'Generating...' : 'Save & Download DOCX' }}</span>
             </button>
-
-            <p v-if="errorMessage" class="m-0 text-xs text-red-500">
-              {{ errorMessage }}
-            </p>
           </div>
         </div>
 
@@ -403,9 +609,12 @@ async function generateDocx() {
                 <label class="relative inline-flex items-center gap-1 cursor-pointer">
                   <input type="radio" v-model="form.assessmentUpdate" value="NO" class="hidden" />
                   <span class="inline-block h-[10px] w-[20px] border-b border-black relative">
-                    <span v-if="form.assessmentUpdate === 'NO'" class="absolute left-[2px] -top-[13px] text-[9pt]"
-                      >✔</span
+                    <span
+                      v-if="form.assessmentUpdate === 'NO'"
+                      class="absolute left-[2px] -top-[13px] text-[9pt]"
                     >
+                      ✔
+                    </span>
                   </span>
                   <span>NO</span>
                 </label>
@@ -413,9 +622,12 @@ async function generateDocx() {
                 <label class="relative inline-flex items-center gap-1 cursor-pointer">
                   <input type="radio" v-model="form.assessmentUpdate" value="YES" class="hidden" />
                   <span class="inline-block h-[10px] w-[20px] border-b border-black relative">
-                    <span v-if="form.assessmentUpdate === 'YES'" class="absolute left-[2px] -top-[13px] text-[9pt]"
-                      >✔</span
+                    <span
+                      v-if="form.assessmentUpdate === 'YES'"
+                      class="absolute left-[2px] -top-[13px] text-[9pt]"
                     >
+                      ✔
+                    </span>
                   </span>
                   <span>YES,</span>
                 </label>
@@ -444,7 +656,12 @@ async function generateDocx() {
                 <label class="relative inline-flex items-center gap-1 cursor-pointer">
                   <input type="radio" v-model="form.imsUpdate" value="NO" class="hidden" />
                   <span class="inline-block h-[10px] w-[20px] border-b border-black relative">
-                    <span v-if="form.imsUpdate === 'NO'" class="absolute left-[2px] -top-[13px] text-[9pt]">✔</span>
+                    <span
+                      v-if="form.imsUpdate === 'NO'"
+                      class="absolute left-[2px] -top-[13px] text-[9pt]"
+                    >
+                      ✔
+                    </span>
                   </span>
                   <span>NO</span>
                 </label>
@@ -452,7 +669,12 @@ async function generateDocx() {
                 <label class="relative inline-flex items-center gap-1 cursor-pointer">
                   <input type="radio" v-model="form.imsUpdate" value="YES" class="hidden" />
                   <span class="inline-block h-[10px] w-[20px] border-b border-black relative">
-                    <span v-if="form.imsUpdate === 'YES'" class="absolute left-[2px] -top-[13px] text-[9pt]">✔</span>
+                    <span
+                      v-if="form.imsUpdate === 'YES'"
+                      class="absolute left-[2px] -top-[13px] text-[9pt]"
+                    >
+                      ✔
+                    </span>
                   </span>
                   <span>YES,</span>
                 </label>
@@ -473,9 +695,8 @@ async function generateDocx() {
               </div>
             </section>
 
-            <!-- Section 5 (✅ improved positioning) -->
+            <!-- Section 5 -->
             <section class="border-b-2 border-black px-2.5 py-1.5 pb-1">
-              <!-- Title + Signature aligned like Word -->
               <div class="flex items-start justify-between mb-2">
                 <h3 class="text-[10pt] font-bold leading-[1.1]">5. FOLLOW-UP</h3>
 
@@ -488,7 +709,6 @@ async function generateDocx() {
                 </div>
               </div>
 
-              <!-- header labels -->
               <div class="flex flex-col text-center text-[9pt] leading-[1.2]">
                 <div class="flex items-end">
                   <div class="w-[8%]"></div>
@@ -506,9 +726,12 @@ async function generateDocx() {
                 </div>
               </div>
 
-              <!-- rows -->
               <div class="mt-0.5 flex flex-col gap-1.5">
-                <div class="flex min-h-[18px] items-end" v-for="(row, index) in form.followUp" :key="index">
+                <div
+                  class="flex min-h-[18px] items-end"
+                  v-for="(row, index) in form.followUp"
+                  :key="index"
+                >
                   <div class="w-[8%] border-b border-black px-0.5 py-[1px]">
                     <input v-model="row.date" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
                   </div>
@@ -518,17 +741,11 @@ async function generateDocx() {
                   </div>
 
                   <div class="w-[9%] border-b border-black px-0.5 py-[1px]">
-                    <input
-                      v-model="row.effective"
-                      class="h-4 w-full bg-transparent text-center text-[9pt] outline-none"
-                    />
+                    <input v-model="row.effective" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
                   </div>
 
                   <div class="w-[19%] border-b border-black px-0.5 py-[1px]">
-                    <input
-                      v-model="row.auditor"
-                      class="h-4 w-full bg-transparent text-center text-[9pt] outline-none"
-                    />
+                    <input v-model="row.auditor" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
                   </div>
 
                   <div class="w-[19%] border-b border-black px-0.5 py-[1px]">
@@ -544,24 +761,35 @@ async function generateDocx() {
 
               <div class="mt-4 flex justify-between text-center">
                 <div class="w-[30%] flex flex-col">
-                  <input v-model="form.imrSig" class="border-0 border-b border-black bg-transparent text-center text-[10pt] outline-none" />
+                  <input
+                    v-model="form.imrSig"
+                    class="border-0 border-b border-black bg-transparent text-center text-[10pt] outline-none"
+                  />
                   <label class="mt-0.5 text-[9pt] leading-[1.2]">Quality Management Representative</label>
                 </div>
 
                 <div class="w-[30%] flex flex-col">
-                  <input type="date" v-model="form.caseClosedDate" class="border-0 border-b border-black bg-transparent text-center text-[10pt] outline-none" />
+                  <input
+                    type="date"
+                    v-model="form.caseClosedDate"
+                    class="border-0 border-b border-black bg-transparent text-center text-[10pt] outline-none"
+                  />
                   <label class="mt-0.5 text-[9pt] leading-[1.2]">Date</label>
                 </div>
 
                 <div class="w-[30%] flex flex-col">
-                  <input v-model="form.notedBy" class="border-0 border-b border-black bg-transparent text-center text-[10pt] outline-none" />
+                  <input
+                    v-model="form.notedBy"
+                    class="border-0 border-b border-black bg-transparent text-center text-[10pt] outline-none"
+                  />
                   <label class="mt-0.5 text-[9pt] leading-[1.2]">Noted By (Department Head)</label>
                 </div>
               </div>
             </section>
 
-            <!-- Footer -->
-            <footer class="border-t-2 border-black px-2.5 py-1 text-[9px]">F-QMS-007 Rev. 1 (11-23-22)</footer>
+            <footer class="border-t-2 border-black px-2.5 py-1 text-[9px]">
+              F-QMS-007 Rev. 1 (11-23-22)
+            </footer>
           </div>
         </div>
       </div>

@@ -2,7 +2,8 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\OFIController;
-use App\Http\Controllers\DCRController; // ✅ ADD THIS
+use App\Http\Controllers\OfiRecordController;
+use App\Http\Controllers\DCRController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\UsersController;
 use Illuminate\Support\Facades\Route;
@@ -23,12 +24,25 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
+
+    // OFI Form UI page (Create/Edit UI page)
     Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
 
-    // ✅ OFI generate (existing)
+    // OFI generate (generate DOCX from current form input - not saved in uploads)
     Route::post('/ofi/generate', [OFIController::class, 'generate'])->name('ofi.generate');
 
-    // ✅ DCR generate (NEW)
+    // OFI records - save/load/edit in DB + download from saved record
+    Route::post('/ofi/records', [OfiRecordController::class, 'store'])->name('ofi.records.store');
+    Route::get('/ofi/records/{ofiRecord}', [OfiRecordController::class, 'show'])->name('ofi.records.show');
+    Route::put('/ofi/records/{ofiRecord}', [OfiRecordController::class, 'update'])->name('ofi.records.update');
+    Route::get('/ofi/records/{ofiRecord}/download', [OfiRecordController::class, 'download'])->name('ofi.records.download');
+
+    // ✅ Publish saved record to Uploads list (creates document_uploads row + stores file)
+    // FIX: route now points to publish()
+    Route::post('/ofi/records/{ofiRecord}/publish', [OfiRecordController::class, 'publish'])
+        ->name('ofi.records.publish');
+
+    // DCR generate
     Route::post('/dcr/generate', [DCRController::class, 'generate'])->name('dcr.generate');
 
     // =========================
@@ -38,8 +52,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/documents/{documentType}', [DocumentController::class, 'show'])->name('documents.show');
 
     // Upload under a document type (used by Show.vue modal)
-    Route::post('/documents/{documentType}/upload', [DocumentController::class, 'upload'])
-        ->name('documents.upload');
+    Route::post('/documents/{documentType}/upload', [DocumentController::class, 'upload'])->name('documents.upload');
 
     // =========================
     // Preview & Download Routes
@@ -56,7 +69,7 @@ Route::middleware('auth')->group(function () {
     Route::middleware('can:admin-only')->group(function () {
         Route::get('/admin/dashboard', fn() => Inertia::render('Dashboard'))->name('admin.dashboard');
 
-        // ✅ Users tab (ADMIN ONLY)
+        // Users tab (ADMIN ONLY)
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
     });
 });
