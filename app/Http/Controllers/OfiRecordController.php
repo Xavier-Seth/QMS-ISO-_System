@@ -112,7 +112,7 @@ class OfiRecordController extends Controller
         }
 
         $templatePath = base_path('templates/F-QMS-007_template_fixed_v6.docx');
-        $generator = new \App\Services\OFIFormGenerator($templatePath);
+        $generator = new OFIFormGenerator($templatePath);
 
         // 1) Generate DOCX to temp
         $tmpDir = storage_path('app/ofi_forms_tmp');
@@ -155,7 +155,7 @@ class OfiRecordController extends Controller
         $disk->put($publicPath, file_get_contents($tmpPath));
 
         // 3) Create upload row
-        $upload = \App\Models\DocumentUpload::create([
+        $upload = DocumentUpload::create([
             'document_type_id' => $this->rQms018TypeId(),
             'uploaded_by' => auth()->id(),
             'ofi_record_id' => $ofiRecord->id,

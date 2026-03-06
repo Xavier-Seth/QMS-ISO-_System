@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class UsersController extends Controller
@@ -44,5 +45,28 @@ class UsersController extends Controller
                 'q' => $q,
             ],
         ]);
+    }
+
+    public function store(Request $request)
+    {
+        $validated = $request->validate([
+            'username' => ['required', 'string', 'max:50', 'alpha_dash', 'unique:users,username'],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
+
+            // adjust to your exact roles
+            'role' => ['required', 'string', Rule::in(['admin', 'admin_officer'])],
+
+            'position' => ['nullable', 'string', 'max:255'],
+            'department' => ['nullable', 'string', 'max:255'],
+            'office_location' => ['nullable', 'string', 'max:255'],
+
+            'password' => ['required', 'string', 'min:8'],
+        ]);
+
+        // Password auto-hashes if User model has: protected $casts = ['password' => 'hashed'];
+        User::create($validated);
+
+        return back()->with('success', 'User created successfully.');
     }
 }

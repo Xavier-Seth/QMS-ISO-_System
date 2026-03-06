@@ -34,9 +34,9 @@ const emit = defineEmits(["search"]);
 }
 
 .main-content {
-  margin-left: 280px; /* fixed sidebar */
+  margin-left: 280px;
   flex: 1;
-  min-width: 0; /* important: prevents flex children stretching weirdly */
+  min-width: 0;
   height: 100vh;
   overflow-y: auto;
   overflow-x: hidden;
