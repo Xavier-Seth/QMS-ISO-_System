@@ -5,6 +5,10 @@ import { usePage } from "@inertiajs/vue3";
 const props = defineProps({
   showSearch: { type: Boolean, default: false },
   searchValue: { type: String, default: "" },
+
+  /* NEW */
+  pageTitle: { type: String, default: "" },
+  pageSubtitle: { type: String, default: "" },
 });
 
 const emit = defineEmits(["search"]);
@@ -25,16 +29,18 @@ const hasNotif = true;
 </script>
 
 <template>
-  <header class="w-full bg-[#f4f6f8]">
-    <div class="px-10 pt-6 pb-2">
+  <header class="w-full bg-[#f4f6f8] border-b border-slate-200">
+    <div class="px-10 pt-6 pb-3">
+
       <div class="flex justify-between items-start gap-6">
 
-        <!-- LEFT SEARCH -->
-        <div class="min-w-0">
+        <!-- LEFT SIDE -->
+        <div class="flex-1 min-w-0">
+
+          <!-- SEARCH -->
           <div v-if="showSearch" class="flex items-center">
             <div class="relative w-[520px] max-w-[60vw]">
 
-              <!-- search icon -->
               <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                 <svg
                   class="w-4 h-4"
@@ -58,12 +64,27 @@ const hasNotif = true;
 
             </div>
           </div>
+
+          <!-- PAGE TITLE -->
+          <div v-if="pageTitle" class="mt-6">
+            <h1 class="text-[22px] font-bold text-slate-900">
+              {{ pageTitle }}
+            </h1>
+
+            <p
+              v-if="pageSubtitle"
+              class="mt-1 text-sm text-slate-500"
+            >
+              {{ pageSubtitle }}
+            </p>
+          </div>
+
         </div>
 
         <!-- RIGHT SIDE -->
         <div class="flex items-center gap-4">
 
-          <!-- MAIL ICON -->
+          <!-- MAIL -->
           <button
             class="relative h-10 w-10 rounded-full bg-[#e7e7e7] flex items-center justify-center"
             type="button"
@@ -82,7 +103,7 @@ const hasNotif = true;
             </svg>
           </button>
 
-          <!-- BELL ICON -->
+          <!-- BELL -->
           <button
             class="relative h-10 w-10 rounded-full bg-[#e7e7e7] flex items-center justify-center"
             type="button"
@@ -106,9 +127,12 @@ const hasNotif = true;
             </svg>
           </button>
 
-          <!-- PROFILE -->
+          <!-- USER -->
           <div class="flex items-center gap-3">
-            <div class="h-10 w-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 font-semibold">
+
+            <div
+              class="h-10 w-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 font-semibold"
+            >
               {{ (me?.name?.[0] ?? "A").toUpperCase() }}
             </div>
 
@@ -121,10 +145,13 @@ const hasNotif = true;
                 {{ me?.name ?? "Admin" }}
               </div>
             </div>
+
           </div>
 
         </div>
+
       </div>
+
     </div>
   </header>
 </template>

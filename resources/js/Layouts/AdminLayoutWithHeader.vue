@@ -5,6 +5,10 @@ import Header from "@/Components/Header.vue";
 defineProps({
   showSearch: { type: Boolean, default: false },
   searchValue: { type: String, default: "" },
+
+  /* NEW */
+  pageTitle: { type: String, default: "" },
+  pageSubtitle: { type: String, default: "" },
 });
 
 const emit = defineEmits(["search"]);
@@ -18,10 +22,16 @@ const emit = defineEmits(["search"]);
       <Header
         :showSearch="showSearch"
         :searchValue="searchValue"
+        :pageTitle="pageTitle"
+        :pageSubtitle="pageSubtitle"
         @search="(v) => emit('search', v)"
       />
 
-      <slot />
+      <!-- PAGE CONTENT -->
+      <div class="page-content">
+        <slot />
+      </div>
+
     </main>
   </div>
 </template>
@@ -42,5 +52,10 @@ const emit = defineEmits(["search"]);
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
+}
+
+/* NEW */
+.page-content {
+  padding: 0 52px 40px 52px;
 }
 </style>

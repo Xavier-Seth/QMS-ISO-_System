@@ -24,6 +24,7 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
+    Route::get('/settings', fn() => Inertia::render('Settings/Index'))->name('settings');
 
     // =========================
     // OFI
