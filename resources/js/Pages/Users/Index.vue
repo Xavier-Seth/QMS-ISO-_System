@@ -11,32 +11,28 @@ const props = defineProps({
 const page = usePage();
 const flashSuccess = computed(() => page.props.flash?.success);
 
-// search
 const q = ref(props.filters?.q ?? "");
+
 const runSearch = () => {
   router.get("/users", { q: q.value }, { preserveState: true, replace: true, preserveScroll: true });
 };
+
 const onHeaderSearch = (value) => {
   q.value = value ?? "";
   runSearch();
 };
 
-// ✅ only one open at a time
 const expandedId = ref(null);
 const toggleExpand = (id) => {
   expandedId.value = expandedId.value === id ? null : id;
 };
 const isExpanded = (id) => expandedId.value === id;
 
-// pagination
 const goTo = (url) => {
   if (!url) return;
   router.get(url, {}, { preserveState: true, preserveScroll: true });
 };
 
-// =========================
-// CREATE USER MODAL
-// =========================
 const showCreate = ref(false);
 
 const createForm = useForm({
@@ -66,7 +62,6 @@ const submitCreate = () => {
     onSuccess: () => {
       showCreate.value = false;
       createForm.reset();
-      // refresh users list (keeps search + pagination state)
       router.reload({ preserveScroll: true });
     },
   });
@@ -75,30 +70,36 @@ const submitCreate = () => {
 
 <template>
   <AdminLayout :showSearch="true" :searchValue="q" @search="onHeaderSearch">
-    <div class="px-10 py-8">
-      <!-- Top bar -->
-      <div class="flex items-center justify-between mb-4">
-        <div class="text-lg font-semibold text-slate-800">Users</div>
-
+    <div class="px-10 pb-8">
+      <!-- Add New User under search -->
+      <div class="mt- 10 mb-10 ml-[380px]">
         <button
-          class="px-4 py-2 rounded-lg bg-[#151b2b] text-white hover:opacity-90"
           type="button"
           @click="openCreate"
+          class="inline-flex items-center gap-2 text-sm text-slate-800 hover:text-slate-950"
         >
-          + New User
+          <svg
+            class="w-4 h-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <path d="M12 8v8" />
+            <path d="M8 12h8" />
+          </svg>
+          <span>Add New User</span>
         </button>
       </div>
 
-      <!-- Flash success -->
       <div v-if="flashSuccess" class="mb-4">
         <div class="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {{ flashSuccess }}
         </div>
       </div>
 
-      <!-- Table container -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <!-- Header -->
         <div class="bg-slate-900 text-white px-4 py-3">
           <div
             class="grid items-center"
@@ -111,16 +112,12 @@ const submitCreate = () => {
             <div class="text-xs font-semibold tracking-wide">Position</div>
             <div class="text-xs font-semibold tracking-wide">Department</div>
             <div class="text-xs font-semibold tracking-wide">Email</div>
-            <div class="text-xs font-semibold tracking-wide text-center">
-              Actions
-            </div>
+            <div class="text-xs font-semibold tracking-wide text-center">Actions</div>
           </div>
         </div>
 
-        <!-- Body -->
         <div v-if="users.data.length">
           <template v-for="u in users.data" :key="u.id">
-            <!-- Main row -->
             <div
               class="px-4 py-2 border-b border-slate-100"
               :class="isExpanded(u.id) ? 'bg-slate-50' : 'bg-white'"
@@ -150,13 +147,9 @@ const submitCreate = () => {
                   </button>
                 </div>
 
-                <div class="text-sm text-slate-800 font-medium">
-                  {{ u.name }}
-                </div>
+                <div class="text-sm text-slate-800 font-medium">{{ u.name }}</div>
                 <div class="text-sm text-slate-600">{{ u.position ?? "-" }}</div>
-                <div class="text-sm text-slate-600">
-                  {{ u.department ?? "-" }}
-                </div>
+                <div class="text-sm text-slate-600">{{ u.department ?? "-" }}</div>
                 <div class="text-sm text-slate-600">{{ u.email }}</div>
 
                 <div class="flex items-center justify-center gap-4 text-slate-500">
@@ -177,14 +170,11 @@ const submitCreate = () => {
                 </div>
               </div>
 
-              <!-- Expanded details -->
               <div v-if="isExpanded(u.id)" class="mt-3">
                 <div class="border border-indigo-300 rounded-lg bg-white px-6 py-4">
                   <div class="grid gap-10 md:grid-cols-2">
                     <div>
-                      <div class="text-xs font-semibold text-slate-700 mb-2">
-                        Office Location
-                      </div>
+                      <div class="text-xs font-semibold text-slate-700 mb-2">Office Location</div>
                       <div class="flex items-start gap-2 text-sm text-slate-600">
                         <svg class="w-4 h-4 mt-[2px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                           <path d="M12 21s-6-5.3-6-10a6 6 0 1112 0c0 4.7-6 10-6 10z" />
@@ -195,9 +185,7 @@ const submitCreate = () => {
                     </div>
 
                     <div>
-                      <div class="text-xs font-semibold text-slate-700 mb-2">
-                        Account
-                      </div>
+                      <div class="text-xs font-semibold text-slate-700 mb-2">Account</div>
                       <div class="text-sm text-slate-600">
                         <div><span class="text-slate-500">Username:</span> {{ u.username }}</div>
                         <div class="mt-1"><span class="text-slate-500">Role:</span> {{ u.role }}</div>
@@ -210,12 +198,10 @@ const submitCreate = () => {
           </template>
         </div>
 
-        <!-- Empty state -->
         <div v-else class="px-6 py-10 text-center text-sm text-slate-500">
           No users found.
         </div>
 
-        <!-- Pagination -->
         <div class="px-6 py-4 flex items-center justify-between">
           <div class="text-xs text-slate-500">
             Showing {{ users.from ?? 0 }}–{{ users.to ?? 0 }} of {{ users.total ?? 0 }}
@@ -243,9 +229,7 @@ const submitCreate = () => {
         </div>
       </div>
 
-      <!-- =========================
-           CREATE USER MODAL
-           ========================= -->
+      <!-- Create User Modal -->
       <div
         v-if="showCreate"
         class="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
@@ -259,14 +243,12 @@ const submitCreate = () => {
 
           <div class="p-5">
             <div class="grid md:grid-cols-2 gap-4">
-              <!-- Username -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 mb-1">Username</label>
                 <input v-model="createForm.username" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
                 <p v-if="createForm.errors.username" class="mt-1 text-xs text-red-600">{{ createForm.errors.username }}</p>
               </div>
 
-              <!-- Role -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 mb-1">Role</label>
                 <select v-model="createForm.role" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm">
@@ -276,42 +258,33 @@ const submitCreate = () => {
                 <p v-if="createForm.errors.role" class="mt-1 text-xs text-red-600">{{ createForm.errors.role }}</p>
               </div>
 
-              <!-- Name -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 mb-1">Full Name</label>
                 <input v-model="createForm.name" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
                 <p v-if="createForm.errors.name" class="mt-1 text-xs text-red-600">{{ createForm.errors.name }}</p>
               </div>
 
-              <!-- Email -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 mb-1">Email</label>
                 <input v-model="createForm.email" type="email" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
                 <p v-if="createForm.errors.email" class="mt-1 text-xs text-red-600">{{ createForm.errors.email }}</p>
               </div>
 
-              <!-- Position -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 mb-1">Position</label>
                 <input v-model="createForm.position" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                <p v-if="createForm.errors.position" class="mt-1 text-xs text-red-600">{{ createForm.errors.position }}</p>
               </div>
 
-              <!-- Department -->
               <div>
                 <label class="block text-xs font-semibold text-slate-700 mb-1">Department</label>
                 <input v-model="createForm.department" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                <p v-if="createForm.errors.department" class="mt-1 text-xs text-red-600">{{ createForm.errors.department }}</p>
               </div>
 
-              <!-- Office location -->
               <div class="md:col-span-2">
                 <label class="block text-xs font-semibold text-slate-700 mb-1">Office Location</label>
                 <input v-model="createForm.office_location" type="text" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
-                <p v-if="createForm.errors.office_location" class="mt-1 text-xs text-red-600">{{ createForm.errors.office_location }}</p>
               </div>
 
-              <!-- Password -->
               <div class="md:col-span-2">
                 <label class="block text-xs font-semibold text-slate-700 mb-1">Temporary Password</label>
                 <input v-model="createForm.password" type="password" class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm" />
@@ -340,7 +313,6 @@ const submitCreate = () => {
           </div>
         </div>
       </div>
-      <!-- End modal -->
     </div>
   </AdminLayout>
 </template>
