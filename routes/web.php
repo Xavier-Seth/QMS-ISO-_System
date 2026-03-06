@@ -28,21 +28,14 @@ Route::middleware('auth')->group(function () {
     // =========================
     // OFI
     // =========================
-
-    // OFI Form UI page (Create/Edit UI page)
     Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
-
-    // OFI generate (generate DOCX from current form input - not saved in uploads)
     Route::post('/ofi/generate', [OFIController::class, 'generate'])->name('ofi.generate');
 
-    // OFI records - save/load/edit in DB + download from saved record
     Route::post('/ofi/records', [OfiRecordController::class, 'store'])->name('ofi.records.store');
     Route::get('/ofi/records/{ofiRecord}', [OfiRecordController::class, 'show'])->name('ofi.records.show');
     Route::put('/ofi/records/{ofiRecord}', [OfiRecordController::class, 'update'])->name('ofi.records.update');
     Route::get('/ofi/records/{ofiRecord}/download', [OfiRecordController::class, 'download'])->name('ofi.records.download');
 
-    // ✅ Publish saved record to Uploads list (creates document_uploads row + stores file)
-    // FIX: route now points to publish()
     Route::post('/ofi/records/{ofiRecord}/publish', [OfiRecordController::class, 'publish'])
         ->name('ofi.records.publish');
 
@@ -56,8 +49,6 @@ Route::middleware('auth')->group(function () {
     // =========================
     Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
     Route::get('/documents/{documentType}', [DocumentController::class, 'show'])->name('documents.show');
-
-    // Upload under a document type (used by Show.vue modal)
     Route::post('/documents/{documentType}/upload', [DocumentController::class, 'upload'])->name('documents.upload');
 
     // =========================
@@ -77,5 +68,6 @@ Route::middleware('auth')->group(function () {
 
         // Users tab (ADMIN ONLY)
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
+        Route::post('/users', [UsersController::class, 'store'])->name('users.store');
     });
 });
