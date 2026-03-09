@@ -1,6 +1,15 @@
 <script setup>
+import { watch } from "vue";
+import { usePage } from "@inertiajs/vue3";
+
 import Sidebar from "@/Components/Sidebar.vue";
 import Header from "@/Components/Header.vue";
+
+import GlobalLoadingOverlay from "@/Components/Feedback/GlobalLoadingOverlay.vue";
+import ToastContainer from "@/Components/Feedback/ToastContainer.vue";
+import ConfirmModal from "@/Components/Feedback/ConfirmModal.vue";
+
+import { useToast } from "@/Composables/useToast";
 
 defineProps({
   showSearch: { type: Boolean, default: false },
@@ -8,6 +17,29 @@ defineProps({
 });
 
 const emit = defineEmits(["search"]);
+
+const page = usePage();
+const toast = useToast();
+
+watch(
+  () => page.props.flash,
+  (flash) => {
+    if (!flash) return;
+
+    if (flash.success) {
+      toast.success(flash.success);
+    }
+
+    if (flash.error) {
+      toast.error(flash.error);
+    }
+
+    if (flash.info) {
+      toast.info(flash.info);
+    }
+  },
+  { deep: true, immediate: true }
+);
 </script>
 
 <template>
@@ -23,6 +55,10 @@ const emit = defineEmits(["search"]);
 
       <slot />
     </main>
+
+    <ToastContainer />
+    <ConfirmModal />
+    <GlobalLoadingOverlay />
   </div>
 </template>
 

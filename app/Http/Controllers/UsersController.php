@@ -69,4 +69,16 @@ class UsersController extends Controller
 
         return back()->with('success', 'User created successfully.');
     }
+
+    public function destroy(User $user)
+    {
+        // optional: prevent deleting yourself
+        if (auth()->id() === $user->id) {
+            return back()->with('error', 'You cannot delete your own account.');
+        }
+
+        $user->delete();
+
+        return back()->with('success', 'User deleted successfully.');
+    }
 }

@@ -1,13 +1,22 @@
 <script setup>
-import Sidebar from '@/Components/Sidebar.vue'
+import Sidebar from "@/Components/Sidebar.vue";
+
+import GlobalLoadingOverlay from "@/Components/Feedback/GlobalLoadingOverlay.vue";
+import ToastContainer from "@/Components/Feedback/ToastContainer.vue";
+import ConfirmModal from "@/Components/Feedback/ConfirmModal.vue";
 </script>
 
 <template>
   <div class="layout-wrapper">
     <Sidebar />
+
     <main class="main-content">
       <slot />
     </main>
+
+    <ToastContainer />
+    <ConfirmModal />
+    <GlobalLoadingOverlay />
   </div>
 </template>
 
@@ -20,11 +29,11 @@ import Sidebar from '@/Components/Sidebar.vue'
 
 .main-content {
   position: relative;
-  margin-left: 280px;   /* offset for fixed sidebar */
+  margin-left: 280px;
   flex: 1;
   min-width: 0;
   height: 100vh;
-  overflow-y: auto;     /* main content area scrolls */
+  overflow-y: auto;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;

@@ -1,75 +1,74 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
-import { reactive, onMounted, ref, computed } from 'vue'
+import { reactive, onMounted, onBeforeUnmount, ref, computed } from 'vue'
 import axios from 'axios'
 import logo from '@/images/LNU_logo.png'
+import { useLoadingOverlay } from '@/Composables/useLoadingOverlay'
+import { useToast } from '@/Composables/useToast'
+
+const loading = useLoadingOverlay()
+const toast = useToast()
 
 const suggestionBox = ref(null)
 
 // states
 const recordId = ref(null)
 const isSaving = ref(false)
-const isGenerating = ref(false) // used for Download DOCX
+const isGenerating = ref(false)
 const isPublishing = ref(false)
-const errorMessage = ref('')
-const successMessage = ref('')
+const isLoadingRecord = ref(false)
 
-// publish filename (used by rename modal + publish request)
+// publish filename
 const publishFileName = ref('')
 
-// ✅ rename modal
+// rename modal
 const showPublishRenameModal = ref(false)
 
-const form = reactive({
-  date: '',
-  refNo: '',
-  to: '',
-  ofiNo: '',
-  from: '',
-  isoClause: '',
-  sourceIqa: false,
-  sourceFeedback: false,
-  sourceSurvey: false,
-  sourceSystem: false,
-  sourceOthersCheck: false,
-  sourceOthersText: '',
-  suggestion: '',
-  deptRepSig1: '',
-  requestedBySig: '',
-  agreedDate: '',
-  beneficialImpact: '',
-  associatedRisks: '',
-  action: '',
-  deptRepDate2: '',
-  deptHeadDate2: '',
-  assessmentUpdate: null,
-  dateUpdated: '',
-  verifiedBy1: '',
-  imsUpdate: null,
-  dcrNo: '',
-  verifiedBy2: '',
-  followSig: '',
-  followUp: [
-    { date: '', status: '', effective: '', auditor: '', rep: '' },
-    { date: '', status: '', effective: '', auditor: '', rep: '' },
-    { date: '', status: '', effective: '', auditor: '', rep: '' },
-    { date: '', status: '', effective: '', auditor: '', rep: '' },
-  ],
-  imrSig: '',
-  caseClosedDate: '',
-  notedBy: '',
-})
+function emptyForm() {
+  return {
+    date: '',
+    refNo: '',
+    to: '',
+    ofiNo: '',
+    from: '',
+    isoClause: '',
+    sourceIqa: false,
+    sourceFeedback: false,
+    sourceSurvey: false,
+    sourceSystem: false,
+    sourceOthersCheck: false,
+    sourceOthersText: '',
+    suggestion: '',
+    deptRepSig1: '',
+    requestedBySig: '',
+    agreedDate: '',
+    beneficialImpact: '',
+    associatedRisks: '',
+    action: '',
+    deptRepDate2: '',
+    deptHeadDate2: '',
+    assessmentUpdate: null,
+    dateUpdated: '',
+    verifiedBy1: '',
+    imsUpdate: null,
+    dcrNo: '',
+    verifiedBy2: '',
+    followSig: '',
+    followUp: [
+      { date: '', status: '', effective: '', auditor: '', rep: '' },
+      { date: '', status: '', effective: '', auditor: '', rep: '' },
+      { date: '', status: '', effective: '', auditor: '', rep: '' },
+      { date: '', status: '', effective: '', auditor: '', rep: '' },
+    ],
+    imrSig: '',
+    caseClosedDate: '',
+    notedBy: '',
+  }
+}
 
-/* =========================
-   ✅ CLEAN HELPERS
-   ========================= */
+const form = reactive(emptyForm())
 
 const suggestedPublishName = computed(() => `OFI_${form.ofiNo || recordId.value || 'record'}`)
-
-function clearMessages() {
-  errorMessage.value = ''
-  successMessage.value = ''
-}
 
 function currentFileLabel() {
   return (
@@ -96,19 +95,45 @@ function downloadBlob(blobData, filename) {
   window.URL.revokeObjectURL(url)
 }
 
-async function runTask(flagRef, task) {
+async function runTask(flagRef, loadingMessage, task) {
   flagRef.value = true
-  clearMessages()
+  loading.open(loadingMessage)
+
   try {
     return await task()
   } finally {
     flagRef.value = false
+    loading.close()
   }
 }
 
 /* =========================
-   ✅ FORM DATA FILL
-   ========================= */
+   RESET HELPERS
+========================= */
+
+function resetFormState() {
+  const fresh = emptyForm()
+
+  Object.keys(fresh).forEach((key) => {
+    form[key] = fresh[key]
+  })
+
+  recordId.value = null
+  publishFileName.value = ''
+  showPublishRenameModal.value = false
+
+  if (suggestionBox.value) {
+    suggestionBox.value.innerText = ''
+  }
+
+  const url = new URL(window.location.href)
+  url.searchParams.delete('record')
+  window.history.replaceState({}, '', url)
+}
+
+/* =========================
+   FORM DATA FILL
+========================= */
 
 function applyDataToForm(data) {
   Object.keys(form).forEach((k) => {
@@ -127,9 +152,10 @@ function applyDataToForm(data) {
     }
   }
 
-  if (suggestionBox.value) suggestionBox.value.innerText = form.suggestion || ''
+  if (suggestionBox.value) {
+    suggestionBox.value.innerText = form.suggestion || ''
+  }
 
-  // default publish name
   if (!publishFileName.value && (data?.ofiNo || form.ofiNo)) {
     publishFileName.value = `OFI_${data?.ofiNo || form.ofiNo}`
   }
@@ -142,32 +168,28 @@ function getRecordIdFromUrl() {
 }
 
 async function loadRecord(id) {
-  clearMessages()
-  try {
+  await runTask(isLoadingRecord, 'Loading saved record...', async () => {
     const res = await axios.get(`/ofi/records/${id}`)
     recordId.value = id
     applyDataToForm(res.data.data || {})
 
-    // ✅ friendlier message
     const fileShown = withDocx(currentFileLabel()) || `Record #${id}`
-    successMessage.value = `Loaded saved: ${fileShown}`
-  } catch (err) {
+    toast.success(`Loaded saved record: ${fileShown}`)
+  }).catch((err) => {
     console.error(err)
-    errorMessage.value = 'Failed to load saved record.'
-  }
+    toast.error('Failed to load saved record.')
+  })
 }
 
 /* =========================
-   ✅ RECORD HELPERS (SAVE/UPDATE)
-   ========================= */
+   RECORD HELPERS
+========================= */
 
-// create or update record, and return id
 async function upsertRecord(status = 'draft') {
   if (!recordId.value) {
     const res = await axios.post('/ofi/records', { ...form, status })
     recordId.value = res.data.id
 
-    // keep ?record= in url
     const url = new URL(window.location.href)
     url.searchParams.set('record', recordId.value)
     window.history.replaceState({}, '', url)
@@ -175,64 +197,62 @@ async function upsertRecord(status = 'draft') {
     await axios.put(`/ofi/records/${recordId.value}`, { ...form, status })
   }
 
-  // default publish name once we have id/ofiNo
-  if (!publishFileName.value) publishFileName.value = currentFileLabel()
+  if (!publishFileName.value) {
+    publishFileName.value = currentFileLabel()
+  }
 
   return recordId.value
 }
 
 async function ensureDraftSaved() {
-  const id = await upsertRecord('draft')
-  return id
+  return await upsertRecord('draft')
 }
 
 /* =========================
-   ✅ ACTIONS
-   ========================= */
+   ACTIONS
+========================= */
 
 async function saveDraft() {
-  await runTask(isSaving, async () => {
+  await runTask(isSaving, 'Saving draft...', async () => {
     const wasNew = !recordId.value
     const id = await upsertRecord('draft')
-
     const name = currentFileLabel()
-    successMessage.value = wasNew
-      ? `Saved draft: ${name} (Record #${id})`
-      : `Updated draft: ${name} (Record #${id})`
+
+    toast.success(
+      wasNew
+        ? `Saved draft: ${name} (Record #${id})`
+        : `Updated draft: ${name} (Record #${id})`
+    )
   }).catch((err) => {
     console.error(err)
-    errorMessage.value = 'Failed to save draft. Please try again.'
+    toast.error('Failed to save draft. Please try again.')
   })
 }
 
-/**
- * ✅ ONE DOWNLOAD BUTTON:
- * Download DOCX = auto-save draft first, then generate+download
- */
 async function downloadDocx() {
-  await runTask(isGenerating, async () => {
-    // ensure DB is updated + record exists
+  await runTask(isGenerating, 'Generating document...', async () => {
     await ensureDraftSaved()
 
-    // generate from current form
-    const res = await axios.post('/ofi/generate', form, { responseType: 'blob' })
+    const res = await axios.post('/ofi/generate', form, {
+      responseType: 'blob',
+    })
 
     const name = withDocx(currentFileLabel()) || 'OFI.docx'
     downloadBlob(res.data, name)
-    successMessage.value = `Downloaded: ${name}`
+    toast.success(`Downloaded: ${name}`)
   }).catch((err) => {
     console.error(err)
-    errorMessage.value = 'Failed to download DOCX. Please try again.'
+    toast.error('Failed to download DOCX. Please try again.')
   })
 }
 
 async function publishToUploads() {
   if (!recordId.value) {
-    errorMessage.value = 'Save the record first before publishing.'
+    toast.error('Save the record first before publishing.')
     return
   }
 
-  await runTask(isPublishing, async () => {
+  await runTask(isPublishing, 'Publishing document...', async () => {
     const id = await ensureDraftSaved()
 
     const res = await axios.post(`/ofi/records/${id}/publish`, {
@@ -241,23 +261,30 @@ async function publishToUploads() {
     })
 
     const fn = res?.data?.file_name || withDocx(currentFileLabel()) || 'DOCX'
-    successMessage.value = `Published: ${fn} (Upload #${res.data.upload_id})`
+    toast.success(`Published: ${fn} (Upload #${res.data.upload_id})`)
+
+    // ✅ AUTO-CLEAR FORM AFTER SUCCESSFUL PUBLISH
+    resetFormState()
   }).catch((err) => {
     console.error(err)
-    errorMessage.value = 'Failed to publish to uploads. Please try again.'
+    toast.error('Failed to publish to uploads. Please try again.')
   })
 }
 
 /* =========================
-   ✅ PUBLISH RENAME MODAL FLOW
-   ========================= */
+   PUBLISH RENAME MODAL FLOW
+========================= */
 
 function openPublishRenameModal() {
   if (!recordId.value) {
-    errorMessage.value = 'Save the record first before publishing.'
+    toast.error('Save the record first before publishing.')
     return
   }
-  if (!publishFileName.value) publishFileName.value = suggestedPublishName.value
+
+  if (!publishFileName.value) {
+    publishFileName.value = suggestedPublishName.value
+  }
+
   showPublishRenameModal.value = true
 }
 
@@ -267,11 +294,14 @@ async function confirmPublish() {
 }
 
 function closePublishModal() {
+  if (isPublishing.value) return
   showPublishRenameModal.value = false
 }
 
 function onKeydown(e) {
-  if (e.key === 'Escape') closePublishModal()
+  if (e.key === 'Escape') {
+    closePublishModal()
+  }
 }
 
 onMounted(() => {
@@ -282,7 +312,13 @@ onMounted(() => {
   }
 
   const id = getRecordIdFromUrl()
-  if (id) loadRecord(id)
+  if (id) {
+    loadRecord(id)
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
 })
 </script>
 
@@ -362,8 +398,6 @@ onMounted(() => {
 
             <p class="mt-1 text-[13px] text-slate-400">Opportunities for Improvement · Leyte Normal University</p>
 
-            <p v-if="successMessage" class="mt-2 text-xs text-green-600">{{ successMessage }}</p>
-            <p v-if="errorMessage" class="mt-2 text-xs text-red-500">{{ errorMessage }}</p>
           </div>
 
           <!-- ✅ Clean Buttons: Cancel | Save Draft | Download DOCX | Publish -->
