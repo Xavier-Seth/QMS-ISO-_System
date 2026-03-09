@@ -67,17 +67,15 @@ const uploading = ref(false)
 const uploadError = ref('')
 
 const uploadForm = ref({
-  file: null,
+  files: [],
   revision: '',
-  remarks: '',
 })
 
 function openUpload() {
   uploadError.value = ''
   uploadForm.value = {
-    file: null,
+    files: [],
     revision: '',
-    remarks: '',
   }
   showUploadModal.value = true
 }
@@ -88,14 +86,20 @@ function closeUpload() {
 }
 
 function onPickFile(e) {
-  uploadForm.value.file = e.target.files?.[0] || null
+  uploadForm.value.files = Array.from(e.target.files || [])
 }
 
 function submitUpload() {
   uploadError.value = ''
 
-  if (!uploadForm.value.file) {
-    uploadError.value = 'Please choose a file to upload.'
+  if (!uploadForm.value.files.length) {
+    uploadError.value = 'Please choose at least one file to upload.'
+    toast.error(uploadError.value)
+    return
+  }
+
+  if (requiresRevision.value && uploadForm.value.files.length > 1) {
+    uploadError.value = 'Multiple upload is not allowed for revision-controlled documents.'
     toast.error(uploadError.value)
     return
   }
@@ -107,13 +111,14 @@ function submitUpload() {
   }
 
   const data = new FormData()
-  data.append('file', uploadForm.value.file)
+
+  uploadForm.value.files.forEach((file) => {
+    data.append('files[]', file)
+  })
 
   if (requiresRevision.value) {
     data.append('revision', uploadForm.value.revision.trim())
   }
-
-  data.append('remarks', uploadForm.value.remarks || '')
 
   uploading.value = true
   loading.open('Uploading file...')
@@ -123,16 +128,20 @@ function submitUpload() {
     preserveScroll: true,
     onError: (errors) => {
       uploadError.value =
-        errors.file ||
+        errors.files ||
+        errors['files.0'] ||
         errors.revision ||
-        errors.remarks ||
         'Upload failed. Please try again.'
 
       toast.error(uploadError.value)
     },
     onSuccess: () => {
       closeUpload()
-      toast.success('File uploaded successfully.')
+      toast.success(
+        uploadForm.value.files.length > 1
+          ? 'Files uploaded successfully.'
+          : 'File uploaded successfully.'
+      )
     },
     onFinish: () => {
       uploading.value = false
@@ -245,7 +254,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 @click="openUpload"
                 class="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400"
               >
-                {{ requiresRevision ? 'Upload New Revision' : 'Upload File' }}
+                {{ requiresRevision ? 'Upload New Revision' : 'Upload Files' }}
               </button>
             </div>
           </div>
@@ -299,7 +308,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
           @click="openUpload"
           class="mt-4 inline-block rounded-xl bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
         >
-          {{ requiresRevision ? 'Upload First Revision' : 'Upload File' }}
+          {{ requiresRevision ? 'Upload First Revision' : 'Upload Files' }}
         </button>
       </div>
 
@@ -439,34 +448,28 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 <input
                   type="file"
                   @change="onPickFile"
+                  :multiple="!requiresRevision"
                   class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300"
                   accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
                 />
                 <p class="mt-2 text-xs text-slate-500">
-                  Allowed: PDF, Word, Excel, images.
+                  <template v-if="requiresRevision">
+                    Allowed: PDF, Word, Excel, images. One file only for revision-controlled documents.
+                  </template>
+                  <template v-else>
+                    Allowed: PDF, Word, Excel, images. You may select multiple files.
+                  </template>
                 </p>
               </div>
 
-              <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
-                <div v-if="requiresRevision" class="md:col-span-4">
-                  <label class="text-xs font-medium text-slate-600">Revision</label>
-                  <input
-                    v-model="uploadForm.revision"
-                    type="text"
-                    placeholder="e.g., Rev. 1"
-                    class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  />
-                </div>
-
-                <div :class="requiresRevision ? 'md:col-span-8' : 'md:col-span-12'">
-                  <label class="text-xs font-medium text-slate-600">Remarks (optional)</label>
-                  <input
-                    v-model="uploadForm.remarks"
-                    type="text"
-                    placeholder="Short note about this upload"
-                    class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                  />
-                </div>
+              <div v-if="requiresRevision">
+                <label class="text-xs font-medium text-slate-600">Revision</label>
+                <input
+                  v-model="uploadForm.revision"
+                  type="text"
+                  placeholder="e.g., Rev. 1"
+                  class="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2.5 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                />
               </div>
             </div>
 

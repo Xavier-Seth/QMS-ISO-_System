@@ -140,8 +140,8 @@ class DocumentController extends Controller
         $isRevisionControlled = str_starts_with(strtoupper($documentType->code), 'F-QMS');
 
         $rules = [
-            'file' => ['required', 'file', 'max:20480'], // 20MB
-            'remarks' => ['nullable', 'string', 'max:1000'],
+            'files' => ['required', 'array', 'min:1'],
+            'files.*' => ['required', 'file', 'max:20480'], // 20MB each
         ];
 
         if ($isRevisionControlled) {
@@ -150,27 +150,33 @@ class DocumentController extends Controller
 
         $data = $request->validate($rules);
 
-        $file = $data['file'];
+        $files = $request->file('files', []);
 
-        // store in public disk
-        $path = $file->store("qms/{$documentType->code}", 'public');
+        if ($isRevisionControlled && count($files) > 1) {
+            return back()->withErrors([
+                'files' => 'Multiple upload is not allowed for revision-controlled documents.',
+            ]);
+        }
 
-        // F-QMS rule: only one active
+        // F-QMS rule: only one active version
         if ($isRevisionControlled) {
             DocumentUpload::where('document_type_id', $documentType->id)
                 ->where('status', 'Active')
                 ->update(['status' => 'Obsolete']);
         }
 
-        DocumentUpload::create([
-            'document_type_id' => $documentType->id,
-            'uploaded_by' => $request->user()->id,
-            'revision' => $isRevisionControlled ? $data['revision'] : null,
-            'status' => $isRevisionControlled ? 'Active' : null,
-            'file_name' => $file->getClientOriginalName(),
-            'file_path' => $path,
-            'remarks' => $data['remarks'] ?? null,
-        ]);
+        foreach ($files as $file) {
+            $path = $file->store("qms/{$documentType->code}", 'public');
+
+            DocumentUpload::create([
+                'document_type_id' => $documentType->id,
+                'uploaded_by' => $request->user()->id,
+                'revision' => $isRevisionControlled ? $data['revision'] : null,
+                'status' => $isRevisionControlled ? 'Active' : null,
+                'file_name' => $file->getClientOriginalName(),
+                'file_path' => $path,
+            ]);
+        }
 
         return back();
     }
