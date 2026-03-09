@@ -1,11 +1,14 @@
 <script setup>
 import { computed, ref } from "vue";
 import { useForm, usePage } from "@inertiajs/vue3";
+import { useLoadingOverlay } from "@/Composables/useLoadingOverlay";
+import { useToast } from "@/Composables/useToast";
 
 const page = usePage();
+const loading = useLoadingOverlay();
+const toast = useToast();
 
 const user = computed(() => page.props.auth?.user ?? {});
-const flash = computed(() => page.props.flash ?? {});
 
 const splitName = (fullName = "") => {
     const parts = fullName.trim().split(/\s+/).filter(Boolean);
@@ -66,7 +69,7 @@ const choosePhoto = () => {
 };
 
 const onPhotoChange = (event) => {
-    const file = event.target.files[0];
+    const file = event.target.files?.[0];
     if (!file) return;
 
     form.profile_photo = file;
@@ -83,6 +86,8 @@ const cancelPhoto = () => {
 };
 
 const submit = () => {
+    loading.open("Saving profile...");
+
     form
         .transform((data) => ({
             ...data,
@@ -95,394 +100,206 @@ const submit = () => {
             forceFormData: true,
             onSuccess: () => {
                 form.reset("current_password", "new_password", "new_password_confirmation");
+                toast.success("Your profile has been updated successfully.");
+            },
+            onError: () => {
+                toast.error("Profile update failed. Please check the form and try again.");
+            },
+            onFinish: () => {
+                loading.close();
             },
         });
 };
+
+const inputClass =
+    "w-full h-10 rounded-md border border-slate-300 bg-white px-3 text-[15px] text-slate-700 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200 disabled:bg-slate-100 disabled:text-slate-500 disabled:cursor-not-allowed";
+
+const labelClass =
+    "mb-2 block text-[15px] font-semibold leading-tight text-slate-900";
+
+const errorClass =
+    "mt-1.5 text-[13px] text-rose-600";
 </script>
 
 <template>
-    <div class="profile-wrap">
-        <div class="section-head">
-            <h2>Profile Settings</h2>
-            <p>Update your profile settings and address</p>
-        </div>
-
-        <div v-if="flash.success" class="alert success-alert">
-            {{ flash.success }}
-        </div>
-
-        <div v-if="flash.error" class="alert error-alert">
-            {{ flash.error }}
+    <div class="pt-0">
+        <div class="mb-6 max-w-[875px] border-b border-slate-300 pb-2.5">
+            <h2 class="text-[17px] font-semibold leading-tight text-slate-900">
+                Profile Settings
+            </h2>
+            <p class="mt-1 text-sm leading-snug text-slate-500">
+                Update your profile settings and address
+            </p>
         </div>
 
         <form @submit.prevent="submit">
-            <div class="form-grid">
-                <div class="field">
-                    <label>First Name:</label>
-                    <input v-model="form.first_name" type="text" />
-                    <p v-if="form.errors.first_name" class="error-text">{{ form.errors.first_name }}</p>
+            <div class="grid max-w-[985px] grid-cols-1 gap-x-12 gap-y-7 xl:grid-cols-3 xl:gap-x-28">
+                <div>
+                    <label :class="labelClass">First Name:</label>
+                    <input v-model="form.first_name" type="text" :class="inputClass" />
+                    <p v-if="form.errors.first_name" :class="errorClass">
+                        {{ form.errors.first_name }}
+                    </p>
                 </div>
 
-                <div class="field">
-                    <label>Middle Name:</label>
-                    <input v-model="form.middle_name" type="text" />
-                    <p v-if="form.errors.middle_name" class="error-text">{{ form.errors.middle_name }}</p>
+                <div>
+                    <label :class="labelClass">Middle Name:</label>
+                    <input v-model="form.middle_name" type="text" :class="inputClass" />
+                    <p v-if="form.errors.middle_name" :class="errorClass">
+                        {{ form.errors.middle_name }}
+                    </p>
                 </div>
 
-                <div class="field">
-                    <label>Last Name:</label>
-                    <input v-model="form.last_name" type="text" />
-                    <p v-if="form.errors.last_name" class="error-text">{{ form.errors.last_name }}</p>
+                <div>
+                    <label :class="labelClass">Last Name:</label>
+                    <input v-model="form.last_name" type="text" :class="inputClass" />
+                    <p v-if="form.errors.last_name" :class="errorClass">
+                        {{ form.errors.last_name }}
+                    </p>
                 </div>
 
-                <div class="field">
-                    <label>Email:</label>
-                    <input v-model="form.email" type="email" />
-                    <p v-if="form.errors.email" class="error-text">{{ form.errors.email }}</p>
+                <div>
+                    <label :class="labelClass">Email:</label>
+                    <input v-model="form.email" type="email" :class="inputClass" />
+                    <p v-if="form.errors.email" :class="errorClass">
+                        {{ form.errors.email }}
+                    </p>
                 </div>
 
-                <div class="field">
-                    <label>Role:</label>
-                    <input :value="form.role" type="text" disabled />
+                <div>
+                    <label :class="labelClass">Role:</label>
+                    <input :value="form.role" type="text" disabled :class="inputClass" />
                 </div>
 
-                <div class="field">
-                    <label>Position:</label>
-                    <input v-model="form.position" type="text" />
-                    <p v-if="form.errors.position" class="error-text">{{ form.errors.position }}</p>
+                <div>
+                    <label :class="labelClass">Position:</label>
+                    <input v-model="form.position" type="text" :class="inputClass" />
+                    <p v-if="form.errors.position" :class="errorClass">
+                        {{ form.errors.position }}
+                    </p>
                 </div>
 
-                <div class="field">
-                    <label>Department:</label>
-                    <input v-model="form.department" type="text" />
-                    <p v-if="form.errors.department" class="error-text">{{ form.errors.department }}</p>
+                <div>
+                    <label :class="labelClass">Department:</label>
+                    <input v-model="form.department" type="text" :class="inputClass" />
+                    <p v-if="form.errors.department" :class="errorClass">
+                        {{ form.errors.department }}
+                    </p>
                 </div>
 
-                <div class="field">
-                    <label>Office Location:</label>
-                    <input v-model="form.office_location" type="text" />
-                    <p v-if="form.errors.office_location" class="error-text">
+                <div>
+                    <label :class="labelClass">Office Location:</label>
+                    <input v-model="form.office_location" type="text" :class="inputClass" />
+                    <p v-if="form.errors.office_location" :class="errorClass">
                         {{ form.errors.office_location }}
                     </p>
                 </div>
 
-                <div class="field">
-                    <label>Current Password:</label>
-                    <input v-model="form.current_password" type="password" />
-                    <p v-if="form.errors.current_password" class="error-text">
+                <div>
+                    <label :class="labelClass">Current Password:</label>
+                    <input v-model="form.current_password" type="password" :class="inputClass" />
+                    <p v-if="form.errors.current_password" :class="errorClass">
                         {{ form.errors.current_password }}
                     </p>
                 </div>
             </div>
 
-            <div class="bottom-grid">
-                <div class="photo-block">
-                    <label class="photo-label">Your Photo:</label>
+            <div class="mt-6 grid max-w-[985px] grid-cols-1 items-start gap-y-8 xl:grid-cols-2 xl:gap-x-40">
+                <div class="w-full max-w-[255px]">
+                    <label class="mb-2 block text-[15px] font-semibold leading-tight text-slate-900">
+                        Your Photo:
+                    </label>
 
-                    <div class="photo-box">
+                    <div class="flex h-[210px] w-[250px] items-center justify-center overflow-hidden rounded-md border border-slate-300 bg-white">
                         <img
                             v-if="previewPhoto"
                             :src="previewPhoto"
                             alt="Profile Photo"
-                            class="photo-preview"
+                            class="h-[198px] w-[198px] object-cover"
                         />
                         <img
-                            v-else
-                            :src="'/images/profile-placeholder.png'"
-                            alt="Profile Photo"
-                            class="photo-preview"
-                        />
+  v-else
+  :src="'/images/profile-placeholder.png'"
+  alt="Profile Photo"
+  class="h-[198px] w-[198px] object-cover"
+/>
                     </div>
 
                     <input
                         ref="fileInput"
                         type="file"
                         accept="image/*"
-                        class="hidden-file"
+                        class="hidden"
                         @change="onPhotoChange"
                     />
 
-                    <p v-if="form.errors.profile_photo" class="error-text photo-error">
+                    <p
+                        v-if="form.errors.profile_photo"
+                        class="mt-2 max-w-[250px] text-[13px] text-rose-600"
+                    >
                         {{ form.errors.profile_photo }}
                     </p>
 
-                    <div class="photo-actions">
-                        <button type="button" class="upload-btn" @click="choosePhoto">
+                    <div class="mt-3.5 flex gap-4">
+                        <button
+                            type="button"
+                            @click="choosePhoto"
+                            class="inline-flex h-[34px] min-w-[110px] items-center justify-center rounded-md border border-sky-500 bg-sky-500 px-4 text-sm text-white transition hover:bg-sky-600"
+                        >
                             Upload
                         </button>
-                        <button type="button" class="cancel-btn" @click="cancelPhoto">
+
+                        <button
+                            type="button"
+                            @click="cancelPhoto"
+                            class="inline-flex h-[34px] min-w-[110px] items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm text-slate-600 transition hover:bg-slate-50"
+                        >
                             Cancel
                         </button>
                     </div>
                 </div>
 
-                <div class="right-side">
-                    <div class="field new-pass-field">
-                        <label>New Password:</label>
-                        <input v-model="form.new_password" type="password" />
-                        <p v-if="form.errors.new_password" class="error-text">
+                <div class="w-full pt-1">
+                    <div class="ml-auto w-full max-w-[252px]">
+                        <label :class="labelClass">New Password:</label>
+                        <input v-model="form.new_password" type="password" :class="inputClass" />
+                        <p v-if="form.errors.new_password" :class="errorClass">
                             {{ form.errors.new_password }}
                         </p>
                     </div>
 
-                    <div class="field new-pass-field confirm-field">
-                        <label>Confirm New Password:</label>
-                        <input v-model="form.new_password_confirmation" type="password" />
+                    <div class="mt-4 ml-auto w-full max-w-[252px]">
+                        <label :class="labelClass">Confirm New Password:</label>
+                        <input
+                            v-model="form.new_password_confirmation"
+                            type="password"
+                            :class="inputClass"
+                        />
                     </div>
 
-                    <div class="confirm-wrap">
-                        <button type="submit" class="confirm-btn" :disabled="form.processing">
-                            {{ form.processing ? "Saving..." : "Confirm" }}
-                        </button>
+                    <div class="mt-8 flex justify-start xl:justify-end">
+                        <div class="flex w-full max-w-[252px] justify-end">
+                            <button
+                                type="submit"
+                                :disabled="form.processing"
+                                class="inline-flex h-[34px] min-w-[110px] items-center justify-center rounded-md border border-slate-300 bg-white px-4 text-sm text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                {{ form.processing ? "Saving..." : "Confirm" }}
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div class="save-wrap">
-                <button type="submit" class="save-btn" :disabled="form.processing">
+            <div class="mt-4 flex max-w-[985px] justify-start xl:justify-end">
+                <button
+                    type="submit"
+                    :disabled="form.processing"
+                    class="inline-flex h-[34px] min-w-[110px] items-center justify-center rounded-md border border-slate-900 bg-slate-900 px-4 text-sm text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
+                >
                     {{ form.processing ? "Saving..." : "Save" }}
                 </button>
             </div>
         </form>
     </div>
 </template>
-
-<style scoped>
-.profile-wrap {
-    padding-top: 0;
-}
-
-.section-head {
-    border-bottom: 1px solid #bfc3c9;
-    padding-bottom: 10px;
-    margin-bottom: 26px;
-    max-width: 875px;
-}
-
-.section-head h2 {
-    margin: 0;
-    font-size: 17px;
-    font-weight: 600;
-    color: #111111;
-    line-height: 1.2;
-}
-
-.section-head p {
-    margin: 4px 0 0;
-    font-size: 14px;
-    color: #666666;
-    line-height: 1.3;
-}
-
-.alert {
-    max-width: 985px;
-    margin-bottom: 18px;
-    padding: 12px 14px;
-    border-radius: 6px;
-    font-size: 14px;
-}
-
-.success-alert {
-    background: #eaf7ee;
-    border: 1px solid #9fd3ad;
-    color: #246b38;
-}
-
-.error-alert {
-    background: #fdecec;
-    border: 1px solid #efb2b2;
-    color: #a61b1b;
-}
-
-.form-grid {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(210px, 1fr));
-    column-gap: 115px;
-    row-gap: 28px;
-    max-width: 985px;
-}
-
-.field label {
-    display: block;
-    margin-bottom: 7px;
-    font-size: 15px;
-    font-weight: 600;
-    color: #111111;
-    line-height: 1.2;
-}
-
-.field input {
-    width: 100%;
-    height: 38px;
-    border: 1px solid #8e8e8e;
-    border-radius: 6px;
-    background: transparent;
-    padding: 0 14px;
-    font-size: 16px;
-    color: #444;
-    outline: none;
-    box-sizing: border-box;
-}
-
-.field input:disabled {
-    background: #f1f3f5;
-    color: #6b7280;
-    cursor: not-allowed;
-}
-
-.error-text {
-    margin: 6px 0 0;
-    font-size: 13px;
-    color: #d11a2a;
-}
-
-.bottom-grid {
-    margin-top: 22px;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    column-gap: 160px;
-    align-items: start;
-    max-width: 985px;
-}
-
-.photo-block {
-    width: 255px;
-}
-
-.photo-label {
-    display: block;
-    margin-bottom: 8px;
-    font-size: 15px;
-    font-weight: 600;
-    color: #111111;
-    line-height: 1.2;
-}
-
-.photo-box {
-    width: 250px;
-    height: 210px;
-    border: 1px solid #8e8e8e;
-    border-radius: 6px;
-    background: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-}
-
-.photo-preview {
-    width: 198px;
-    height: 198px;
-    object-fit: cover;
-}
-
-.photo-actions {
-    display: flex;
-    gap: 34px;
-    margin-top: 14px;
-}
-
-.upload-btn,
-.cancel-btn,
-.confirm-btn,
-.save-btn {
-    height: 30px;
-    min-width: 110px;
-    border-radius: 5px;
-    font-size: 14px;
-    cursor: pointer;
-    border: 1px solid #b4b4b4;
-}
-
-.upload-btn {
-    background: #59a7f2;
-    border-color: #59a7f2;
-    color: #ffffff;
-}
-
-.cancel-btn {
-    background: transparent;
-    color: #707070;
-}
-
-.right-side {
-    width: 100%;
-    padding-top: 4px;
-}
-
-.new-pass-field {
-    max-width: 252px;
-    margin-left: auto;
-}
-
-.confirm-field {
-    margin-top: 18px;
-}
-
-.confirm-wrap {
-    max-width: 252px;
-    margin-left: auto;
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 32px;
-}
-
-.confirm-btn {
-    background: transparent;
-    color: #707070;
-}
-
-.save-wrap {
-    max-width: 985px;
-    display: flex;
-    justify-content: flex-end;
-    margin-top: 16px;
-}
-
-.save-btn {
-    background: #16233d;
-    border-color: #16233d;
-    color: #ffffff;
-}
-
-.hidden-file {
-    display: none;
-}
-
-.photo-error {
-    max-width: 250px;
-}
-
-@media (max-width: 1200px) {
-    .form-grid {
-        column-gap: 45px;
-    }
-
-    .bottom-grid {
-        column-gap: 70px;
-    }
-}
-
-@media (max-width: 980px) {
-    .form-grid {
-        grid-template-columns: 1fr;
-        max-width: 520px;
-    }
-
-    .bottom-grid {
-        grid-template-columns: 1fr;
-        row-gap: 26px;
-    }
-
-    .right-side,
-    .new-pass-field,
-    .confirm-wrap {
-        margin-left: 0;
-        max-width: 320px;
-    }
-
-    .save-wrap {
-        justify-content: flex-start;
-    }
-}
-</style>

@@ -77,5 +77,6 @@ Route::middleware('auth')->group(function () {
         // Users tab (ADMIN ONLY)
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
         Route::post('/users', [UsersController::class, 'store'])->name('users.store');
+        Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
     });
 });
