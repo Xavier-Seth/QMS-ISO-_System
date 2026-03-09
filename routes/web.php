@@ -6,6 +6,7 @@ use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\DCRController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\UsersController;
+use App\Http\Controllers\SettingsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -24,6 +25,13 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
+    Route::get('/settings', fn() => Inertia::render('Settings/Index'))->name('settings');
+
+    // =========================
+    // Settings
+    // =========================
+    Route::post('/settings/profile', [SettingsController::class, 'updateProfile'])
+        ->name('settings.profile.update');
 
     // =========================
     // OFI
