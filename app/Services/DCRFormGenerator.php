@@ -15,10 +15,8 @@ class DCRFormGenerator
 
     public function generate(array $data, string $outputPath): void
     {
-        // Helpers
         $check = fn($v) => $v ? '✔' : '';
 
-        // Simple text fields
         $textKeys = [
             'date',
             'dcrNo',
@@ -46,15 +44,22 @@ class DCRFormGenerator
             $this->template->setValue($k, (string) ($data[$k] ?? ''));
         }
 
-        // Checkbox placeholders (✔ or blank)
         $this->template->setValue('amend', $check($data['amend'] ?? false));
         $this->template->setValue('newDoc', $check($data['newDoc'] ?? false));
         $this->template->setValue('deleteDoc', $check($data['deleteDoc'] ?? false));
 
-        $this->template->setValue('requestDenied', $check($data['requestDenied'] ?? false));
-        $this->template->setValue('requestAccepted', $check($data['requestAccepted'] ?? false));
+        $decision = $data['requestDecision'] ?? null;
 
-        // Save output
+        $this->template->setValue(
+            'requestDenied',
+            $check(($data['requestDenied'] ?? false) || $decision === 'DENIED')
+        );
+
+        $this->template->setValue(
+            'requestAccepted',
+            $check(($data['requestAccepted'] ?? false) || $decision === 'ACCEPTED')
+        );
+
         $this->template->saveAs($outputPath);
     }
 }

@@ -1,93 +1,353 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
-import { reactive, ref } from 'vue'
+import { reactive, onMounted, onBeforeUnmount, ref, computed } from 'vue'
 import axios from 'axios'
 import logo from '@/images/LNU_logo.png'
+import { useLoadingOverlay } from '@/Composables/useLoadingOverlay'
+import { useToast } from '@/Composables/useToast'
 
+const loading = useLoadingOverlay()
+const toast = useToast()
+
+// states
+const recordId = ref(null)
+const isSaving = ref(false)
 const isGenerating = ref(false)
-const errorMessage = ref('')
+const isPublishing = ref(false)
+const isLoadingRecord = ref(false)
 
-const form = reactive({
-  date: '',
-  dcrNo: '',
-  toFor: '',
-  from: '',
+const publishFileName = ref('')
+const showPublishRenameModal = ref(false)
 
-  // checkbox (pick one)
-  amend: false,
-  newDoc: false,
-  deleteDoc: false,
+function emptyForm() {
+  return {
+    date: '',
+    dcrNo: '',
+    toFor: '',
+    from: '',
 
-  documentNumber: '',
-  documentTitle: '',
-  revisionStatus: '',
+    amend: false,
+    newDoc: false,
+    deleteDoc: false,
 
-  changesRequested: '',
-  reason: '',
+    documentNumber: '',
+    documentTitle: '',
+    revisionStatus: '',
 
-  requestedBy: '',
-  deptUnitHead: '',
+    changesRequested: '',
+    reason: '',
 
-  // IMR comments
-  requestDecision: '', // 'DENIED' | 'ACCEPTED'
-  imrSigDate: '',
+    requestedBy: '',
+    deptUnitHead: '',
 
-  // approving authority
-  approvingSigName: '',
-  approvingDate: '',
+    requestDecision: '',
+    imrSigDate: '',
 
-  // document status
-  statusNo: '',
-  statusVersion: '',
-  statusRevision: '',
-  effectivityDate: '',
-  idsDateUpdated: '',
-  updatedBy: '',
-})
+    approvingSigName: '',
+    approvingDate: '',
+
+    statusNo: '',
+    statusVersion: '',
+    statusRevision: '',
+    effectivityDate: '',
+    idsDateUpdated: '',
+    updatedBy: '',
+  }
+}
+
+const form = reactive(emptyForm())
+
+const suggestedPublishName = computed(() => `DCR_${form.dcrNo || recordId.value || 'record'}`)
+
+function currentFileLabel() {
+  return (
+    publishFileName.value?.trim() ||
+    (form.dcrNo ? `DCR_${form.dcrNo}` : '') ||
+    (recordId.value ? `DCR_${recordId.value}` : 'DCR_record')
+  )
+}
+
+function withDocx(name) {
+  const n = (name || '').trim()
+  if (!n) return null
+  return n.toLowerCase().endsWith('.docx') ? n : `${n}.docx`
+}
+
+function downloadBlob(blobData, filename) {
+  const url = window.URL.createObjectURL(new Blob([blobData]))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+async function runTask(flagRef, loadingMessage, task) {
+  flagRef.value = true
+  loading.open(loadingMessage)
+
+  try {
+    return await task()
+  } finally {
+    flagRef.value = false
+    loading.close()
+  }
+}
 
 function pickOnlyOne(key) {
-  // only one of amend/newDoc/deleteDoc
   form.amend = false
   form.newDoc = false
   form.deleteDoc = false
   form[key] = true
 }
 
-async function generateDocx() {
-  isGenerating.value = true
-  errorMessage.value = ''
-  try {
-    // change endpoint to your actual DCR route
-    const response = await axios.post('/dcr/generate', form, { responseType: 'blob' })
-    const url = window.URL.createObjectURL(new Blob([response.data]))
-    const link = document.createElement('a')
-    link.href = url
-    link.download = `DCR_${form.dcrNo || 'form'}.docx`
-    document.body.appendChild(link)
-    link.click()
-    link.remove()
-    window.URL.revokeObjectURL(url)
-  } catch (err) {
-    console.error(err)
-    errorMessage.value = 'Failed to generate document. Please try again.'
-  } finally {
-    isGenerating.value = false
+function resetFormState() {
+  const fresh = emptyForm()
+
+  Object.keys(fresh).forEach((key) => {
+    form[key] = fresh[key]
+  })
+
+  recordId.value = null
+  publishFileName.value = ''
+  showPublishRenameModal.value = false
+
+  const url = new URL(window.location.href)
+  url.searchParams.delete('record')
+  window.history.replaceState({}, '', url)
+}
+
+function applyDataToForm(data) {
+  Object.keys(form).forEach((k) => {
+    if (data?.[k] !== undefined) form[k] = data[k]
+  })
+
+  if (!publishFileName.value && (data?.dcrNo || form.dcrNo)) {
+    publishFileName.value = `DCR_${data?.dcrNo || form.dcrNo}`
   }
 }
+
+function getRecordIdFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const v = params.get('record')
+  return v ? Number(v) : null
+}
+
+async function loadRecord(id) {
+  await runTask(isLoadingRecord, 'Loading saved record...', async () => {
+    const res = await axios.get(`/dcr/records/${id}`)
+    recordId.value = id
+    applyDataToForm(res.data.data || {})
+
+    const fileShown = withDocx(currentFileLabel()) || `Record #${id}`
+    toast.success(`Loaded saved record: ${fileShown}`)
+  }).catch((err) => {
+    console.error(err)
+    toast.error('Failed to load saved record.')
+  })
+}
+
+async function upsertRecord(status = 'draft') {
+  if (!recordId.value) {
+    const res = await axios.post('/dcr/records', { ...form, status })
+    recordId.value = res.data.id
+
+    const url = new URL(window.location.href)
+    url.searchParams.set('record', recordId.value)
+    window.history.replaceState({}, '', url)
+  } else {
+    await axios.put(`/dcr/records/${recordId.value}`, { ...form, status })
+  }
+
+  if (!publishFileName.value) {
+    publishFileName.value = currentFileLabel()
+  }
+
+  return recordId.value
+}
+
+async function ensureDraftSaved() {
+  return await upsertRecord('draft')
+}
+
+async function saveDraft() {
+  await runTask(isSaving, 'Saving draft...', async () => {
+    const wasNew = !recordId.value
+    const id = await upsertRecord('draft')
+    const name = currentFileLabel()
+
+    toast.success(
+      wasNew
+        ? `Saved draft: ${name} (Record #${id})`
+        : `Updated draft: ${name} (Record #${id})`
+    )
+  }).catch((err) => {
+    console.error(err)
+    toast.error('Failed to save draft. Please try again.')
+  })
+}
+
+async function downloadDocx() {
+  await runTask(isGenerating, 'Generating document...', async () => {
+    await ensureDraftSaved()
+
+    const res = await axios.post('/dcr/generate', form, {
+      responseType: 'blob',
+    })
+
+    const name = withDocx(currentFileLabel()) || 'DCR.docx'
+    downloadBlob(res.data, name)
+    toast.success(`Downloaded: ${name}`)
+  }).catch((err) => {
+    console.error(err)
+    toast.error('Failed to download DOCX. Please try again.')
+  })
+}
+
+async function publishToUploads() {
+  if (!recordId.value) {
+    toast.error('Save the record first before publishing.')
+    return
+  }
+
+  await runTask(isPublishing, 'Publishing document...', async () => {
+    const id = await ensureDraftSaved()
+
+    const res = await axios.post(`/dcr/records/${id}/publish`, {
+      file_name: publishFileName.value?.trim() || null,
+      remarks: 'Published from DCR form',
+    })
+
+    const fn = res?.data?.file_name || withDocx(currentFileLabel()) || 'DOCX'
+    toast.success(`Published: ${fn} (Upload #${res.data.upload_id})`)
+
+    resetFormState()
+  }).catch((err) => {
+    console.error(err)
+    toast.error('Failed to publish to uploads. Please try again.')
+  })
+}
+
+function openPublishRenameModal() {
+  if (!recordId.value) {
+    toast.error('Save the record first before publishing.')
+    return
+  }
+
+  if (!publishFileName.value) {
+    publishFileName.value = suggestedPublishName.value
+  }
+
+  showPublishRenameModal.value = true
+}
+
+async function confirmPublish() {
+  showPublishRenameModal.value = false
+  await publishToUploads()
+}
+
+function closePublishModal() {
+  if (isPublishing.value) return
+  showPublishRenameModal.value = false
+}
+
+function onKeydown(e) {
+  if (e.key === 'Escape') {
+    closePublishModal()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+
+  const id = getRecordIdFromUrl()
+  if (id) {
+    loadRecord(id)
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
   <AdminLayout>
-    <div class="h-screen overflow-hidden bg-slate-100 font-sans">
-      <!-- Page Container -->
-      <div class="flex h-full flex-col gap-6 px-10 py-8">
-        <!-- Page Header (same pattern as OFI) -->
-        <div class="flex flex-wrap items-end justify-between gap-3 shrink-0">
+    <!-- Publish Rename Modal -->
+    <div
+      v-if="showPublishRenameModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      @click.self="closePublishModal"
+    >
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+        <div class="flex items-start justify-between gap-4">
           <div>
-            <h1 class="text-2xl font-bold tracking-tight text-slate-900">Create DCR Form</h1>
-            <p class="mt-1 text-[13px] text-slate-400">
-              Document Change Request · Leyte Normal University
-            </p>
+            <h3 class="text-lg font-bold text-slate-900">Rename file before publishing</h3>
+            <p class="mt-1 text-sm text-slate-500">Enter a filename (no need to add <b>.docx</b>).</p>
+          </div>
+
+          <button
+            class="rounded-lg px-3 py-1 text-sm text-slate-500 hover:bg-slate-100 disabled:opacity-60"
+            @click="closePublishModal"
+            :disabled="isPublishing"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="mt-4">
+          <label class="text-sm font-semibold text-slate-700">Filename</label>
+          <input
+            v-model="publishFileName"
+            type="text"
+            class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            placeholder="e.g. DCR_2026-001"
+          />
+          <p class="mt-2 text-xs text-slate-500">
+            Suggested: <span class="font-mono">{{ suggestedPublishName }}</span>
+          </p>
+        </div>
+
+        <div class="mt-6 flex justify-end gap-2">
+          <button
+            class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            @click="closePublishModal"
+            :disabled="isPublishing"
+          >
+            Cancel
+          </button>
+
+          <button
+            class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+            @click="confirmPublish"
+            :disabled="isPublishing"
+          >
+            <span v-if="!isPublishing">Publish</span>
+            <span v-else>Publishing...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="h-screen overflow-hidden bg-slate-100 font-sans">
+      <div class="flex h-full flex-col gap-6 px-10 py-8">
+        <!-- Page Header -->
+        <div class="flex flex-wrap items-end justify-between gap-3 shrink-0">
+          <div class="min-w-0">
+            <div class="flex items-center gap-3">
+              <h1 class="text-2xl font-bold tracking-tight text-slate-900 truncate">Create DCR Form</h1>
+
+              <span
+                v-if="recordId"
+                class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-semibold text-slate-600"
+              >
+                Record #{{ recordId }}
+              </span>
+            </div>
+
+            <p class="mt-1 text-[13px] text-slate-400">Document Change Request · Leyte Normal University</p>
           </div>
 
           <div class="flex flex-wrap items-center gap-2.5">
@@ -99,249 +359,263 @@ async function generateDocx() {
             </button>
 
             <button
-              class="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:bg-slate-400"
-              @click="generateDocx"
-              :disabled="isGenerating"
+              class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="saveDraft"
+              :disabled="isSaving"
             >
-              <svg
-                v-if="!isGenerating"
-                class="h-4 w-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-
-              <svg
-                v-else
-                class="h-4 w-4 animate-spin"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-              >
-                <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
-              </svg>
-
-              <span>{{ isGenerating ? 'Generating...' : 'Save & Download DOCX' }}</span>
+              <span v-if="!isSaving">{{ recordId ? 'Update Draft' : 'Save Draft' }}</span>
+              <span v-else>Saving...</span>
             </button>
 
-            <p v-if="errorMessage" class="m-0 text-xs text-red-500">
-              {{ errorMessage }}
-            </p>
+            <button
+              class="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:bg-slate-400"
+              @click="downloadDocx"
+              :disabled="isGenerating"
+              title="Auto-saves draft, then generates & downloads DOCX"
+            >
+              <span>{{ isGenerating ? 'Downloading...' : 'Download DOCX' }}</span>
+            </button>
+
+            <button
+              class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="openPublishRenameModal"
+              :disabled="isPublishing || !recordId"
+              title="Saves DOCX to uploads list (R-QMS-013)"
+            >
+              <span>{{ isPublishing ? 'Publishing...' : 'Publish' }}</span>
+            </button>
           </div>
         </div>
 
-        <!-- Form Card (same as OFI) -->
+        <!-- Form Card -->
         <div
           class="flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)] flex justify-center items-start"
         >
-          <!-- A4 Document -->
           <div
-            class="w-[210mm] border-2 border-black bg-white text-black flex flex-col"
+            class="w-[210mm] border-2 border-black bg-white text-black flex flex-col px-6 py-5"
             style="font-family: Arial, Helvetica, sans-serif;"
           >
             <!-- Header -->
-            <header class="flex items-center border-b-2 border-black px-2 py-[2px]">
-              <div class="mr-2 flex h-[0.57in] w-[0.57in]">
-                <img :src="logo" alt="LNU Logo" class="h-full w-full object-contain" />
+            <div class="flex items-start gap-4 border-b border-black pb-3">
+              <img :src="logo" alt="LNU Logo" class="h-[70px] w-[70px] object-contain" />
+              <div class="flex-1 text-center">
+                <h2 class="text-[12pt] font-bold leading-tight">LEYTE NORMAL UNIVERSITY</h2>
+                <h1 class="mt-1 text-[14pt] font-bold leading-tight">DOCUMENT CHANGE REQUEST</h1>
               </div>
-              <div class="flex flex-col">
-                <h2 class="mt-[19px] text-[12pt] font-bold leading-[1.1]">LEYTE NORMAL UNIVERSITY</h2>
-                <h1 class="text-[12pt] font-bold leading-[1.1]">DOCUMENT CHANGE REQUEST</h1>
+            </div>
+
+            <!-- Metadata -->
+            <div class="mt-4 grid grid-cols-2 gap-x-10 gap-y-3 text-[10pt]">
+              <div class="flex items-center">
+                <span class="w-[70px]">DATE</span>
+                <span class="mr-2">:</span>
+                <input v-model="form.date" type="date" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
               </div>
-            </header>
 
-            <!-- Meta (DATE, DCR No., TO/FOR, FROM) -->
-            <section class="border-b-2 border-black px-3 py-2.5">
-              <div class="grid grid-cols-[55%_45%] gap-y-2.5">
-                <div class="flex items-start pr-10">
-                  <div class="w-[50px]"><label class="text-[10pt]">DATE</label></div>
-                  <span class="mr-3 text-[10pt]">:</span>
-                  <input
-                    type="date"
-                    v-model="form.date"
-                    class="h-[14pt] flex-1 border-0 border-b border-black bg-transparent px-1 text-[10pt] outline-none"
-                  />
-                </div>
-
-                <div class="flex items-start">
-                  <div class="w-[80px]"><label class="text-[10pt]">DCR No.</label></div>
-                  <span class="mr-3 text-[10pt]">:</span>
-                  <input
-                    type="text"
-                    v-model="form.dcrNo"
-                    class="h-[14pt] w-[150px] flex-none border-0 border-b border-black bg-transparent px-1 text-[10pt] outline-none"
-                  />
-                </div>
-
-                <div class="flex items-start pr-10">
-                  <div class="w-[50px]"><label class="text-[10pt]">TO/FOR</label></div>
-                  <span class="mr-3 text-[10pt]">:</span>
-                  <input
-                    type="text"
-                    v-model="form.toFor"
-                    class="h-[14pt] flex-1 border-0 border-b border-black bg-transparent px-1 text-[10pt] outline-none"
-                  />
-                </div>
-
-                <div class="flex items-start">
-                  <div class="w-[80px]"><label class="text-[10pt]">FROM</label></div>
-                  <span class="mr-3 text-[10pt]">:</span>
-                  <input
-                    type="text"
-                    v-model="form.from"
-                    class="h-[14pt] w-[150px] flex-none border-0 border-b border-black bg-transparent px-1 text-[10pt] outline-none"
-                  />
-                </div>
+              <div class="flex items-center">
+                <span class="w-[90px]">DCR No.</span>
+                <span class="mr-2">:</span>
+                <input v-model="form.dcrNo" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
               </div>
-            </section>
 
-            <!-- Checkbox row (OFI style [✔]) -->
-            <section class="border-b-2 border-black px-3 py-2.5">
-              <div class="flex flex-wrap gap-6 text-[10pt]">
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none" @click="pickOnlyOne('amend')">
-                  <span class="w-[18px] text-center">{{ form.amend ? '[✔]' : '[ ]' }}</span>
+              <div class="col-span-2 flex items-center">
+                <span class="w-[70px]">TO/FOR</span>
+                <span class="mr-2">:</span>
+                <input v-model="form.toFor" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+              </div>
+
+              <div class="col-span-2 flex items-center">
+                <span class="w-[70px]">FROM</span>
+                <span class="mr-2">:</span>
+                <input v-model="form.from" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+              </div>
+            </div>
+
+            <!-- Document Type -->
+            <div class="mt-5 text-[10pt]">
+              <div class="flex flex-wrap gap-6">
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="form.amend"
+                    @change="pickOnlyOne('amend')"
+                    class="hidden"
+                  />
                   <span>Amend document</span>
+                  <span>{{ form.amend ? '[✔]' : '[ ]' }}</span>
                 </label>
 
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none" @click="pickOnlyOne('newDoc')">
-                  <span class="w-[18px] text-center">{{ form.newDoc ? '[✔]' : '[ ]' }}</span>
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="form.newDoc"
+                    @change="pickOnlyOne('newDoc')"
+                    class="hidden"
+                  />
                   <span>New document</span>
+                  <span>{{ form.newDoc ? '[✔]' : '[ ]' }}</span>
                 </label>
 
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none" @click="pickOnlyOne('deleteDoc')">
-                  <span class="w-[18px] text-center">{{ form.deleteDoc ? '[✔]' : '[ ]' }}</span>
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="form.deleteDoc"
+                    @change="pickOnlyOne('deleteDoc')"
+                    class="hidden"
+                  />
                   <span>Delete document</span>
+                  <span>{{ form.deleteDoc ? '[✔]' : '[ ]' }}</span>
                 </label>
               </div>
-            </section>
+            </div>
 
-            <!-- 1. DETAILS OF DOCUMENT -->
-            <section class="border-b-2 border-black px-3 py-2.5">
-              <h3 class="mb-2 text-[10pt] font-bold">1. DETAILS OF DOCUMENT</h3>
+            <!-- Section 1 -->
+            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+              <h3 class="mb-3 font-bold">1. DETAILS OF DOCUMENT</h3>
 
-              <div class="grid gap-y-2">
-                <div class="flex items-start">
-                  <div class="w-[110px] text-[10pt]">Document Number</div>
-                  <span class="mr-3 text-[10pt]">:</span>
-                  <input v-model="form.documentNumber" class="h-[14pt] flex-1 border-0 border-b border-black bg-transparent px-1 text-[10pt] outline-none" />
+              <div class="space-y-3">
+                <div class="flex items-center">
+                  <span class="w-[140px]">Document Number</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.documentNumber" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
                 </div>
 
-                <div class="flex items-start">
-                  <div class="w-[110px] text-[10pt]">Document Title</div>
-                  <span class="mr-3 text-[10pt]">:</span>
-                  <input v-model="form.documentTitle" class="h-[14pt] flex-1 border-0 border-b border-black bg-transparent px-1 text-[10pt] outline-none" />
+                <div class="flex items-center">
+                  <span class="w-[140px]">Document Title</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.documentTitle" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
                 </div>
 
-                <div class="flex items-start">
-                  <div class="w-[110px] text-[10pt]">Revision Status</div>
-                  <span class="mr-3 text-[10pt]">:</span>
-                  <input v-model="form.revisionStatus" class="h-[14pt] flex-1 border-0 border-b border-black bg-transparent px-1 text-[10pt] outline-none" />
+                <div class="flex items-center">
+                  <span class="w-[140px]">Revision Status</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.revisionStatus" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
                 </div>
 
-                <div class="text-[9pt] italic">Note: Please attach draft copy of the document.</div>
+                <p class="text-[9pt] italic">Note: Please attach draft copy of the document.</p>
               </div>
-            </section>
+            </div>
 
-            <!-- 2. CHANGES REQUESTED -->
-            <section class="border-b-2 border-black px-3 py-2.5">
-              <h3 class="mb-2 text-[10pt] font-bold">2. CHANGE(S) REQUESTED</h3>
-              <textarea v-model="form.changesRequested" class="h-[35mm] w-full resize-none border border-black p-2 text-[10pt] outline-none"></textarea>
+            <!-- Section 2 -->
+            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+              <h3 class="mb-3 font-bold">2. CHANGE(S) REQUESTED</h3>
+              <textarea
+                v-model="form.changesRequested"
+                rows="5"
+                class="w-full resize-none border border-black bg-transparent p-2 outline-none"
+              ></textarea>
 
-              <div class="mt-3 text-[10pt] font-bold">REASON FOR THE CHANGE</div>
-              <textarea v-model="form.reason" class="mt-2 h-[28mm] w-full resize-none border border-black p-2 text-[10pt] outline-none"></textarea>
+              <h3 class="mb-3 mt-4 font-bold">REASON FOR THE CHANGE</h3>
+              <textarea
+                v-model="form.reason"
+                rows="5"
+                class="w-full resize-none border border-black bg-transparent p-2 outline-none"
+              ></textarea>
 
-              <div class="mt-5 flex justify-between gap-10 text-center">
-                <div class="w-1/2">
-                  <input v-model="form.requestedBy" class="w-full border-0 border-b border-black bg-transparent text-[10pt] text-center outline-none" />
-                  <div class="mt-1 text-[9pt]">Requested by</div>
+              <div class="mt-4 grid grid-cols-2 gap-6">
+                <div class="flex flex-col">
+                  <input v-model="form.requestedBy" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                  <label class="mt-1 text-center text-[9pt]">Requested by</label>
                 </div>
-                <div class="w-1/2">
-                  <input v-model="form.deptUnitHead" class="w-full border-0 border-b border-black bg-transparent text-[10pt] text-center outline-none" />
-                  <div class="mt-1 text-[9pt]">Department/Unit Head</div>
+
+                <div class="flex flex-col">
+                  <input v-model="form.deptUnitHead" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                  <label class="mt-1 text-center text-[9pt]">Department/Unit Head</label>
                 </div>
               </div>
-            </section>
+            </div>
 
-            <!-- 3. IMR COMMENTS -->
-            <section class="border-b-2 border-black px-3 py-2.5">
-              <h3 class="mb-2 text-[10pt] font-bold">3. INTEGRATED MANAGEMENT REPRESENTATIVE’S COMMENTS</h3>
+            <!-- Section 3 -->
+            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+              <h3 class="mb-3 font-bold">3. INTEGRATED MANAGEMENT REPRESENTATIVE’S COMMENTS</h3>
 
-              <div class="flex items-center gap-10 text-[10pt] font-bold">
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none">
-                  <input type="radio" class="hidden" value="DENIED" v-model="form.requestDecision" />
-                  <span class="w-[18px] text-center">{{ form.requestDecision === 'DENIED' ? '[✔]' : '[ ]' }}</span>
+              <div class="flex flex-wrap items-center gap-6">
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input type="radio" v-model="form.requestDecision" value="DENIED" />
                   <span>Request Denied</span>
                 </label>
 
-                <label class="inline-flex items-center gap-2 cursor-pointer select-none">
-                  <input type="radio" class="hidden" value="ACCEPTED" v-model="form.requestDecision" />
-                  <span class="w-[18px] text-center">{{ form.requestDecision === 'ACCEPTED' ? '[✔]' : '[ ]' }}</span>
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input type="radio" v-model="form.requestDecision" value="ACCEPTED" />
                   <span>Request Accepted</span>
                 </label>
               </div>
 
-              <div class="mt-5 w-[80mm]">
-                <input v-model="form.imrSigDate" class="w-full border-0 border-b border-black bg-transparent text-[10pt] text-center outline-none" />
-                <div class="mt-1 text-center text-[9pt]">Signature/Date</div>
+              <div class="mt-4 flex items-center">
+                <span class="w-[120px]">Signature/Date</span>
+                <span class="mr-2">:</span>
+                <input v-model="form.imrSigDate" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
               </div>
-            </section>
+            </div>
 
-            <!-- 4. APPROVING AUTHORITY -->
-            <section class="border-b-2 border-black px-3 py-2.5">
-              <h3 class="mb-2 text-[10pt] font-bold">4. APPROVING AUTHORITY</h3>
+            <!-- Section 4 -->
+            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+              <h3 class="mb-3 font-bold">4. APPROVING AUTHORITY</h3>
 
-              <div class="flex items-end gap-10 text-center">
-                <div class="flex-1">
-                  <input v-model="form.approvingSigName" class="w-full border-0 border-b border-black bg-transparent text-[10pt] text-center outline-none" />
-                  <div class="mt-1 text-[9pt]">Signature Over Printed Name</div>
-                </div>
-                <div class="w-[45mm]">
-                  <input v-model="form.approvingDate" class="w-full border-0 border-b border-black bg-transparent text-[10pt] text-center outline-none" />
-                  <div class="mt-1 text-[9pt]">Date</div>
-                </div>
-              </div>
-            </section>
-
-            <!-- 5. DOCUMENT STATUS -->
-            <section class="px-3 py-2.5">
-              <h3 class="mb-2 text-[10pt] font-bold">5. DOCUMENT STATUS</h3>
-
-              <div class="grid gap-y-2 text-[10pt]">
-                <div class="flex items-start gap-2">
-                  <span class="w-[28px] font-bold">No.</span><span>:</span>
-                  <input v-model="form.statusNo" class="flex-1 border-0 border-b border-black bg-transparent px-1 outline-none" />
-                  <span class="w-[60px] font-bold">Version</span><span>:</span>
-                  <input v-model="form.statusVersion" class="w-[70px] border-0 border-b border-black bg-transparent px-1 outline-none" />
-                  <span class="w-[65px] font-bold">Revision</span><span>:</span>
-                  <input v-model="form.statusRevision" class="w-[70px] border-0 border-b border-black bg-transparent px-1 outline-none" />
+              <div class="grid grid-cols-2 gap-6">
+                <div class="flex flex-col">
+                  <input v-model="form.approvingSigName" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                  <label class="mt-1 text-center text-[9pt]">Signature Over Printed Name</label>
                 </div>
 
-                <div class="flex items-start gap-2">
-                  <span class="w-[105px] font-bold">Effectivity Date</span><span>:</span>
-                  <input v-model="form.effectivityDate" class="flex-1 border-0 border-b border-black bg-transparent px-1 outline-none" />
-                </div>
-
-                <div class="flex items-start gap-2">
-                  <span class="w-[140px] font-bold">Date Updated in IDS</span><span>:</span>
-                  <input v-model="form.idsDateUpdated" class="flex-1 border-0 border-b border-black bg-transparent px-1 outline-none" />
-                  <span class="w-[85px] font-bold">Updated by</span><span>:</span>
-                  <input v-model="form.updatedBy" class="flex-1 border-0 border-b border-black bg-transparent px-1 outline-none" />
+                <div class="flex flex-col">
+                  <input v-model="form.approvingDate" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                  <label class="mt-1 text-center text-[9pt]">Date</label>
                 </div>
               </div>
+            </div>
 
-              <div class="mt-3 border-t-2 border-black pt-1 text-right text-[9px]">
-                F-QMS-001 Rev. 1 (01-05-26)
+            <!-- Section 5 -->
+            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+              <h3 class="mb-3 font-bold">5. DOCUMENT STATUS</h3>
+
+              <div class="grid grid-cols-2 gap-x-10 gap-y-3">
+                <div class="flex items-center">
+                  <span class="w-[120px]">No.</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.statusNo" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="flex items-center">
+                  <span class="w-[120px]">Version</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.statusVersion" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="flex items-center">
+                  <span class="w-[120px]">Revision</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.statusRevision" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="flex items-center">
+                  <span class="w-[120px]">Effectivity Date</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.effectivityDate" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="col-span-2 flex items-center">
+                  <span class="w-[160px]">Date Updated in the IDS</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.idsDateUpdated" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="col-span-2 flex items-center">
+                  <span class="w-[120px]">Updated by</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.updatedBy" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
               </div>
-            </section>
+            </div>
+
+            <div class="mt-6 border-t border-black pt-2 text-[9pt]">
+              F-QMS-001 Rev. 1 (01-05-26)
+            </div>
           </div>
         </div>
       </div>
     </div>
   </AdminLayout>
 </template>
+
+<style scoped></style>

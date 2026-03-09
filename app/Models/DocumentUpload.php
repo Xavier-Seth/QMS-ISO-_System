@@ -12,6 +12,7 @@ class DocumentUpload extends Model
         'uploaded_by',
         'revision',
         'ofi_record_id',
+        'dcr_record_id',
         'status',
         'file_name',
         'file_path',
@@ -31,5 +32,10 @@ class DocumentUpload extends Model
     public function ofiRecord(): BelongsTo
     {
         return $this->belongsTo(OfiRecord::class, 'ofi_record_id');
+    }
+
+    public function dcrRecord(): BelongsTo
+    {
+        return $this->belongsTo(DcrRecord::class, 'dcr_record_id');
     }
 }

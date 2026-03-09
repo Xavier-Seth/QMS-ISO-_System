@@ -48,8 +48,8 @@ watch(
         <!-- Logo Section -->
         <div class="logo-section">
             <img
-                :src="`/images/LNU_logo.png`"
-                alt="LNU Logo"
+                :src="`/images/QMS_logo.png`"
+                alt="QMS Logo"
                 class="logo-img"
             />
             <div class="brand-text">
