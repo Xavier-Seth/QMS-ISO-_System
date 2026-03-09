@@ -9,11 +9,15 @@ const activeTab = ref("profile");
 </script>
 
 <template>
-    <AdminLayout
-        pageTitle="Settings"
-        pageSubtitle="Manage your account settings and preferences."
-    >
+    <AdminLayout>
         <div class="settings-page">
+            <!-- PAGE HEADER -->
+            <div class="settings-header">
+                <h1>Settings</h1>
+                <p>Manage your account settings and preferences.</p>
+            </div>
+
+            <!-- TABS -->
             <div class="settings-tabs">
                 <button
                     type="button"
@@ -54,8 +58,25 @@ const activeTab = ref("profile");
 
 <style scoped>
 .settings-page {
-    padding-top: 0;
+    padding: 8px 40px 40px 40px;
     background: transparent;
+}
+
+.settings-header {
+    margin-bottom: 10px;
+}
+
+.settings-header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+}
+
+.settings-header p {
+    margin: 4px 0 0;
+    font-size: 15px;
+    color: #64748b;
 }
 
 .settings-tabs {
