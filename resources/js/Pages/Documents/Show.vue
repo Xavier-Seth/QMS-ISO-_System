@@ -7,7 +7,9 @@ import { useToast } from '@/Composables/useToast'
 
 const props = defineProps({
   documentType: Object,
-  documents: Array,
+  documents: Object,
+  filters: Object,
+  stats: Object,
 })
 
 const loading = useLoadingOverlay()
@@ -15,8 +17,6 @@ const toast = useToast()
 
 /* ===============================
    Document rules (R-QMS vs F-QMS)
-   - R-QMS: typically no revision control
-   - F-QMS: revision + status (Active/Obsolete)
 ================================ */
 const requiresRevision = computed(() => {
   if (props.documentType && typeof props.documentType.requires_revision === 'boolean') {
@@ -28,35 +28,42 @@ const requiresRevision = computed(() => {
 })
 
 /* ===============================
-   Search + Filters
+   Search + Filters (server-side)
 ================================ */
-const search = ref('')
-const statusFilter = ref('All')
+const search = ref(props.filters?.q ?? '')
+const statusFilter = ref(props.filters?.status ?? 'All')
 
 watch(requiresRevision, (val) => {
   if (!val) statusFilter.value = 'All'
 })
 
-const filteredDocuments = computed(() => {
-  let docs = [...(props.documents || [])]
+function reloadDocuments(extra = {}) {
+  router.get(
+    `/documents/${props.documentType.id}`,
+    {
+      q: search.value || undefined,
+      status: requiresRevision.value ? statusFilter.value : undefined,
+      ...extra,
+    },
+    {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    }
+  )
+}
 
-  if (search.value) {
-    const keyword = search.value.toLowerCase()
-    docs = docs.filter((doc) => {
-      const fileHit = (doc.file_name || '').toLowerCase().includes(keyword)
-      const revHit = requiresRevision.value
-        ? (doc.revision || '').toLowerCase().includes(keyword)
-        : false
+let searchTimeout = null
 
-      return fileHit || revHit
-    })
-  }
+watch(search, () => {
+  clearTimeout(searchTimeout)
+  searchTimeout = setTimeout(() => {
+    reloadDocuments({ page: 1 })
+  }, 300)
+})
 
-  if (requiresRevision.value && statusFilter.value !== 'All') {
-    docs = docs.filter((doc) => doc.status === statusFilter.value)
-  }
-
-  return docs
+watch(statusFilter, () => {
+  reloadDocuments({ page: 1 })
 })
 
 /* ===============================
@@ -65,28 +72,60 @@ const filteredDocuments = computed(() => {
 const showUploadModal = ref(false)
 const uploading = ref(false)
 const uploadError = ref('')
+const fileInput = ref(null)
 
 const uploadForm = ref({
   files: [],
   revision: '',
 })
 
-function openUpload() {
+function resetUploadForm() {
   uploadError.value = ''
   uploadForm.value = {
     files: [],
     revision: '',
   }
+
+  if (fileInput.value) {
+    fileInput.value.value = ''
+  }
+}
+
+function openUpload() {
+  resetUploadForm()
   showUploadModal.value = true
 }
 
-function closeUpload() {
-  if (uploading.value) return
+function closeUpload(force = false) {
+  if (uploading.value && !force) return
+
   showUploadModal.value = false
+  resetUploadForm()
 }
 
 function onPickFile(e) {
   uploadForm.value.files = Array.from(e.target.files || [])
+}
+
+function removeFile(index) {
+  const updatedFiles = [...uploadForm.value.files]
+  updatedFiles.splice(index, 1)
+
+  uploadForm.value.files = updatedFiles
+
+  if (fileInput.value) {
+    const dt = new DataTransfer()
+
+    updatedFiles.forEach((file) => {
+      dt.items.add(file)
+    })
+
+    fileInput.value.files = dt.files
+
+    if (!updatedFiles.length) {
+      fileInput.value.value = ''
+    }
+  }
 }
 
 function submitUpload() {
@@ -136,9 +175,12 @@ function submitUpload() {
       toast.error(uploadError.value)
     },
     onSuccess: () => {
-      closeUpload()
+      const uploadedCount = uploadForm.value.files.length
+
+      closeUpload(true)
+
       toast.success(
-        uploadForm.value.files.length > 1
+        uploadedCount > 1
           ? 'Files uploaded successfully.'
           : 'File uploaded successfully.'
       )
@@ -163,13 +205,13 @@ function statusClass(status) {
   return 'bg-rose-50 text-rose-700 ring-rose-200'
 }
 
-const activeCount = computed(() =>
-  (props.documents || []).filter((d) => d.status === 'Active').length
-)
-
-const obsoleteCount = computed(() =>
-  (props.documents || []).filter((d) => d.status === 'Obsolete').length
-)
+function formatFileSize(bytes) {
+  if (!bytes && bytes !== 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
+}
 
 const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 </script>
@@ -177,95 +219,96 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 <template>
   <AdminLayout>
     <div class="space-y-6 p-6">
-      <!-- ================= HEADER ================= -->
+      <!-- HEADER -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-6">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-4 sm:px-6">
+          <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <!-- LEFT -->
-            <div class="min-w-0">
-              <div class="flex flex-wrap items-center gap-3">
-                <span class="rounded-md bg-white/10 px-3 py-1 text-xs font-semibold text-white">
+            <div class="min-w-0 flex-1 xl:max-w-[40%]">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-white">
                   {{ documentType?.code }}
                 </span>
 
-                <span class="rounded-full bg-indigo-500/20 px-2 py-1 text-xs text-indigo-200 ring-1 ring-indigo-400/30">
+                <span class="rounded-full bg-indigo-500/20 px-2.5 py-1 text-[11px] font-medium text-indigo-100 ring-1 ring-indigo-400/30">
                   {{ documentType?.file_type }}
                 </span>
 
                 <span
                   v-if="requiresRevision"
-                  class="rounded-full bg-emerald-500/15 px-2 py-1 text-xs text-emerald-200 ring-1 ring-emerald-400/30"
+                  class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-100 ring-1 ring-emerald-400/30"
                   title="This document type uses revision control"
                 >
                   Revision Controlled
                 </span>
               </div>
 
-              <h1 class="mt-3 truncate text-2xl font-semibold text-white">
+              <h1 class="mt-2 text-xl font-semibold tracking-tight text-white sm:text-[22px]">
                 {{ documentType?.name }}
               </h1>
 
-              <p class="mt-1 text-sm text-slate-300">
+              <p class="mt-1 max-w-xl text-sm leading-6 text-slate-300">
                 View all uploaded files under this document code.
               </p>
             </div>
 
-            <!-- MIDDLE -->
-            <div class="w-full lg:w-[520px]">
-              <div class="grid grid-cols-1 gap-2 sm:grid-cols-12">
-                <div :class="requiresRevision ? 'sm:col-span-8' : 'sm:col-span-12'">
-                  <div class="relative">
-                    <input
-                      v-model="search"
-                      type="text"
-                      :placeholder="requiresRevision ? 'Search file or revision...' : 'Search file...'"
-                      class="w-full rounded-xl border border-white/15 bg-white/10 px-4 py-2.5 pr-10 text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-white/20"
-                    />
-                    <div class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-200">
-                      🔍
+            <!-- RIGHT -->
+            <div class="w-full xl:w-auto xl:min-w-[620px]">
+              <div class="flex flex-col gap-2">
+                <div class="grid grid-cols-1 gap-2 md:grid-cols-12">
+                  <div :class="requiresRevision ? 'md:col-span-8' : 'md:col-span-12'">
+                    <div class="relative">
+                      <input
+                        v-model="search"
+                        type="text"
+                        :placeholder="requiresRevision ? 'Search file or revision...' : 'Search file...'"
+                        class="w-full rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 pr-10 text-sm text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-white/20"
+                      />
+                      <div class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-200">
+                        🔍
+                      </div>
                     </div>
+                  </div>
+
+                  <div v-if="requiresRevision" class="md:col-span-4">
+                    <select
+                      v-model="statusFilter"
+                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                    >
+                      <option class="text-slate-900" value="All">All</option>
+                      <option class="text-slate-900" value="Active">Active</option>
+                      <option class="text-slate-900" value="Obsolete">Obsolete</option>
+                    </select>
                   </div>
                 </div>
 
-                <div v-if="requiresRevision" class="sm:col-span-4">
-                  <select
-                    v-model="statusFilter"
-                    class="w-full rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                <div class="flex flex-wrap items-center justify-end gap-2">
+                  <Link
+                    href="/documents"
+                    class="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white transition hover:bg-white/15"
                   >
-                    <option class="text-slate-900" value="All">All</option>
-                    <option class="text-slate-900" value="Active">Active</option>
-                    <option class="text-slate-900" value="Obsolete">Obsolete</option>
-                  </select>
+                    Back
+                  </Link>
+
+                  <button
+                    type="button"
+                    @click="openUpload"
+                    class="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-indigo-400"
+                  >
+                    {{ requiresRevision ? 'Upload New Revision' : 'Upload Files' }}
+                  </button>
                 </div>
               </div>
-            </div>
-
-            <!-- RIGHT -->
-            <div class="flex items-center justify-end gap-2">
-              <Link
-                href="/documents"
-                class="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white hover:bg-white/15"
-              >
-                Back
-              </Link>
-
-              <button
-                type="button"
-                @click="openUpload"
-                class="rounded-lg bg-indigo-500 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-400"
-              >
-                {{ requiresRevision ? 'Upload New Revision' : 'Upload Files' }}
-              </button>
             </div>
           </div>
         </div>
 
         <!-- Stats -->
-        <div class="flex flex-wrap gap-6 border-t border-slate-200 px-6 py-4 text-sm text-slate-600">
+        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-200 px-5 py-3 text-sm text-slate-600 sm:px-6">
           <div>
             Total:
             <span class="font-semibold text-slate-900">
-              {{ (documents || []).length }}
+              {{ stats?.total ?? 0 }}
             </span>
           </div>
 
@@ -273,14 +316,14 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
             <div>
               Active:
               <span class="font-semibold text-emerald-600">
-                {{ activeCount }}
+                {{ stats?.active ?? 0 }}
               </span>
             </div>
 
             <div>
               Obsolete:
               <span class="font-semibold text-rose-600">
-                {{ obsoleteCount }}
+                {{ stats?.obsolete ?? 0 }}
               </span>
             </div>
           </template>
@@ -295,7 +338,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 
       <!-- EMPTY -->
       <div
-        v-if="!(documents || []).length"
+        v-if="!(documents?.data || []).length"
         class="rounded-2xl border border-slate-200 bg-white p-10 text-center"
       >
         <div class="text-lg font-semibold text-slate-900">No uploads yet</div>
@@ -314,7 +357,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 
       <!-- TABLE -->
       <div
-        v-if="(documents || []).length"
+        v-if="(documents?.data || []).length"
         class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
       >
         <div class="overflow-x-auto">
@@ -336,7 +379,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 
             <tbody>
               <tr
-                v-for="doc in filteredDocuments"
+                v-for="doc in documents.data"
                 :key="doc.id"
                 class="border-b border-slate-100 transition hover:bg-slate-50"
               >
@@ -390,13 +433,52 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 </td>
               </tr>
 
-              <tr v-if="!filteredDocuments.length">
+              <tr v-if="!documents.data.length">
                 <td :colspan="tableColspan" class="px-5 py-6 text-center text-sm text-slate-500">
                   No matching files found.
                 </td>
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Pagination -->
+        <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div class="text-sm text-slate-600">
+            Showing
+            <span class="font-medium text-slate-900">{{ documents.from ?? 0 }}</span>
+            to
+            <span class="font-medium text-slate-900">{{ documents.to ?? 0 }}</span>
+            of
+            <span class="font-medium text-slate-900">{{ documents.total ?? 0 }}</span>
+            files
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <template v-for="link in documents.links" :key="link.label">
+              <Link
+                v-if="link.url"
+                :href="link.url"
+                preserve-scroll
+                preserve-state
+                class="inline-flex items-center rounded-lg border px-3 py-1.5 text-sm transition"
+                :class="
+                  link.active
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                "
+              >
+                <span v-html="link.label" />
+              </Link>
+
+              <span
+                v-else
+                class="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-400"
+              >
+                <span v-html="link.label" />
+              </span>
+            </template>
+          </div>
         </div>
 
         <div class="bg-slate-50 px-6 py-3 text-xs text-slate-500">
@@ -412,7 +494,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 
       <!-- UPLOAD MODAL -->
       <div v-if="showUploadModal" class="fixed inset-0 z-[999]">
-        <div class="absolute inset-0 bg-slate-900/50" @click="closeUpload"></div>
+        <div class="absolute inset-0 bg-slate-900/50" @click="closeUpload()"></div>
 
         <div class="absolute inset-0 flex items-center justify-center p-4">
           <div class="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
@@ -426,7 +508,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 
               <button
                 type="button"
-                @click="closeUpload"
+                @click="closeUpload()"
                 class="text-slate-200 hover:text-white"
                 :disabled="uploading"
                 aria-label="Close"
@@ -446,6 +528,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               <div>
                 <label class="text-xs font-medium text-slate-600">Select File</label>
                 <input
+                  ref="fileInput"
                   type="file"
                   @change="onPickFile"
                   :multiple="!requiresRevision"
@@ -460,6 +543,55 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                     Allowed: PDF, Word, Excel, images. You may select multiple files.
                   </template>
                 </p>
+
+                <div v-if="uploadForm.files.length" class="mt-4">
+                  <div class="mb-2 flex items-center justify-between">
+                    <div class="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                      Selected Files
+                    </div>
+                    <div class="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
+                      {{ uploadForm.files.length }}
+                      {{ uploadForm.files.length === 1 ? 'file' : 'files' }}
+                    </div>
+                  </div>
+
+                  <div class="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50">
+                    <ul class="divide-y divide-slate-200">
+                      <li
+                        v-for="(file, index) in uploadForm.files"
+                        :key="`${file.name}-${file.size}-${index}`"
+                        class="flex items-start gap-3 px-3 py-3"
+                      >
+                        <div
+                          class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-indigo-50 text-sm font-semibold text-indigo-600"
+                        >
+                          {{ file.name.split('.').pop()?.toUpperCase()?.slice(0, 4) || 'FILE' }}
+                        </div>
+
+                        <div class="min-w-0 flex-1">
+                          <p class="truncate text-sm font-medium text-slate-800" :title="file.name">
+                            {{ file.name }}
+                          </p>
+                          <p class="mt-0.5 text-xs text-slate-500">
+                            {{ formatFileSize(file.size) }}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          @click="removeFile(index)"
+                          class="shrink-0 rounded-lg border border-rose-200 bg-white px-2.5 py-1.5 text-xs font-medium text-rose-600 transition hover:bg-rose-50"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    </ul>
+                  </div>
+
+                  <p class="mt-2 text-xs text-slate-500">
+                    Review the selected files before uploading. The list will scroll if many files are selected.
+                  </p>
+                </div>
               </div>
 
               <div v-if="requiresRevision">
@@ -476,7 +608,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
             <div class="flex items-center justify-between border-t border-slate-200 bg-slate-50 px-6 py-4">
               <button
                 type="button"
-                @click="closeUpload"
+                @click="closeUpload()"
                 :disabled="uploading"
                 class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               >

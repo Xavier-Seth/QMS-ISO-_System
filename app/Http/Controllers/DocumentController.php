@@ -101,27 +101,58 @@ class DocumentController extends Controller
     }
 
     // Show documents under a document type
-    public function show(DocumentType $documentType)
+    public function show(Request $request, DocumentType $documentType)
     {
-        $documents = DocumentUpload::with('uploader')
-            ->where('document_type_id', $documentType->id)
+        $q = trim((string) $request->get('q', ''));
+        $status = (string) $request->get('status', 'All');
+
+        $requiresRevision = isset($documentType->requires_revision)
+            ? (bool) $documentType->requires_revision
+            : str_starts_with(strtoupper($documentType->code), 'F-QMS');
+
+        $baseQuery = DocumentUpload::query()
+            ->with('uploader')
+            ->where('document_type_id', $documentType->id);
+
+        // Overall stats (not affected by pagination)
+        $totalCount = (clone $baseQuery)->count();
+        $activeCount = (clone $baseQuery)->where('status', 'Active')->count();
+        $obsoleteCount = (clone $baseQuery)->where('status', 'Obsolete')->count();
+
+        // Filtered/paginated list
+        $documentsQuery = DocumentUpload::query()
+            ->with('uploader')
+            ->where('document_type_id', $documentType->id);
+
+        if ($q !== '') {
+            $documentsQuery->where(function ($query) use ($q, $requiresRevision) {
+                $query->where('file_name', 'like', "%{$q}%");
+
+                if ($requiresRevision) {
+                    $query->orWhere('revision', 'like', "%{$q}%");
+                }
+            });
+        }
+
+        if ($requiresRevision && $status !== 'All') {
+            $documentsQuery->where('status', $status);
+        }
+
+        $documents = $documentsQuery
             ->latest()
-            ->get()
-            ->map(fn($d) => [
+            ->paginate(10)
+            ->through(fn($d) => [
                 'id' => $d->id,
                 'file_name' => $d->file_name,
                 'revision' => $d->revision,
                 'status' => $d->status,
                 'uploaded_by_name' => $d->uploader?->name ?? '—',
                 'created_at' => $d->created_at,
-
-                // ✅ ADD THIS so Show.vue can display an Edit button for OFI-based uploads
                 'ofi_record_id' => $d->ofi_record_id,
-
-                // ✅ Use preview & download routes
                 'preview_url' => route('documents.uploads.preview', $d->id),
                 'download_url' => route('documents.uploads.download', $d->id),
-            ]);
+            ])
+            ->withQueryString();
 
         return Inertia::render('Documents/Show', [
             'documentType' => [
@@ -129,11 +160,20 @@ class DocumentController extends Controller
                 'code' => $documentType->code,
                 'name' => $documentType->title,
                 'file_type' => $documentType->storage,
+                'requires_revision' => $requiresRevision,
             ],
             'documents' => $documents,
+            'filters' => [
+                'q' => $q,
+                'status' => $status,
+            ],
+            'stats' => [
+                'total' => $totalCount,
+                'active' => $activeCount,
+                'obsolete' => $obsoleteCount,
+            ],
         ]);
     }
-
     // Upload file
     public function upload(Request $request, DocumentType $documentType)
     {
