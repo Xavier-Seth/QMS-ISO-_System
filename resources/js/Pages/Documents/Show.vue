@@ -254,10 +254,10 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
     <div class="space-y-6 p-6">
       <!-- HEADER -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-4 sm:px-6">
-          <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+        <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-5 sm:px-6">
+          <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <!-- LEFT -->
-            <div class="min-w-0 flex-1 xl:max-w-[38%]">
+            <div class="min-w-0 flex-1 xl:max-w-[42%]">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-white">
                   {{ documentType?.code }}
@@ -270,9 +270,16 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 >
                   Revision Controlled
                 </span>
+
+                <span
+                  v-else
+                  class="rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-medium text-slate-200 ring-1 ring-white/10"
+                >
+                  Record Type
+                </span>
               </div>
 
-              <h1 class="mt-2 text-xl font-semibold tracking-tight text-white sm:text-[22px]">
+              <h1 class="mt-3 text-xl font-semibold tracking-tight text-white sm:text-[22px]">
                 {{ documentType?.name }}
               </h1>
 
@@ -282,17 +289,17 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
             </div>
 
             <!-- RIGHT -->
-            <div class="w-full xl:w-auto xl:min-w-[760px]">
-              <div class="flex flex-col gap-3">
-                <!-- Row 1 -->
-                <div class="grid grid-cols-1 gap-2 md:grid-cols-12">
-                  <div :class="requiresRevision ? 'md:col-span-5' : 'md:col-span-6'">
+            <div class="w-full xl:max-w-[720px]">
+              <div class="space-y-3">
+                <!-- Main toolbar -->
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
+                  <div :class="requiresRevision ? 'md:col-span-6' : 'md:col-span-7'">
                     <div class="relative">
                       <input
                         v-model="search"
                         type="text"
                         :placeholder="searchPlaceholder"
-                        class="w-full rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 pr-10 text-sm text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-white/20"
+                        class="w-full rounded-lg border border-white/15 bg-white/10 px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-white/20"
                       />
                       <div class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-200">
                         🔍
@@ -303,21 +310,33 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                   <div class="md:col-span-3">
                     <select
                       v-model="sort"
-                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                     >
                       <option class="text-slate-900" value="latest">Newest First</option>
                       <option class="text-slate-900" value="oldest">Oldest First</option>
                       <option class="text-slate-900" value="name_asc">File Name (A-Z)</option>
                       <option class="text-slate-900" value="name_desc">File Name (Z-A)</option>
-                      <option class="text-slate-900" value="revision_asc">Revision (A-Z)</option>
-                      <option class="text-slate-900" value="revision_desc">Revision (Z-A)</option>
+                      <option
+                        v-if="requiresRevision"
+                        class="text-slate-900"
+                        value="revision_asc"
+                      >
+                        Revision (A-Z)
+                      </option>
+                      <option
+                        v-if="requiresRevision"
+                        class="text-slate-900"
+                        value="revision_desc"
+                      >
+                        Revision (Z-A)
+                      </option>
                     </select>
                   </div>
 
-                  <div v-if="requiresRevision" class="md:col-span-4">
+                  <div v-if="requiresRevision" class="md:col-span-3">
                     <select
                       v-model="statusFilter"
-                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                     >
                       <option class="text-slate-900" value="All">All Status</option>
                       <option class="text-slate-900" value="Active">Active</option>
@@ -325,15 +344,17 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                     </select>
                   </div>
 
-                  <div v-else class="md:col-span-3">
-                    <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
-                      Record Type
+                  <div v-else class="md:col-span-2">
+                    <div
+                      class="flex h-full items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-300"
+                    >
+                      Records
                     </div>
                   </div>
                 </div>
 
-                <!-- Row 2 -->
-                <div class="grid grid-cols-1 gap-2 md:grid-cols-12">
+                <!-- Secondary filters -->
+                <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
                   <div class="md:col-span-4">
                     <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-300">
                       From Date
@@ -341,7 +362,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                     <input
                       v-model="dateFrom"
                       type="date"
-                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                     />
                   </div>
 
@@ -352,42 +373,32 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                     <input
                       v-model="dateTo"
                       type="date"
-                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                     />
                   </div>
 
                   <div class="md:col-span-4">
-                    <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-300">
-                      Per Page
-                    </label>
-                    <select
-                      v-model="perPage"
-                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
-                    >
-                      <option class="text-slate-900" value="10">10 per page</option>
-                      <option class="text-slate-900" value="25">25 per page</option>
-                      <option class="text-slate-900" value="50">50 per page</option>
-                      <option class="text-slate-900" value="100">100 per page</option>
-                    </select>
+                    <div class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-transparent">
+                      Actions
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-end gap-2">
+                      <Link
+                        href="/documents"
+                        class="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white transition hover:bg-white/15"
+                      >
+                        Back
+                      </Link>
+
+                      <button
+                        type="button"
+                        @click="openUpload"
+                        class="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-3.5 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-400"
+                      >
+                        {{ requiresRevision ? 'Upload New Revision' : 'Upload Files' }}
+                      </button>
+                    </div>
                   </div>
-                </div>
-
-                <!-- Row 3 -->
-                <div class="flex flex-wrap items-center justify-end gap-2">
-                  <Link
-                    href="/documents"
-                    class="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white transition hover:bg-white/15"
-                  >
-                    Back
-                  </Link>
-
-                  <button
-                    type="button"
-                    @click="openUpload"
-                    class="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-3.5 py-2 text-sm font-medium text-white transition hover:bg-indigo-400"
-                  >
-                    {{ requiresRevision ? 'Upload New Revision' : 'Upload Files' }}
-                  </button>
                 </div>
               </div>
             </div>
@@ -452,7 +463,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
         class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
       >
         <div class="overflow-x-auto">
-          <table class="min-w-full text-sm">
+          <table class="min-w-full table-fixed text-sm">
             <thead class="border-b border-slate-200 bg-slate-50">
               <tr class="text-left">
                 <th v-if="requiresRevision" class="px-5 py-3 font-semibold text-slate-700">
@@ -479,7 +490,9 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 </td>
 
                 <td class="px-5 py-4 text-slate-800">
-                  {{ doc.file_name }}
+                  <div class="max-w-[250px] truncate overflow-hidden whitespace-nowrap" :title="doc.file_name">
+                    {{ doc.file_name }}
+                  </div>
                 </td>
 
                 <td v-if="requiresRevision" class="px-5 py-4">
@@ -543,15 +556,30 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
         </div>
 
         <!-- Pagination -->
-        <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-between">
-          <div class="text-sm text-slate-600">
-            Showing
-            <span class="font-medium text-slate-900">{{ documents.from ?? 0 }}</span>
-            to
-            <span class="font-medium text-slate-900">{{ documents.to ?? 0 }}</span>
-            of
-            <span class="font-medium text-slate-900">{{ documents.total ?? 0 }}</span>
-            files
+        <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <div class="text-sm text-slate-600">
+              Showing
+              <span class="font-medium text-slate-900">{{ documents.from ?? 0 }}</span>
+              to
+              <span class="font-medium text-slate-900">{{ documents.to ?? 0 }}</span>
+              of
+              <span class="font-medium text-slate-900">{{ documents.total ?? 0 }}</span>
+              files
+            </div>
+
+            <div class="flex items-center gap-2">
+              <label class="text-sm text-slate-600">Per page</label>
+              <select
+                v-model="perPage"
+                class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
+            </div>
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
