@@ -415,6 +415,15 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                     Edit
                   </Link>
 
+                  <Link
+                    v-else-if="!requiresRevision && doc.dcr_record_id"
+                    :href="`/dcr?record=${doc.dcr_record_id}`"
+                    class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white hover:bg-indigo-500"
+                    title="Edit this DCR record"
+                  >
+                    Edit
+                  </Link>
+
                   <a
                     :href="doc.preview_url || doc.file_url"
                     target="_blank"

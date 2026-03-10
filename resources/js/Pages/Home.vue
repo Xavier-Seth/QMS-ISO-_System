@@ -11,8 +11,7 @@ import lnuLogo from '../images/LNU_logo.png'
         <!-- Logo + Title -->
         <div class="flex flex-col md:flex-row items-center justify-center gap-6 md:gap-8">
           <img
-            :src="lnuLogo"
-            alt="LNU Logo"
+            :src="'/images/QMS_Logo.png'" alt="Logo"
             class="w-28 h-28 md:w-36 md:h-36 object-contain shrink-0"
           />
 

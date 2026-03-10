@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
+use App\Services\DCRFormGenerator;
 use App\Services\OFIFormGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
@@ -69,7 +70,7 @@ class DocumentController extends Controller
 
         $types = $query->get();
 
-        $documentTypes = $types->map(function ($t) {
+        $documentTypes = $types->map(function (DocumentType $t) {
             return [
                 'id' => $t->id,
                 'code' => $t->code,
@@ -104,7 +105,7 @@ class DocumentController extends Controller
         $isRevisionControlled = $this->isRevisionControlled($documentType);
 
         $query = DocumentUpload::query()
-            ->with(['uploader', 'ofiRecord'])
+            ->with(['uploader', 'ofiRecord', 'dcrRecord'])
             ->where('document_type_id', $documentType->id);
 
         if ($q !== '') {
@@ -131,6 +132,7 @@ class DocumentController extends Controller
                 'uploaded_by_name' => $d->uploader?->name ?? '—',
                 'created_at' => $d->created_at,
                 'ofi_record_id' => $d->ofi_record_id,
+                'dcr_record_id' => $d->dcr_record_id,
                 'preview_url' => route('documents.uploads.preview', $d->id),
                 'download_url' => route('documents.uploads.download', $d->id),
                 'file_url' => $d->file_path ? Storage::url($d->file_path) : null,
@@ -225,6 +227,10 @@ class DocumentController extends Controller
             return $this->serveLatestOfiDocxInline($upload);
         }
 
+        if ($upload->dcr_record_id && $upload->dcrRecord) {
+            return $this->serveLatestDcrDocxInline($upload);
+        }
+
         $disk = Storage::disk('public');
 
         abort_unless($upload->file_path && $disk->exists($upload->file_path), 404);
@@ -242,6 +248,10 @@ class DocumentController extends Controller
     {
         if ($upload->ofi_record_id && $upload->ofiRecord) {
             return $this->downloadLatestOfiDocx($upload);
+        }
+
+        if ($upload->dcr_record_id && $upload->dcrRecord) {
+            return $this->downloadLatestDcrDocx($upload);
         }
 
         $disk = Storage::disk('public');
@@ -311,6 +321,57 @@ class DocumentController extends Controller
 
         $generator = new OFIFormGenerator($templatePath);
         $generator->generate($upload->ofiRecord->data ?? [], $outputPath);
+
+        return [$outputPath, $fileName];
+    }
+
+    private function downloadLatestDcrDocx(DocumentUpload $upload)
+    {
+        [$outputPath, $fileName] = $this->generateLatestDcrTempFile($upload);
+
+        return response()->download($outputPath, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT . '; filename="' . addslashes($fileName) . '"',
+        ])->deleteFileAfterSend(true);
+    }
+
+    private function serveLatestDcrDocxInline(DocumentUpload $upload)
+    {
+        [$outputPath, $fileName] = $this->generateLatestDcrTempFile($upload);
+
+        return response()->file($outputPath, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($fileName) . '"',
+        ])->deleteFileAfterSend(true);
+    }
+
+    private function generateLatestDcrTempFile(DocumentUpload $upload): array
+    {
+        $upload->loadMissing('dcrRecord');
+
+        abort_unless($upload->dcrRecord, 404, 'Linked DCR record not found.');
+
+        $templatePath = base_path('templates/F-QMS-001 _template.docx');
+        abort_unless(file_exists($templatePath), 500, 'DCR template file not found.');
+
+        $tmpDir = storage_path('app/dcr_forms_tmp');
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0755, true);
+        }
+
+        $baseName = pathinfo($upload->file_name ?: 'DCR_record.docx', PATHINFO_FILENAME);
+        $safeBaseName = preg_replace('/[^A-Za-z0-9 _\-\(\)]/', '', $baseName);
+        $safeBaseName = trim(preg_replace('/\s+/', ' ', $safeBaseName));
+
+        if ($safeBaseName === '') {
+            $safeBaseName = 'DCR_record';
+        }
+
+        $fileName = $safeBaseName . '.docx';
+        $outputPath = $tmpDir . '/' . uniqid('dcr_', true) . '_' . $fileName;
+
+        $generator = new DCRFormGenerator($templatePath);
+        $generator->generate($upload->dcrRecord->data ?? [], $outputPath);
 
         return [$outputPath, $fileName];
     }

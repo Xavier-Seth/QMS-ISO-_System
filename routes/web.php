@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\OFIController;
 use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\DCRController;
+use App\Http\Controllers\DcrRecordController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\UsersController;
 use App\Http\Controllers\SettingsController;
@@ -43,7 +44,6 @@ Route::middleware('auth')->group(function () {
     Route::get('/ofi/records/{ofiRecord}', [OfiRecordController::class, 'show'])->name('ofi.records.show');
     Route::put('/ofi/records/{ofiRecord}', [OfiRecordController::class, 'update'])->name('ofi.records.update');
     Route::get('/ofi/records/{ofiRecord}/download', [OfiRecordController::class, 'download'])->name('ofi.records.download');
-
     Route::post('/ofi/records/{ofiRecord}/publish', [OfiRecordController::class, 'publish'])
         ->name('ofi.records.publish');
 
@@ -51,6 +51,13 @@ Route::middleware('auth')->group(function () {
     // DCR
     // =========================
     Route::post('/dcr/generate', [DCRController::class, 'generate'])->name('dcr.generate');
+
+    Route::post('/dcr/records', [DcrRecordController::class, 'store'])->name('dcr.records.store');
+    Route::get('/dcr/records/{dcrRecord}', [DcrRecordController::class, 'show'])->name('dcr.records.show');
+    Route::put('/dcr/records/{dcrRecord}', [DcrRecordController::class, 'update'])->name('dcr.records.update');
+    Route::get('/dcr/records/{dcrRecord}/download', [DcrRecordController::class, 'download'])->name('dcr.records.download');
+    Route::post('/dcr/records/{dcrRecord}/publish', [DcrRecordController::class, 'publish'])
+        ->name('dcr.records.publish');
 
     // =========================
     // Documents (Masterlist)
