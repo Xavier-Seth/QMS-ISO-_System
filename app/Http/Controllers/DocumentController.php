@@ -5,22 +5,23 @@ namespace App\Http\Controllers;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
+use App\Services\DCRFormGenerator;
+use App\Services\OFIFormGenerator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
-use Illuminate\Support\Facades\File;
 
 class DocumentController extends Controller
 {
     public function index(Request $request)
     {
         $q = trim((string) $request->get('q', ''));
-        $seriesCode = $request->get('series', 'All'); // <-- NEW (replaces fileType/hasUploads)
+        $seriesCode = $request->get('series', 'All');
         $sort = $request->get('sort', 'code_asc');
         $view = $request->get('view', 'group');
 
-        // ✅ Series dropdown options (exclude MANUAL)
         $seriesOptions = DocumentSeries::query()
             ->where('code_prefix', '!=', 'MANUAL')
             ->orderBy('code_prefix')
@@ -35,23 +36,20 @@ class DocumentController extends Controller
         $query = DocumentType::query()
             ->with('series:id,code_prefix,name')
             ->withCount('uploads')
-            ->withMax('uploads', 'created_at'); // uploads_max_created_at
+            ->withMax('uploads', 'created_at');
 
-        // ✅ Filter by selected series (R-QMS / F-QMS / IPCR)
         if ($seriesCode !== 'All') {
             $selected = DocumentSeries::where('code_prefix', $seriesCode)->first();
+
             if ($selected) {
                 $query->where('series_id', $selected->id);
             } else {
-                // if someone passes an invalid series, show nothing
                 $query->whereRaw('1=0');
             }
         } else {
-            // If "All", still exclude MANUAL results
             $query->whereHas('series', fn($qq) => $qq->where('code_prefix', '!=', 'MANUAL'));
         }
 
-        // ✅ Search
         if ($q !== '') {
             $query->where(function ($qq) use ($q) {
                 $qq->where('code', 'like', "%{$q}%")
@@ -60,7 +58,6 @@ class DocumentController extends Controller
             });
         }
 
-        // ✅ Sorting
         if ($sort === 'name_asc') {
             $query->orderBy('title');
         } elseif ($sort === 'uploads_desc') {
@@ -73,12 +70,13 @@ class DocumentController extends Controller
 
         $types = $query->get();
 
-        $documentTypes = $types->map(function ($t) {
+        $documentTypes = $types->map(function (DocumentType $t) {
             return [
                 'id' => $t->id,
                 'code' => $t->code,
                 'name' => $t->title,
-                'file_type' => $t->storage, // keep if you still want to display it somewhere
+                'file_type' => $t->storage,
+                'requires_revision' => $this->isRevisionControlled($t),
                 'documents_count' => (int) $t->uploads_count,
                 'latest_upload_at' => $t->uploads_max_created_at,
                 'series' => [
@@ -90,34 +88,68 @@ class DocumentController extends Controller
 
         return Inertia::render('Documents/Index', [
             'documentTypes' => $documentTypes,
-            'seriesOptions' => $seriesOptions, // ✅ NEW
+            'seriesOptions' => $seriesOptions,
             'filters' => [
                 'q' => $q,
-                'series' => $seriesCode, // ✅ NEW
+                'series' => $seriesCode,
                 'sort' => $sort,
                 'view' => $view,
             ],
         ]);
     }
-    // Show documents under a document type
-    public function show(DocumentType $documentType)
+
+    public function show(Request $request, DocumentType $documentType)
     {
-        $documents = DocumentUpload::with('uploader')
-            ->where('document_type_id', $documentType->id)
+        $q = trim((string) $request->get('q', ''));
+        $status = (string) $request->get('status', 'All');
+        $isRevisionControlled = $this->isRevisionControlled($documentType);
+
+        $query = DocumentUpload::query()
+            ->with(['uploader', 'ofiRecord', 'dcrRecord'])
+            ->where('document_type_id', $documentType->id);
+
+        if ($q !== '') {
+            $query->where(function ($qq) use ($q) {
+                $qq->where('file_name', 'like', "%{$q}%")
+                    ->orWhere('revision', 'like', "%{$q}%")
+                    ->orWhere('remarks', 'like', "%{$q}%");
+            });
+        }
+
+        if ($isRevisionControlled && in_array($status, ['Active', 'Obsolete'], true)) {
+            $query->where('status', $status);
+        }
+
+        $documents = $query
             ->latest()
-            ->get()
-            ->map(fn($d) => [
+            ->paginate(10)
+            ->withQueryString()
+            ->through(fn($d) => [
                 'id' => $d->id,
                 'file_name' => $d->file_name,
                 'revision' => $d->revision,
                 'status' => $d->status,
                 'uploaded_by_name' => $d->uploader?->name ?? '—',
                 'created_at' => $d->created_at,
-
-                // ✅ NEW: Use preview & download routes
+                'ofi_record_id' => $d->ofi_record_id,
+                'dcr_record_id' => $d->dcr_record_id,
                 'preview_url' => route('documents.uploads.preview', $d->id),
                 'download_url' => route('documents.uploads.download', $d->id),
+                'file_url' => $d->file_path ? Storage::url($d->file_path) : null,
             ]);
+
+        $statsBase = DocumentUpload::query()
+            ->where('document_type_id', $documentType->id);
+
+        $stats = [
+            'total' => (clone $statsBase)->count(),
+            'active' => $isRevisionControlled
+                ? (clone $statsBase)->where('status', 'Active')->count()
+                : 0,
+            'obsolete' => $isRevisionControlled
+                ? (clone $statsBase)->where('status', 'Obsolete')->count()
+                : 0,
+        ];
 
         return Inertia::render('Documents/Show', [
             'documentType' => [
@@ -125,18 +157,24 @@ class DocumentController extends Controller
                 'code' => $documentType->code,
                 'name' => $documentType->title,
                 'file_type' => $documentType->storage,
+                'requires_revision' => $isRevisionControlled,
             ],
             'documents' => $documents,
+            'filters' => [
+                'q' => $q,
+                'status' => $isRevisionControlled ? $status : 'All',
+            ],
+            'stats' => $stats,
         ]);
     }
 
-    // Upload file
     public function upload(Request $request, DocumentType $documentType)
     {
-        $isRevisionControlled = str_starts_with(strtoupper($documentType->code), 'F-QMS');
+        $isRevisionControlled = $this->isRevisionControlled($documentType);
 
         $rules = [
-            'file' => ['required', 'file', 'max:20480'], // 20MB
+            'files' => ['required', 'array', 'min:1'],
+            'files.*' => ['file', 'max:20480'],
             'remarks' => ['nullable', 'string', 'max:1000'],
         ];
 
@@ -146,39 +184,56 @@ class DocumentController extends Controller
 
         $data = $request->validate($rules);
 
-        $file = $data['file'];
+        $files = $request->file('files', []);
 
-        // store in public disk
-        $path = $file->store("qms/{$documentType->code}", 'public');
-
-        // F-QMS rule: only one active
-        if ($isRevisionControlled) {
-            DocumentUpload::where('document_type_id', $documentType->id)
-                ->where('status', 'Active')
-                ->update(['status' => 'Obsolete']);
+        if ($isRevisionControlled && count($files) > 1) {
+            return back()->withErrors([
+                'files' => 'Multiple upload is not allowed for revision-controlled documents.',
+            ]);
         }
 
-        DocumentUpload::create([
-            'document_type_id' => $documentType->id,
-            'uploaded_by' => $request->user()->id,
-            'revision' => $isRevisionControlled ? $data['revision'] : null,
-            'status' => $isRevisionControlled ? 'Active' : null,
-            'file_name' => $file->getClientOriginalName(),
-            'file_path' => $path,
-            'remarks' => $data['remarks'] ?? null,
-        ]);
+        $created = 0;
 
-        return back();
+        foreach ($files as $file) {
+            $path = $file->store("qms/{$documentType->code}", 'public');
+
+            if ($isRevisionControlled) {
+                DocumentUpload::where('document_type_id', $documentType->id)
+                    ->where('status', 'Active')
+                    ->update(['status' => 'Obsolete']);
+            }
+
+            DocumentUpload::create([
+                'document_type_id' => $documentType->id,
+                'uploaded_by' => $request->user()->id,
+                'revision' => $isRevisionControlled ? trim((string) $data['revision']) : null,
+                'status' => $isRevisionControlled ? 'Active' : null,
+                'file_name' => $file->getClientOriginalName(),
+                'file_path' => $path,
+                'remarks' => $data['remarks'] ?? null,
+            ]);
+
+            $created++;
+        }
+
+        return back()->with('success', $created > 1
+            ? 'Files uploaded successfully.'
+            : 'File uploaded successfully.');
     }
 
-    // =========================
-    // NEW: Preview file in browser
-    // =========================
     public function preview(DocumentUpload $upload)
     {
+        if ($upload->ofi_record_id && $upload->ofiRecord) {
+            return $this->serveLatestOfiDocxInline($upload);
+        }
+
+        if ($upload->dcr_record_id && $upload->dcrRecord) {
+            return $this->serveLatestDcrDocxInline($upload);
+        }
+
         $disk = Storage::disk('public');
 
-        abort_unless($disk->exists($upload->file_path), 404);
+        abort_unless($upload->file_path && $disk->exists($upload->file_path), 404);
 
         $absolutePath = $disk->path($upload->file_path);
         $mime = File::mimeType($absolutePath) ?? 'application/octet-stream';
@@ -189,20 +244,135 @@ class DocumentController extends Controller
         ]);
     }
 
-    // =========================
-    // NEW: Force file download
-    // =========================
     public function download(DocumentUpload $upload)
     {
+        if ($upload->ofi_record_id && $upload->ofiRecord) {
+            return $this->downloadLatestOfiDocx($upload);
+        }
+
+        if ($upload->dcr_record_id && $upload->dcrRecord) {
+            return $this->downloadLatestDcrDocx($upload);
+        }
+
         $disk = Storage::disk('public');
 
-        abort_unless($disk->exists($upload->file_path), 404);
+        abort_unless($upload->file_path && $disk->exists($upload->file_path), 404);
 
         $absolutePath = $disk->path($upload->file_path);
 
-        // Force ATTACHMENT + keep original filename
         return response()->download($absolutePath, $upload->file_name, [
             'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT . '; filename="' . addslashes($upload->file_name) . '"',
         ]);
+    }
+
+    private function isRevisionControlled(DocumentType $documentType): bool
+    {
+        if (isset($documentType->requires_revision)) {
+            return (bool) $documentType->requires_revision;
+        }
+
+        return str_starts_with(strtoupper((string) $documentType->code), 'F-QMS');
+    }
+
+    private function downloadLatestOfiDocx(DocumentUpload $upload)
+    {
+        [$outputPath, $fileName] = $this->generateLatestOfiTempFile($upload);
+
+        return response()->download($outputPath, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT . '; filename="' . addslashes($fileName) . '"',
+        ])->deleteFileAfterSend(true);
+    }
+
+    private function serveLatestOfiDocxInline(DocumentUpload $upload)
+    {
+        [$outputPath, $fileName] = $this->generateLatestOfiTempFile($upload);
+
+        return response()->file($outputPath, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($fileName) . '"',
+        ])->deleteFileAfterSend(true);
+    }
+
+    private function generateLatestOfiTempFile(DocumentUpload $upload): array
+    {
+        $upload->loadMissing('ofiRecord');
+
+        abort_unless($upload->ofiRecord, 404, 'Linked OFI record not found.');
+
+        $templatePath = base_path('templates/F-QMS-007_template_fixed_v6.docx');
+        abort_unless(file_exists($templatePath), 500, 'OFI template file not found.');
+
+        $tmpDir = storage_path('app/ofi_forms_tmp');
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0755, true);
+        }
+
+        $baseName = pathinfo($upload->file_name ?: 'OFI_record.docx', PATHINFO_FILENAME);
+        $safeBaseName = preg_replace('/[^A-Za-z0-9 _\-\(\)]/', '', $baseName);
+        $safeBaseName = trim(preg_replace('/\s+/', ' ', $safeBaseName));
+
+        if ($safeBaseName === '') {
+            $safeBaseName = 'OFI_record';
+        }
+
+        $fileName = $safeBaseName . '.docx';
+        $outputPath = $tmpDir . '/' . uniqid('ofi_', true) . '_' . $fileName;
+
+        $generator = new OFIFormGenerator($templatePath);
+        $generator->generate($upload->ofiRecord->data ?? [], $outputPath);
+
+        return [$outputPath, $fileName];
+    }
+
+    private function downloadLatestDcrDocx(DocumentUpload $upload)
+    {
+        [$outputPath, $fileName] = $this->generateLatestDcrTempFile($upload);
+
+        return response()->download($outputPath, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT . '; filename="' . addslashes($fileName) . '"',
+        ])->deleteFileAfterSend(true);
+    }
+
+    private function serveLatestDcrDocxInline(DocumentUpload $upload)
+    {
+        [$outputPath, $fileName] = $this->generateLatestDcrTempFile($upload);
+
+        return response()->file($outputPath, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($fileName) . '"',
+        ])->deleteFileAfterSend(true);
+    }
+
+    private function generateLatestDcrTempFile(DocumentUpload $upload): array
+    {
+        $upload->loadMissing('dcrRecord');
+
+        abort_unless($upload->dcrRecord, 404, 'Linked DCR record not found.');
+
+        $templatePath = base_path('templates/F-QMS-001 _template.docx');
+        abort_unless(file_exists($templatePath), 500, 'DCR template file not found.');
+
+        $tmpDir = storage_path('app/dcr_forms_tmp');
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0755, true);
+        }
+
+        $baseName = pathinfo($upload->file_name ?: 'DCR_record.docx', PATHINFO_FILENAME);
+        $safeBaseName = preg_replace('/[^A-Za-z0-9 _\-\(\)]/', '', $baseName);
+        $safeBaseName = trim(preg_replace('/\s+/', ' ', $safeBaseName));
+
+        if ($safeBaseName === '') {
+            $safeBaseName = 'DCR_record';
+        }
+
+        $fileName = $safeBaseName . '.docx';
+        $outputPath = $tmpDir . '/' . uniqid('dcr_', true) . '_' . $fileName;
+
+        $generator = new DCRFormGenerator($templatePath);
+        $generator->generate($upload->dcrRecord->data ?? [], $outputPath);
+
+        return [$outputPath, $fileName];
     }
 }

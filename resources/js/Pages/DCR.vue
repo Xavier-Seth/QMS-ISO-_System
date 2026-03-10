@@ -1,292 +1,621 @@
-<template>
-  <div class="form-wrapper">
-    <div class="top-nav no-print">
-      <div class="user-info">
-        <span class="role-badge">{{ $page.props.auth.user.role }}</span>
-        <span class="username">Welcome, {{ $page.props.auth.user.name }}</span>
-      </div>
-      <button class="logout-link" @click="logout">Logout</button>
-    </div>
-
-    <div class="a4">
-      <div class="header">
-        <h3>LEYTE NORMAL UNIVERSITY</h3>
-        <h2>DOCUMENT CHANGE REQUEST</h2>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>DATE:</label>
-          <input type="text">
-        </div>
-        <div>
-          <label>DCR No.:</label>
-          <input type="text">
-        </div>
-      </div>
-
-      <div class="row">
-        <div>
-          <label>TO/FOR:</label>
-          <input type="text">
-        </div>
-        <div>
-          <label>FROM:</label>
-          <input type="text">
-        </div>
-      </div>
-
-      <div class="checkbox-group">
-        <label><input type="checkbox"> Amend Document</label>
-        <label><input type="checkbox"> New Document</label>
-        <label><input type="checkbox"> Delete Document</label>
-      </div>
-
-      <div class="section">
-        <div class="section-title">1. DETAILS OF DOCUMENT</div>
-        <div class="row">
-          <label>Document Number:</label>
-          <input type="text" class="wide-input">
-        </div>
-        <div class="row">
-          <label>Document Title:</label>
-          <input type="text" class="wide-input">
-        </div>
-        <div class="row">
-          <label>Revision Status:</label>
-          <input type="text" class="wide-input">
-        </div>
-        <p><i>Note: Please attach draft copy of the document.</i></p>
-      </div>
-
-      <div class="section">
-        <div class="section-title">2. CHANGE(S) REQUESTED</div>
-        <textarea></textarea>
-        <div class="section-title" style="margin-top:10px;">REASON FOR THE CHANGE</div>
-        <textarea></textarea>
-
-        <div class="row signatures">
-          <div>
-            <div class="signature-line"></div>
-            <div>Requested by</div>
-          </div>
-          <div>
-            <div class="signature-line"></div>
-            <div>Department/Unit Head</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">3. INTEGRATED MANAGEMENT REPRESENTATIVE'S COMMENTS</div>
-        <label><input type="checkbox"> Request Denied</label>
-        <label style="margin-left: 20px;"><input type="checkbox"> Request Accepted</label>
-        <div style="margin-top: 20px;">
-          <div class="signature-line"></div>
-          <div>Signature/Date</div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">4. APPROVING AUTHORITY</div>
-        <div class="row signatures">
-          <div>
-            <div class="signature-line"></div>
-            <div>Signature Over Printed Name</div>
-          </div>
-          <div>
-            <div class="signature-line"></div>
-            <div>Date</div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <div class="section-title">5. DOCUMENT STATUS</div>
-        <div class="row wrap">
-          <label>No.:</label>
-          <input type="text">
-          <label>Version:</label>
-          <input type="text">
-          <label>Revision:</label>
-          <input type="text">
-          <label>Effectivity Date:</label>
-          <input type="text">
-        </div>
-        <div class="row">
-          <label>Date Updated in IDS:</label>
-          <input type="text">
-          <label>Updated by:</label>
-          <input type="text">
-        </div>
-      </div>
-
-      <div class="footer">
-        F-QMS-001 Rev. 1 (01-05-26)
-      </div>
-    </div>
-
-    <div class="button-container no-print">
-      <button class="print-btn" @click="printPage">Print Form</button>
-      <button class="ofi-btn" @click="goToOFI">OFI FORM</button>
-      <button class="logout-btn" @click="logout">Logout System</button>
-    </div>
-  </div>
-</template>
-
 <script setup>
-import { router } from '@inertiajs/vue3'
+import AdminLayout from '@/Layouts/AdminLayout.vue'
+import { reactive, onMounted, onBeforeUnmount, ref, computed } from 'vue'
+import axios from 'axios'
+import logo from '@/images/LNU_logo.png'
+import { useLoadingOverlay } from '@/Composables/useLoadingOverlay'
+import { useToast } from '@/Composables/useToast'
 
-const printPage = () => {
-  window.print();
-};
+const loading = useLoadingOverlay()
+const toast = useToast()
 
-const goToOFI = () => {
-  router.visit('/ofi-form');
-};
+// states
+const recordId = ref(null)
+const isSaving = ref(false)
+const isGenerating = ref(false)
+const isPublishing = ref(false)
+const isLoadingRecord = ref(false)
 
-const logout = () => {
-  if (confirm('Are you sure you want to log out?')) {
-    router.post('/logout');
+const publishFileName = ref('')
+const showPublishRenameModal = ref(false)
+
+function emptyForm() {
+  return {
+    date: '',
+    dcrNo: '',
+    toFor: '',
+    from: '',
+
+    amend: false,
+    newDoc: false,
+    deleteDoc: false,
+
+    documentNumber: '',
+    documentTitle: '',
+    revisionStatus: '',
+
+    changesRequested: '',
+    reason: '',
+
+    requestedBy: '',
+    deptUnitHead: '',
+
+    requestDecision: '',
+    imrSigDate: '',
+
+    approvingSigName: '',
+    approvingDate: '',
+
+    statusNo: '',
+    statusVersion: '',
+    statusRevision: '',
+    effectivityDate: '',
+    idsDateUpdated: '',
+    updatedBy: '',
   }
-};
+}
+
+const form = reactive(emptyForm())
+
+const suggestedPublishName = computed(() => `DCR_${form.dcrNo || recordId.value || 'record'}`)
+
+function currentFileLabel() {
+  return (
+    publishFileName.value?.trim() ||
+    (form.dcrNo ? `DCR_${form.dcrNo}` : '') ||
+    (recordId.value ? `DCR_${recordId.value}` : 'DCR_record')
+  )
+}
+
+function withDocx(name) {
+  const n = (name || '').trim()
+  if (!n) return null
+  return n.toLowerCase().endsWith('.docx') ? n : `${n}.docx`
+}
+
+function downloadBlob(blobData, filename) {
+  const url = window.URL.createObjectURL(new Blob([blobData]))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
+async function runTask(flagRef, loadingMessage, task) {
+  flagRef.value = true
+  loading.open(loadingMessage)
+
+  try {
+    return await task()
+  } finally {
+    flagRef.value = false
+    loading.close()
+  }
+}
+
+function pickOnlyOne(key) {
+  form.amend = false
+  form.newDoc = false
+  form.deleteDoc = false
+  form[key] = true
+}
+
+function resetFormState() {
+  const fresh = emptyForm()
+
+  Object.keys(fresh).forEach((key) => {
+    form[key] = fresh[key]
+  })
+
+  recordId.value = null
+  publishFileName.value = ''
+  showPublishRenameModal.value = false
+
+  const url = new URL(window.location.href)
+  url.searchParams.delete('record')
+  window.history.replaceState({}, '', url)
+}
+
+function applyDataToForm(data) {
+  Object.keys(form).forEach((k) => {
+    if (data?.[k] !== undefined) form[k] = data[k]
+  })
+
+  if (!publishFileName.value && (data?.dcrNo || form.dcrNo)) {
+    publishFileName.value = `DCR_${data?.dcrNo || form.dcrNo}`
+  }
+}
+
+function getRecordIdFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const v = params.get('record')
+  return v ? Number(v) : null
+}
+
+async function loadRecord(id) {
+  await runTask(isLoadingRecord, 'Loading saved record...', async () => {
+    const res = await axios.get(`/dcr/records/${id}`)
+    recordId.value = id
+    applyDataToForm(res.data.data || {})
+
+    const fileShown = withDocx(currentFileLabel()) || `Record #${id}`
+    toast.success(`Loaded saved record: ${fileShown}`)
+  }).catch((err) => {
+    console.error(err)
+    toast.error('Failed to load saved record.')
+  })
+}
+
+async function upsertRecord(status = 'draft') {
+  if (!recordId.value) {
+    const res = await axios.post('/dcr/records', { ...form, status })
+    recordId.value = res.data.id
+
+    const url = new URL(window.location.href)
+    url.searchParams.set('record', recordId.value)
+    window.history.replaceState({}, '', url)
+  } else {
+    await axios.put(`/dcr/records/${recordId.value}`, { ...form, status })
+  }
+
+  if (!publishFileName.value) {
+    publishFileName.value = currentFileLabel()
+  }
+
+  return recordId.value
+}
+
+async function ensureDraftSaved() {
+  return await upsertRecord('draft')
+}
+
+async function saveDraft() {
+  await runTask(isSaving, 'Saving draft...', async () => {
+    const wasNew = !recordId.value
+    const id = await upsertRecord('draft')
+    const name = currentFileLabel()
+
+    toast.success(
+      wasNew
+        ? `Saved draft: ${name} (Record #${id})`
+        : `Updated draft: ${name} (Record #${id})`
+    )
+  }).catch((err) => {
+    console.error(err)
+    toast.error('Failed to save draft. Please try again.')
+  })
+}
+
+async function downloadDocx() {
+  await runTask(isGenerating, 'Generating document...', async () => {
+    await ensureDraftSaved()
+
+    const res = await axios.post('/dcr/generate', form, {
+      responseType: 'blob',
+    })
+
+    const name = withDocx(currentFileLabel()) || 'DCR.docx'
+    downloadBlob(res.data, name)
+    toast.success(`Downloaded: ${name}`)
+  }).catch((err) => {
+    console.error(err)
+    toast.error('Failed to download DOCX. Please try again.')
+  })
+}
+
+async function publishToUploads() {
+  if (!recordId.value) {
+    toast.error('Save the record first before publishing.')
+    return
+  }
+
+  await runTask(isPublishing, 'Publishing document...', async () => {
+    const id = await ensureDraftSaved()
+
+    const res = await axios.post(`/dcr/records/${id}/publish`, {
+      file_name: publishFileName.value?.trim() || null,
+      remarks: 'Published from DCR form',
+    })
+
+    const fn = res?.data?.file_name || withDocx(currentFileLabel()) || 'DOCX'
+    toast.success(`Published: ${fn} (Upload #${res.data.upload_id})`)
+
+    resetFormState()
+  }).catch((err) => {
+    console.error(err)
+    toast.error('Failed to publish to uploads. Please try again.')
+  })
+}
+
+function openPublishRenameModal() {
+  if (!recordId.value) {
+    toast.error('Save the record first before publishing.')
+    return
+  }
+
+  if (!publishFileName.value) {
+    publishFileName.value = suggestedPublishName.value
+  }
+
+  showPublishRenameModal.value = true
+}
+
+async function confirmPublish() {
+  showPublishRenameModal.value = false
+  await publishToUploads()
+}
+
+function closePublishModal() {
+  if (isPublishing.value) return
+  showPublishRenameModal.value = false
+}
+
+function onKeydown(e) {
+  if (e.key === 'Escape') {
+    closePublishModal()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+
+  const id = getRecordIdFromUrl()
+  if (id) {
+    loadRecord(id)
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
-<style scoped>
-/* OUTER WRAPPER */
-.form-wrapper {
-  background: #eee;
-  padding: 20px;
-  min-height: 100vh;
-}
+<template>
+  <AdminLayout>
+    <!-- Publish Rename Modal -->
+    <div
+      v-if="showPublishRenameModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      @click.self="closePublishModal"
+    >
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">Rename file before publishing</h3>
+            <p class="mt-1 text-sm text-slate-500">Enter a filename (no need to add <b>.docx</b>).</p>
+          </div>
 
-/* TOP NAVIGATION */
-.top-nav {
-  max-width: 210mm;
-  margin: 0 auto 10px auto;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 10px 0;
-  font-family: Arial, sans-serif;
-}
+          <button
+            class="rounded-lg px-3 py-1 text-sm text-slate-500 hover:bg-slate-100 disabled:opacity-60"
+            @click="closePublishModal"
+            :disabled="isPublishing"
+          >
+            ✕
+          </button>
+        </div>
 
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
+        <div class="mt-4">
+          <label class="text-sm font-semibold text-slate-700">Filename</label>
+          <input
+            v-model="publishFileName"
+            type="text"
+            class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            placeholder="e.g. DCR_2026-001"
+          />
+          <p class="mt-2 text-xs text-slate-500">
+            Suggested: <span class="font-mono">{{ suggestedPublishName }}</span>
+          </p>
+        </div>
 
-.role-badge {
-  background: #C9A84C;
-  color: white;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 10px;
-  text-transform: uppercase;
-  font-weight: bold;
-}
+        <div class="mt-6 flex justify-end gap-2">
+          <button
+            class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            @click="closePublishModal"
+            :disabled="isPublishing"
+          >
+            Cancel
+          </button>
 
-.username {
-  font-size: 14px;
-  color: #333;
-}
+          <button
+            class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+            @click="confirmPublish"
+            :disabled="isPublishing"
+          >
+            <span v-if="!isPublishing">Publish</span>
+            <span v-else>Publishing...</span>
+          </button>
+        </div>
+      </div>
+    </div>
 
-.logout-link {
-  background: none;
-  border: none;
-  color: #dc2626;
-  cursor: pointer;
-  text-decoration: underline;
-  font-size: 14px;
-}
+    <div class="h-screen overflow-hidden bg-slate-100 font-sans">
+      <div class="flex h-full flex-col gap-6 px-10 py-8">
+        <!-- Page Header -->
+        <div class="flex flex-wrap items-end justify-between gap-3 shrink-0">
+          <div class="min-w-0">
+            <div class="flex items-center gap-3">
+              <h1 class="text-2xl font-bold tracking-tight text-slate-900 truncate">Create DCR Form</h1>
 
-/* REAL A4 SIZE */
-.a4 {
-  width: 210mm;
-  min-height: 297mm;
-  padding: 15mm;
-  margin: auto;
-  background: white;
-  box-sizing: border-box;
-  font-family: Arial, sans-serif;
-  color: black;
-  box-shadow: 0 0 10px rgba(0,0,0,0.1);
-}
+              <span
+                v-if="recordId"
+                class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-semibold text-slate-600"
+              >
+                Record #{{ recordId }}
+              </span>
+            </div>
 
-.header { text-align: center; margin-bottom: 15px; }
-.header h3 { margin: 0; font-size: 14px; }
-.header h2 { margin: 3px 0 10px 0; font-size: 16px; border-bottom: 2px solid black; display: inline-block; padding: 0 10px; }
+            <p class="mt-1 text-[13px] text-slate-400">Document Change Request · Leyte Normal University</p>
+          </div>
 
-.row { display: flex; justify-content: space-between; margin-bottom: 8px; gap: 10px; flex-wrap: wrap; }
-label { font-weight: bold; font-size: 12px; }
+          <div class="flex flex-wrap items-center gap-2.5">
+            <button
+              class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+              @click="$inertia.visit('/dashboard')"
+            >
+              Cancel
+            </button>
 
-input[type="text"] {
-  border: none;
-  border-bottom: 1px solid black;
-  outline: none;
-  width: 120px;
-  font-size: 12px;
-}
+            <button
+              class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="saveDraft"
+              :disabled="isSaving"
+            >
+              <span v-if="!isSaving">{{ recordId ? 'Update Draft' : 'Save Draft' }}</span>
+              <span v-else>Saving...</span>
+            </button>
 
-.wide-input { width: 70% !important; }
+            <button
+              class="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:bg-slate-400"
+              @click="downloadDocx"
+              :disabled="isGenerating"
+              title="Auto-saves draft, then generates & downloads DOCX"
+            >
+              <span>{{ isGenerating ? 'Downloading...' : 'Download DOCX' }}</span>
+            </button>
 
-textarea {
-  width: 100%;
-  height: 60px;
-  resize: none;
-  border: 1px solid black;
-  margin-bottom: 8px;
-  font-size: 12px;
-}
+            <button
+              class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="openPublishRenameModal"
+              :disabled="isPublishing || !recordId"
+              title="Saves DOCX to uploads list (R-QMS-013)"
+            >
+              <span>{{ isPublishing ? 'Publishing...' : 'Publish' }}</span>
+            </button>
+          </div>
+        </div>
 
-.checkbox-group { display: flex; justify-content: space-around; margin: 10px 0; font-size: 12px; }
+        <!-- Form Card -->
+        <div
+          class="flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)] flex justify-center items-start"
+        >
+          <div
+            class="w-[210mm] border-2 border-black bg-white text-black flex flex-col px-6 py-5"
+            style="font-family: Arial, Helvetica, sans-serif;"
+          >
+            <!-- Header -->
+            <div class="flex items-start gap-4 border-b border-black pb-3">
+              <img :src="logo" alt="LNU Logo" class="h-[70px] w-[70px] object-contain" />
+              <div class="flex-1 text-center">
+                <h2 class="text-[12pt] font-bold leading-tight">LEYTE NORMAL UNIVERSITY</h2>
+                <h1 class="mt-1 text-[14pt] font-bold leading-tight">DOCUMENT CHANGE REQUEST</h1>
+              </div>
+            </div>
 
-.section {
-  border: 1px solid black;
-  padding: 8px;
-  margin-top: 10px;
-  page-break-inside: avoid;
-}
+            <!-- Metadata -->
+            <div class="mt-4 grid grid-cols-2 gap-x-10 gap-y-3 text-[10pt]">
+              <div class="flex items-center">
+                <span class="w-[70px]">DATE</span>
+                <span class="mr-2">:</span>
+                <input v-model="form.date" type="date" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+              </div>
 
-.section-title { font-weight: bold; margin-bottom: 6px; font-size: 12px; background: #f0f0f0; padding: 2px 5px; }
+              <div class="flex items-center">
+                <span class="w-[90px]">DCR No.</span>
+                <span class="mr-2">:</span>
+                <input v-model="form.dcrNo" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+              </div>
 
-.signature-line { border-bottom: 1px solid black; width: 160px; height: 18px; margin-top: 20px; }
-.footer { margin-top: 10px; font-size: 10px; text-align: right; }
+              <div class="col-span-2 flex items-center">
+                <span class="w-[70px]">TO/FOR</span>
+                <span class="mr-2">:</span>
+                <input v-model="form.toFor" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+              </div>
 
-/* BUTTONS */
-.button-container {
-  display: flex;
-  justify-content: center;
-  gap: 15px;
-  margin: 20px auto;
-  max-width: 210mm;
-}
+              <div class="col-span-2 flex items-center">
+                <span class="w-[70px]">FROM</span>
+                <span class="mr-2">:</span>
+                <input v-model="form.from" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+              </div>
+            </div>
 
-.print-btn, .ofi-btn, .logout-btn {
-  padding: 10px 20px;
-  cursor: pointer;
-  font-weight: bold;
-  border-radius: 4px;
-  transition: 0.2s;
-  border: 1px solid #333;
-}
+            <!-- Document Type -->
+            <div class="mt-5 text-[10pt]">
+              <div class="flex flex-wrap gap-6">
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="form.amend"
+                    @change="pickOnlyOne('amend')"
+                    class="hidden"
+                  />
+                  <span>Amend document</span>
+                  <span>{{ form.amend ? '[✔]' : '[ ]' }}</span>
+                </label>
 
-.print-btn { background: #333; color: white; }
-.ofi-btn { background: white; color: #333; }
-.logout-btn { background: #dc2626; color: white; border-color: #dc2626; }
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="form.newDoc"
+                    @change="pickOnlyOne('newDoc')"
+                    class="hidden"
+                  />
+                  <span>New document</span>
+                  <span>{{ form.newDoc ? '[✔]' : '[ ]' }}</span>
+                </label>
 
-.logout-btn:hover { background: #b91c1c; }
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    :checked="form.deleteDoc"
+                    @change="pickOnlyOne('deleteDoc')"
+                    class="hidden"
+                  />
+                  <span>Delete document</span>
+                  <span>{{ form.deleteDoc ? '[✔]' : '[ ]' }}</span>
+                </label>
+              </div>
+            </div>
 
-/* PRINT LOGIC */
-@media print {
-  .no-print { display: none !important; }
-  .form-wrapper { padding: 0; background: white; }
-  .a4 { box-shadow: none; margin: 0; width: 100%; }
-}
+            <!-- Section 1 -->
+            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+              <h3 class="mb-3 font-bold">1. DETAILS OF DOCUMENT</h3>
 
-@page {
-  size: A4;
-  margin: 0;
-}
-</style>
+              <div class="space-y-3">
+                <div class="flex items-center">
+                  <span class="w-[140px]">Document Number</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.documentNumber" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="flex items-center">
+                  <span class="w-[140px]">Document Title</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.documentTitle" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="flex items-center">
+                  <span class="w-[140px]">Revision Status</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.revisionStatus" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <p class="text-[9pt] italic">Note: Please attach draft copy of the document.</p>
+              </div>
+            </div>
+
+            <!-- Section 2 -->
+            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+              <h3 class="mb-3 font-bold">2. CHANGE(S) REQUESTED</h3>
+              <textarea
+                v-model="form.changesRequested"
+                rows="5"
+                class="w-full resize-none border border-black bg-transparent p-2 outline-none"
+              ></textarea>
+
+              <h3 class="mb-3 mt-4 font-bold">REASON FOR THE CHANGE</h3>
+              <textarea
+                v-model="form.reason"
+                rows="5"
+                class="w-full resize-none border border-black bg-transparent p-2 outline-none"
+              ></textarea>
+
+              <div class="mt-4 grid grid-cols-2 gap-6">
+                <div class="flex flex-col">
+                  <input v-model="form.requestedBy" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                  <label class="mt-1 text-center text-[9pt]">Requested by</label>
+                </div>
+
+                <div class="flex flex-col">
+                  <input v-model="form.deptUnitHead" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                  <label class="mt-1 text-center text-[9pt]">Department/Unit Head</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 3 -->
+            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+              <h3 class="mb-3 font-bold">3. INTEGRATED MANAGEMENT REPRESENTATIVE’S COMMENTS</h3>
+
+              <div class="flex flex-wrap items-center gap-6">
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input type="radio" v-model="form.requestDecision" value="DENIED" />
+                  <span>Request Denied</span>
+                </label>
+
+                <label class="inline-flex items-center gap-2 cursor-pointer">
+                  <input type="radio" v-model="form.requestDecision" value="ACCEPTED" />
+                  <span>Request Accepted</span>
+                </label>
+              </div>
+
+              <div class="mt-4 flex items-center">
+                <span class="w-[120px]">Signature/Date</span>
+                <span class="mr-2">:</span>
+                <input v-model="form.imrSigDate" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+              </div>
+            </div>
+
+            <!-- Section 4 -->
+            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+              <h3 class="mb-3 font-bold">4. APPROVING AUTHORITY</h3>
+
+              <div class="grid grid-cols-2 gap-6">
+                <div class="flex flex-col">
+                  <input v-model="form.approvingSigName" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                  <label class="mt-1 text-center text-[9pt]">Signature Over Printed Name</label>
+                </div>
+
+                <div class="flex flex-col">
+                  <input v-model="form.approvingDate" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                  <label class="mt-1 text-center text-[9pt]">Date</label>
+                </div>
+              </div>
+            </div>
+
+            <!-- Section 5 -->
+            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+              <h3 class="mb-3 font-bold">5. DOCUMENT STATUS</h3>
+
+              <div class="grid grid-cols-2 gap-x-10 gap-y-3">
+                <div class="flex items-center">
+                  <span class="w-[120px]">No.</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.statusNo" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="flex items-center">
+                  <span class="w-[120px]">Version</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.statusVersion" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="flex items-center">
+                  <span class="w-[120px]">Revision</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.statusRevision" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="flex items-center">
+                  <span class="w-[120px]">Effectivity Date</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.effectivityDate" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="col-span-2 flex items-center">
+                  <span class="w-[160px]">Date Updated in the IDS</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.idsDateUpdated" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+
+                <div class="col-span-2 flex items-center">
+                  <span class="w-[120px]">Updated by</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.updatedBy" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+              </div>
+            </div>
+
+            <div class="mt-6 border-t border-black pt-2 text-[9pt]">
+              F-QMS-001 Rev. 1 (01-05-26)
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </AdminLayout>
+</template>
+
+<style scoped></style>

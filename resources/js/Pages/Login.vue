@@ -18,7 +18,7 @@ const submit = () => {
   <div class="login-wrapper">
     
     <header class="header">
-      <img :src="'/images/LNU_Logo.png'" alt="Logo" class="logo" />
+      <img :src="'/images/QMS_Logo.png'" alt="Logo" class="logo" />
       <h2 class="brand-name">Quality Management System</h2>
     </header>
 
