@@ -100,7 +100,6 @@ const submit = () => {
             forceFormData: true,
             onSuccess: () => {
                 form.reset("current_password", "new_password", "new_password_confirmation");
-                toast.success("Your profile has been updated successfully.");
             },
             onError: () => {
                 toast.error("Profile update failed. Please check the form and try again.");
