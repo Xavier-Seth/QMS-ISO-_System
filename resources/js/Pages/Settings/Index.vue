@@ -1,54 +1,95 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
+import { usePage } from "@inertiajs/vue3";
 import AdminLayout from "@/Layouts/AdminLayoutWithHeader.vue";
 import ProfileTab from "./ProfileTab.vue";
 import SystemTab from "./SystemTab.vue";
 import BackupTab from "./BackupTab.vue";
 
+const page = usePage();
+
+const user = computed(() => page.props.auth?.user ?? null);
+const isAdmin = computed(() => user.value?.role === "admin");
+
 const activeTab = ref("profile");
 
+const availableTabs = computed(() => {
+    return isAdmin.value
+        ? ["profile", "system", "backup"]
+        : ["profile"];
+});
+
+watch(
+    isAdmin,
+    (value) => {
+        if (!value && activeTab.value !== "profile") {
+            activeTab.value = "profile";
+        }
+    },
+    { immediate: true }
+);
+
 const tabIndex = computed(() => {
-    if (activeTab.value === "profile") return 0;
-    if (activeTab.value === "system") return 1;
-    return 2;
+    return availableTabs.value.indexOf(activeTab.value);
+});
+
+const tabGridClass = computed(() => {
+    return isAdmin.value ? "grid-cols-3" : "grid-cols-1";
+});
+
+const indicatorWidth = computed(() => {
+    return `${100 / availableTabs.value.length}%`;
+});
+
+const indicatorTransform = computed(() => {
+    return `translateX(${tabIndex.value * 100}%)`;
 });
 </script>
 
 <template>
     <AdminLayout>
-        <div class="settings-shell">
-            <div class="settings-page">
+        <div class="w-full box-border px-10 pb-10">
+            <div class="-mt-1.5 bg-transparent">
                 <!-- PAGE HEADER -->
-                <div class="settings-header">
-                    <h1>Settings</h1>
-                    <p>Manage your account settings and preferences.</p>
+                <div class="mb-3">
+                    <h1 class="m-0 text-[22px] font-bold leading-[1.2] text-slate-900">
+                        Settings
+                    </h1>
+                    <p class="mt-1.5 text-[15px] leading-[1.4] text-slate-500">
+                        Manage your account settings and preferences.
+                    </p>
                 </div>
 
                 <!-- TABS -->
-                <div class="settings-tabs-wrap">
-                    <div class="settings-tabs">
+                <div class="relative mb-4">
+                    <div
+                        class="grid overflow-hidden rounded bg-[#dfdfdf]"
+                        :class="tabGridClass"
+                    >
                         <button
                             type="button"
-                            class="tab-btn"
-                            :class="{ active: activeTab === 'profile' }"
+                            class="relative z-[2] border-none bg-transparent px-3 py-2.5 pb-3.5 text-[15px] text-[#4a4a4a] transition hover:bg-white/15"
+                            :class="{ 'font-medium text-[#222222]': activeTab === 'profile' }"
                             @click="activeTab = 'profile'"
                         >
                             Profile
                         </button>
 
                         <button
+                            v-if="isAdmin"
                             type="button"
-                            class="tab-btn"
-                            :class="{ active: activeTab === 'system' }"
+                            class="relative z-[2] border-none bg-transparent px-3 py-2.5 pb-3.5 text-[15px] text-[#4a4a4a] transition hover:bg-white/15"
+                            :class="{ 'font-medium text-[#222222]': activeTab === 'system' }"
                             @click="activeTab = 'system'"
                         >
                             System
                         </button>
 
                         <button
+                            v-if="isAdmin"
                             type="button"
-                            class="tab-btn"
-                            :class="{ active: activeTab === 'backup' }"
+                            class="relative z-[2] border-none bg-transparent px-3 py-2.5 pb-3.5 text-[15px] text-[#4a4a4a] transition hover:bg-white/15"
+                            :class="{ 'font-medium text-[#222222]': activeTab === 'backup' }"
                             @click="activeTab = 'backup'"
                         >
                             Backup
@@ -57,18 +98,21 @@ const tabIndex = computed(() => {
 
                     <!-- animated indicator -->
                     <div
-                        class="tab-indicator"
-                        :style="{ transform: `translateX(${tabIndex * 100}%)` }"
+                        class="absolute bottom-0 left-0 z-[3] h-0.5 bg-[#7f7f7f] transition duration-300 ease-out"
+                        :style="{
+                            width: indicatorWidth,
+                            transform: indicatorTransform,
+                        }"
                     ></div>
                 </div>
 
                 <!-- TAB CONTENT -->
-                <div class="settings-content">
+                <div class="overflow-hidden bg-transparent">
                     <Transition name="tab-slide" mode="out-in">
-                        <div :key="activeTab" class="tab-panel">
+                        <div :key="activeTab" class="w-full">
                             <ProfileTab v-if="activeTab === 'profile'" />
-                            <SystemTab v-else-if="activeTab === 'system'" />
-                            <BackupTab v-else />
+                            <SystemTab v-else-if="activeTab === 'system' && isAdmin" />
+                            <BackupTab v-else-if="activeTab === 'backup' && isAdmin" />
                         </div>
                     </Transition>
                 </div>
@@ -78,91 +122,6 @@ const tabIndex = computed(() => {
 </template>
 
 <style scoped>
-.settings-shell {
-    width: 100%;
-    padding: 0 40px 40px;
-    box-sizing: border-box;
-}
-
-.settings-page {
-    margin-top: -6px;
-    background: transparent;
-}
-
-.settings-header {
-    margin: 0 0 12px 0;
-}
-
-.settings-header h1 {
-    font-size: 22px;
-    font-weight: 700;
-    line-height: 1.2;
-    color: #0f172a;
-    margin: 0;
-}
-
-.settings-header p {
-    margin: 6px 0 0;
-    font-size: 15px;
-    line-height: 1.4;
-    color: #64748b;
-}
-
-.settings-tabs-wrap {
-    position: relative;
-    margin-bottom: 16px;
-}
-
-.settings-tabs {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    background: #dfdfdf;
-    border-radius: 4px;
-    overflow: hidden;
-}
-
-.tab-btn {
-    border: none;
-    background: transparent;
-    padding: 10px 12px 14px;
-    font-size: 15px;
-    color: #4a4a4a;
-    cursor: pointer;
-    transition: color 0.25s ease, background 0.25s ease;
-    position: relative;
-    z-index: 2;
-}
-
-.tab-btn:hover {
-    background: rgba(255, 255, 255, 0.15);
-}
-
-.tab-btn.active {
-    color: #222222;
-    font-weight: 500;
-}
-
-.tab-indicator {
-    position: absolute;
-    left: 0;
-    bottom: 0;
-    width: calc(100% / 3);
-    height: 2px;
-    background: #7f7f7f;
-    transition: transform 0.3s ease;
-    z-index: 3;
-}
-
-.settings-content {
-    background: transparent;
-    overflow: hidden;
-}
-
-.tab-panel {
-    width: 100%;
-}
-
-/* tab content animation */
 .tab-slide-enter-active,
 .tab-slide-leave-active {
     transition: all 0.28s ease;
