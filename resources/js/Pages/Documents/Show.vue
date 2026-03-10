@@ -32,9 +32,21 @@ const requiresRevision = computed(() => {
 ================================ */
 const search = ref(props.filters?.q ?? '')
 const statusFilter = ref(props.filters?.status ?? 'All')
+const sort = ref(props.filters?.sort ?? 'latest')
+const perPage = ref(String(props.filters?.per_page ?? 10))
+const dateFrom = ref(props.filters?.date_from ?? '')
+const dateTo = ref(props.filters?.date_to ?? '')
+
+const searchPlaceholder = computed(() => {
+  return requiresRevision.value
+    ? 'Search file, revision, remarks, uploader...'
+    : 'Search file, remarks, uploader...'
+})
 
 watch(requiresRevision, (val) => {
-  if (!val) statusFilter.value = 'All'
+  if (!val) {
+    statusFilter.value = 'All'
+  }
 })
 
 function reloadDocuments(extra = {}) {
@@ -43,6 +55,10 @@ function reloadDocuments(extra = {}) {
     {
       q: search.value || undefined,
       status: requiresRevision.value ? statusFilter.value : undefined,
+      sort: sort.value || 'latest',
+      per_page: perPage.value || 10,
+      date_from: dateFrom.value || undefined,
+      date_to: dateTo.value || undefined,
       ...extra,
     },
     {
@@ -63,6 +79,23 @@ watch(search, () => {
 })
 
 watch(statusFilter, () => {
+  if (!requiresRevision.value) return
+  reloadDocuments({ page: 1 })
+})
+
+watch(sort, () => {
+  reloadDocuments({ page: 1 })
+})
+
+watch(perPage, () => {
+  reloadDocuments({ page: 1 })
+})
+
+watch(dateFrom, () => {
+  reloadDocuments({ page: 1 })
+})
+
+watch(dateTo, () => {
   reloadDocuments({ page: 1 })
 })
 
@@ -224,14 +257,10 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-4 sm:px-6">
           <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <!-- LEFT -->
-            <div class="min-w-0 flex-1 xl:max-w-[40%]">
+            <div class="min-w-0 flex-1 xl:max-w-[38%]">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-white">
                   {{ documentType?.code }}
-                </span>
-
-                <span class="rounded-full bg-indigo-500/20 px-2.5 py-1 text-[11px] font-medium text-indigo-100 ring-1 ring-indigo-400/30">
-                  {{ documentType?.file_type }}
                 </span>
 
                 <span
@@ -253,15 +282,16 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
             </div>
 
             <!-- RIGHT -->
-            <div class="w-full xl:w-auto xl:min-w-[620px]">
-              <div class="flex flex-col gap-2">
+            <div class="w-full xl:w-auto xl:min-w-[760px]">
+              <div class="flex flex-col gap-3">
+                <!-- Row 1 -->
                 <div class="grid grid-cols-1 gap-2 md:grid-cols-12">
-                  <div :class="requiresRevision ? 'md:col-span-8' : 'md:col-span-12'">
+                  <div :class="requiresRevision ? 'md:col-span-5' : 'md:col-span-6'">
                     <div class="relative">
                       <input
                         v-model="search"
                         type="text"
-                        :placeholder="requiresRevision ? 'Search file or revision...' : 'Search file...'"
+                        :placeholder="searchPlaceholder"
                         class="w-full rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 pr-10 text-sm text-white placeholder:text-slate-300 focus:outline-none focus:ring-2 focus:ring-white/20"
                       />
                       <div class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-200">
@@ -270,18 +300,79 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                     </div>
                   </div>
 
+                  <div class="md:col-span-3">
+                    <select
+                      v-model="sort"
+                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                    >
+                      <option class="text-slate-900" value="latest">Newest First</option>
+                      <option class="text-slate-900" value="oldest">Oldest First</option>
+                      <option class="text-slate-900" value="name_asc">File Name (A-Z)</option>
+                      <option class="text-slate-900" value="name_desc">File Name (Z-A)</option>
+                      <option class="text-slate-900" value="revision_asc">Revision (A-Z)</option>
+                      <option class="text-slate-900" value="revision_desc">Revision (Z-A)</option>
+                    </select>
+                  </div>
+
                   <div v-if="requiresRevision" class="md:col-span-4">
                     <select
                       v-model="statusFilter"
                       class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
                     >
-                      <option class="text-slate-900" value="All">All</option>
+                      <option class="text-slate-900" value="All">All Status</option>
                       <option class="text-slate-900" value="Active">Active</option>
                       <option class="text-slate-900" value="Obsolete">Obsolete</option>
                     </select>
                   </div>
+
+                  <div v-else class="md:col-span-3">
+                    <div class="rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-slate-300">
+                      Record Type
+                    </div>
+                  </div>
                 </div>
 
+                <!-- Row 2 -->
+                <div class="grid grid-cols-1 gap-2 md:grid-cols-12">
+                  <div class="md:col-span-4">
+                    <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-300">
+                      From Date
+                    </label>
+                    <input
+                      v-model="dateFrom"
+                      type="date"
+                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                    />
+                  </div>
+
+                  <div class="md:col-span-4">
+                    <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-300">
+                      To Date
+                    </label>
+                    <input
+                      v-model="dateTo"
+                      type="date"
+                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                    />
+                  </div>
+
+                  <div class="md:col-span-4">
+                    <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-300">
+                      Per Page
+                    </label>
+                    <select
+                      v-model="perPage"
+                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-white/20"
+                    >
+                      <option class="text-slate-900" value="10">10 per page</option>
+                      <option class="text-slate-900" value="25">25 per page</option>
+                      <option class="text-slate-900" value="50">50 per page</option>
+                      <option class="text-slate-900" value="100">100 per page</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Row 3 -->
                 <div class="flex flex-wrap items-center justify-end gap-2">
                   <Link
                     href="/documents"
@@ -464,7 +555,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
           </div>
 
           <div class="flex flex-wrap items-center gap-2">
-            <template v-for="link in documents.links" :key="link.label">
+            <template v-for="(link, index) in documents.links" :key="`${link.label}-${index}`">
               <Link
                 v-if="link.url"
                 :href="link.url"

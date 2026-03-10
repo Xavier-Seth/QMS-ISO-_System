@@ -102,6 +102,28 @@ class DocumentController extends Controller
     {
         $q = trim((string) $request->get('q', ''));
         $status = (string) $request->get('status', 'All');
+        $sort = (string) $request->get('sort', 'latest');
+        $dateFrom = trim((string) $request->get('date_from', ''));
+        $dateTo = trim((string) $request->get('date_to', ''));
+
+        $allowedPerPage = [10, 25, 50, 100];
+        $perPage = (int) $request->get('per_page', 10);
+        if (!in_array($perPage, $allowedPerPage, true)) {
+            $perPage = 10;
+        }
+
+        $allowedSorts = [
+            'latest',
+            'oldest',
+            'name_asc',
+            'name_desc',
+            'revision_asc',
+            'revision_desc',
+        ];
+        if (!in_array($sort, $allowedSorts, true)) {
+            $sort = 'latest';
+        }
+
         $isRevisionControlled = $this->isRevisionControlled($documentType);
 
         $query = DocumentUpload::query()
@@ -112,7 +134,12 @@ class DocumentController extends Controller
             $query->where(function ($qq) use ($q) {
                 $qq->where('file_name', 'like', "%{$q}%")
                     ->orWhere('revision', 'like', "%{$q}%")
-                    ->orWhere('remarks', 'like', "%{$q}%");
+                    ->orWhere('remarks', 'like', "%{$q}%")
+                    ->orWhereHas('uploader', function ($uploaderQuery) use ($q) {
+                        $uploaderQuery->where('name', 'like', "%{$q}%")
+                            ->orWhere('username', 'like', "%{$q}%")
+                            ->orWhere('email', 'like', "%{$q}%");
+                    });
             });
         }
 
@@ -120,9 +147,43 @@ class DocumentController extends Controller
             $query->where('status', $status);
         }
 
+        if ($dateFrom !== '') {
+            $query->whereDate('created_at', '>=', $dateFrom);
+        }
+
+        if ($dateTo !== '') {
+            $query->whereDate('created_at', '<=', $dateTo);
+        }
+
+        switch ($sort) {
+            case 'oldest':
+                $query->orderBy('created_at', 'asc');
+                break;
+
+            case 'name_asc':
+                $query->orderBy('file_name', 'asc');
+                break;
+
+            case 'name_desc':
+                $query->orderBy('file_name', 'desc');
+                break;
+
+            case 'revision_asc':
+                $query->orderBy('revision', 'asc');
+                break;
+
+            case 'revision_desc':
+                $query->orderBy('revision', 'desc');
+                break;
+
+            case 'latest':
+            default:
+                $query->orderBy('created_at', 'desc');
+                break;
+        }
+
         $documents = $query
-            ->latest()
-            ->paginate(10)
+            ->paginate($perPage)
             ->withQueryString()
             ->through(fn($d) => [
                 'id' => $d->id,
@@ -163,6 +224,10 @@ class DocumentController extends Controller
             'filters' => [
                 'q' => $q,
                 'status' => $isRevisionControlled ? $status : 'All',
+                'sort' => $sort,
+                'per_page' => $perPage,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
             ],
             'stats' => $stats,
         ]);
