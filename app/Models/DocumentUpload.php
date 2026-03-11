@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -17,7 +16,21 @@ class DocumentUpload extends Model
         'status',
         'file_name',
         'file_path',
+        'storage_disk',
+        'preview_disk',
+        'preview_path',
+        'preview_mime',
+        'preview_generated_at',
+        'preview_last_accessed_at',
+        'preview_source_hash',
+        'preview_size',
         'remarks',
+    ];
+
+    protected $casts = [
+        'preview_generated_at' => 'datetime',
+        'preview_last_accessed_at' => 'datetime',
+        'preview_size' => 'integer',
     ];
 
     public function uploader(): BelongsTo
@@ -40,37 +53,43 @@ class DocumentUpload extends Model
         return $this->belongsTo(DcrRecord::class, 'dcr_record_id');
     }
 
-    public function scopeActive(Builder $query): Builder
+    public function getStorageDiskName(): string
     {
-        return $query->where('status', 'Active');
+        return $this->storage_disk ?: 'public';
     }
 
-    public function scopeObsolete(Builder $query): Builder
+    public function getPreviewDiskName(): ?string
     {
-        return $query->where('status', 'Obsolete');
+        return $this->preview_disk ?: null;
     }
 
-    public function scopeForManuals(Builder $query): Builder
+    public function hasPreviewCache(): bool
     {
-        return $query->whereHas('documentType', function (Builder $q) {
-            $q->manuals();
-        });
+        return filled($this->preview_disk) && filled($this->preview_path);
     }
 
-    public function scopeForManualCategory(Builder $query, string $category): Builder
+    public function isGeneratedRecordDocument(): bool
     {
-        return $query->whereHas('documentType', function (Builder $q) use ($category) {
-            $q->manuals()->manualCategory($category);
-        });
+        return !is_null($this->ofi_record_id) || !is_null($this->dcr_record_id);
     }
 
-    public function isActive(): bool
+    public function markPreviewAccessed(): void
     {
-        return $this->status === 'Active';
+        $this->forceFill([
+            'preview_last_accessed_at' => now(),
+        ])->save();
     }
 
-    public function isObsolete(): bool
+    public function clearPreviewCacheMeta(): void
     {
-        return $this->status === 'Obsolete';
+        $this->forceFill([
+            'preview_disk' => null,
+            'preview_path' => null,
+            'preview_mime' => null,
+            'preview_generated_at' => null,
+            'preview_last_accessed_at' => null,
+            'preview_source_hash' => null,
+            'preview_size' => null,
+        ])->save();
     }
 }

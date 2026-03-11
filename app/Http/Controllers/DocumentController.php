@@ -6,15 +6,22 @@ use App\Models\DocumentSeries;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
 use App\Services\DCRFormGenerator;
+use App\Services\DocumentPreview\DocumentDownloadService;
+use App\Services\DocumentPreview\DocumentPreviewService;
 use App\Services\OFIFormGenerator;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 
 class DocumentController extends Controller
 {
+    public function __construct(
+        protected DocumentPreviewService $documentPreviewService,
+        protected DocumentDownloadService $documentDownloadService,
+    ) {
+    }
+
     public function index(Request $request)
     {
         $q = trim((string) $request->get('q', ''));
@@ -275,6 +282,7 @@ class DocumentController extends Controller
                 'status' => $isRevisionControlled ? 'Active' : null,
                 'file_name' => $file->getClientOriginalName(),
                 'file_path' => $path,
+                'storage_disk' => 'public',
                 'remarks' => $data['remarks'] ?? null,
             ]);
 
@@ -296,17 +304,9 @@ class DocumentController extends Controller
             return $this->serveLatestDcrDocxInline($upload);
         }
 
-        $disk = Storage::disk('public');
+        abort_unless($this->documentPreviewService->canPreview($upload), 404, 'This file type is not supported for preview.');
 
-        abort_unless($upload->file_path && $disk->exists($upload->file_path), 404);
-
-        $absolutePath = $disk->path($upload->file_path);
-        $mime = File::mimeType($absolutePath) ?? 'application/octet-stream';
-
-        return response()->file($absolutePath, [
-            'Content-Type' => $mime,
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($upload->file_name) . '"',
-        ]);
+        return $this->documentPreviewService->preview($upload);
     }
 
     public function download(DocumentUpload $upload)
@@ -319,15 +319,7 @@ class DocumentController extends Controller
             return $this->downloadLatestDcrDocx($upload);
         }
 
-        $disk = Storage::disk('public');
-
-        abort_unless($upload->file_path && $disk->exists($upload->file_path), 404);
-
-        $absolutePath = $disk->path($upload->file_path);
-
-        return response()->download($absolutePath, $upload->file_name, [
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT . '; filename="' . addslashes($upload->file_name) . '"',
-        ]);
+        return $this->documentDownloadService->download($upload);
     }
 
     private function isRevisionControlled(DocumentType $documentType): bool
