@@ -1,4 +1,5 @@
 <script setup>
+import { ref } from 'vue';
 import { useForm } from '@inertiajs/vue3';
 
 const form = useForm({
@@ -6,6 +7,8 @@ const form = useForm({
   password: '',
   remember: false,
 });
+
+const showPassword = ref(false);
 
 const submit = () => {
   form.post('/login', {
@@ -16,7 +19,6 @@ const submit = () => {
 
 <template>
   <div class="login-wrapper">
-    
     <header class="header">
       <img :src="'/images/QMS_Logo.png'" alt="Logo" class="logo" />
       <h2 class="brand-name">Quality Management System</h2>
@@ -25,6 +27,7 @@ const submit = () => {
     <main class="main-content">
       <div class="form-container">
         <h1 class="sign-in-title">Sign In</h1>
+
         <form @submit.prevent="submit" class="login-form">
           <div class="input-group">
             <input
@@ -34,18 +37,87 @@ const submit = () => {
               class="form-input"
               :class="{ 'input-error': form.errors.username }"
             />
-            <div v-if="form.errors.username" class="error-msg">{{ form.errors.username }}</div>
+            <div v-if="form.errors.username" class="error-msg">
+              {{ form.errors.username }}
+            </div>
           </div>
 
           <div class="input-group">
-            <input
-              v-model="form.password"
-              type="password"
-              placeholder="Password:"
-              class="form-input"
-              :class="{ 'input-error': form.errors.password }"
-            />
-            <div v-if="form.errors.password" class="error-msg">{{ form.errors.password }}</div>
+            <div class="password-wrapper">
+              <input
+                v-model="form.password"
+                :type="showPassword ? 'text' : 'password'"
+                placeholder="Password:"
+                class="form-input password-input"
+                :class="{ 'input-error': form.errors.password }"
+              />
+
+              <button
+                type="button"
+                class="toggle-password"
+                @click="showPassword = !showPassword"
+                :aria-label="showPassword ? 'Hide password' : 'Show password'"
+              >
+                <svg
+                  v-if="!showPassword"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.8"
+                  stroke="currentColor"
+                  class="eye-icon"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M2.036 12.322a1.012 1.012 0 010-.644C3.423 7.51 7.36 4.5 12 4.5
+                    c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .638
+                    C20.577 16.49 16.64 19.5 12 19.5
+                    c-4.638 0-8.573-3.007-9.964-7.178z"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                </svg>
+
+                <svg
+                  v-else
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke-width="1.8"
+                  stroke="currentColor"
+                  class="eye-icon"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M3 3l18 18"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M10.584 10.587A2.25 2.25 0 0013.5 13.5"
+                  />
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    d="M9.88 5.09A9.953 9.953 0 0112 4.5
+                    c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .638
+                    a11.983 11.983 0 01-3.12 4.568M6.228 6.228
+                    A11.965 11.965 0 002.037 11.68a1.012 1.012 0 000 .644
+                    C3.423 16.493 7.36 19.5 12 19.5
+                    a9.95 9.95 0 005.205-1.462"
+                  />
+                </svg>
+              </button>
+            </div>
+
+            <div v-if="form.errors.password" class="error-msg">
+              {{ form.errors.password }}
+            </div>
           </div>
 
           <div class="form-row">
@@ -111,7 +183,6 @@ const submit = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  /* push form to true vertical center of the remaining space */
   padding: 40px 24px 80px;
 }
 
@@ -174,6 +245,40 @@ const submit = () => {
   font-size: 11px;
   margin-top: 4px;
   margin-left: 4px;
+}
+
+/* ── Password toggle ── */
+.password-wrapper {
+  position: relative;
+}
+
+.password-input {
+  padding-right: 46px;
+}
+
+.toggle-password {
+  position: absolute;
+  top: 50%;
+  right: 14px;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6b7280;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.toggle-password:hover {
+  color: #1a1f2b;
+}
+
+.eye-icon {
+  width: 18px;
+  height: 18px;
 }
 
 /* ── Remember / Forgot ── */

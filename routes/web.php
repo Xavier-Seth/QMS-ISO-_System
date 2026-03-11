@@ -24,20 +24,17 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
+    // Shared routes (admin + user/admin_officer)
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
+    Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
     Route::get('/settings', fn() => Inertia::render('Settings/Index'))->name('settings');
 
-    // =========================
     // Settings
-    // =========================
     Route::post('/settings/profile', [SettingsController::class, 'updateProfile'])
         ->name('settings.profile.update');
 
-    // =========================
     // OFI
-    // =========================
-    Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
     Route::post('/ofi/generate', [OFIController::class, 'generate'])->name('ofi.generate');
 
     Route::post('/ofi/records', [OfiRecordController::class, 'store'])->name('ofi.records.store');
@@ -47,9 +44,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/ofi/records/{ofiRecord}/publish', [OfiRecordController::class, 'publish'])
         ->name('ofi.records.publish');
 
-    // =========================
     // DCR
-    // =========================
     Route::post('/dcr/generate', [DCRController::class, 'generate'])->name('dcr.generate');
 
     Route::post('/dcr/records', [DcrRecordController::class, 'store'])->name('dcr.records.store');
@@ -59,31 +54,39 @@ Route::middleware('auth')->group(function () {
     Route::post('/dcr/records/{dcrRecord}/publish', [DcrRecordController::class, 'publish'])
         ->name('dcr.records.publish');
 
-    // =========================
-    // Documents (Masterlist)
-    // =========================
-    Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
-    Route::get('/documents/{documentType}', [DocumentController::class, 'show'])->name('documents.show');
-    Route::post('/documents/{documentType}/upload', [DocumentController::class, 'upload'])->name('documents.upload');
+    // Manual routes
+    Route::get('/manual/asm', fn() => Inertia::render('Manual/ASM'))->name('manual.asm');
+    Route::get('/manual/qsm', fn() => Inertia::render('Manual/QSM'))->name('manual.qsm');
+    Route::get('/manual/hrm', fn() => Inertia::render('Manual/HRM'))->name('manual.hrm');
+    Route::get('/manual/riem', fn() => Inertia::render('Manual/RIEM'))->name('manual.riem');
+    Route::get('/manual/rem', fn() => Inertia::render('Manual/REM'))->name('manual.rem');
 
-    // =========================
-    // Preview & Download Routes
-    // =========================
-    Route::get('/documents/uploads/{upload}/preview', [DocumentController::class, 'preview'])
-        ->name('documents.uploads.preview');
+    // Placeholder shared pages
+    Route::get('/inbox', fn() => Inertia::render('Inbox'))->name('inbox');
+    Route::get('/logs', fn() => Inertia::render('Logs'))->name('logs');
 
-    Route::get('/documents/uploads/{upload}/download', [DocumentController::class, 'download'])
-        ->name('documents.uploads.download');
-
-    // =========================
     // Admin Only Routes
-    // =========================
     Route::middleware('can:admin-only')->group(function () {
         Route::get('/admin/dashboard', fn() => Inertia::render('Dashboard'))->name('admin.dashboard');
 
-        // Users tab (ADMIN ONLY)
+        // Users
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
         Route::post('/users', [UsersController::class, 'store'])->name('users.store');
         Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
+
+        // Documents
+        Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
+        Route::get('/documents/{documentType}', [DocumentController::class, 'show'])->name('documents.show');
+        Route::post('/documents/{documentType}/upload', [DocumentController::class, 'upload'])->name('documents.upload');
+
+        // Document preview & download
+        Route::get('/documents/uploads/{upload}/preview', [DocumentController::class, 'preview'])
+            ->name('documents.uploads.preview');
+
+        Route::get('/documents/uploads/{upload}/download', [DocumentController::class, 'download'])
+            ->name('documents.uploads.download');
+
+        // Upload page, if you have one
+        Route::get('/upload', fn() => Inertia::render('Upload'))->name('upload');
     });
 });

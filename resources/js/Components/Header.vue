@@ -22,15 +22,31 @@ watch(
 const submit = () => emit("search", q.value);
 
 const hasNotif = true;
+
+/* ===============================
+   Display Name (remove middle)
+================================ */
+const displayName = computed(() => {
+  const full = me.value?.name ?? "";
+
+  const parts = full.trim().split(/\s+/);
+
+  if (parts.length === 0) return "Admin";
+  if (parts.length === 1) return parts[0];
+
+  return `${parts[0]} ${parts[parts.length - 1]}`;
+});
 </script>
 
 <template>
   <header class="w-full bg-[#f4f6f8]">
     <div class="px-10 pt-6 pb-2">
       <div class="flex justify-between items-start gap-6">
+
         <!-- LEFT SIDE -->
         <div class="min-w-0">
           <div v-if="showSearch" class="flex items-center">
+
             <div class="relative w-[520px] max-w-[60vw]">
               <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                 <svg
@@ -53,11 +69,13 @@ const hasNotif = true;
                 @keyup.enter="submit"
               />
             </div>
+
           </div>
         </div>
 
         <!-- RIGHT SIDE -->
         <div class="flex items-center gap-4">
+
           <!-- MAIL ICON -->
           <button
             class="relative h-10 w-10 rounded-full bg-[#e7e7e7] flex items-center justify-center"
@@ -103,7 +121,9 @@ const hasNotif = true;
 
           <!-- USER PROFILE -->
           <div class="flex items-center gap-3">
+
             <div class="h-10 w-10 rounded-full overflow-hidden bg-slate-200 flex items-center justify-center">
+
               <img
                 v-if="me?.profile_photo"
                 :src="me.profile_photo"
@@ -117,6 +137,7 @@ const hasNotif = true;
               >
                 {{ (me?.name?.[0] ?? "A").toUpperCase() }}
               </span>
+
             </div>
 
             <div class="text-right">
@@ -125,10 +146,12 @@ const hasNotif = true;
               </div>
 
               <div class="text-sm font-medium text-slate-800 leading-tight">
-                {{ me?.name ?? "Admin" }}
+                {{ displayName }}
               </div>
             </div>
+
           </div>
+
         </div>
       </div>
     </div>

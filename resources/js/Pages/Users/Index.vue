@@ -16,6 +16,19 @@ const toast = useToast();
 const confirm = useConfirm();
 
 const q = ref(props.filters?.q ?? "");
+const expandedId = ref(null);
+const showCreate = ref(false);
+
+const createForm = useForm({
+  username: "",
+  name: "",
+  email: "",
+  role: "admin_officer",
+  position: "",
+  department: "",
+  office_location: "",
+  password: "",
+});
 
 const runSearch = () => {
   router.get(
@@ -30,8 +43,6 @@ const onHeaderSearch = (value) => {
   runSearch();
 };
 
-const expandedId = ref(null);
-
 const toggleExpand = (id) => {
   expandedId.value = expandedId.value === id ? null : id;
 };
@@ -42,19 +53,6 @@ const goTo = (url) => {
   if (!url) return;
   router.get(url, {}, { preserveState: true, preserveScroll: true });
 };
-
-const showCreate = ref(false);
-
-const createForm = useForm({
-  username: "",
-  name: "",
-  email: "",
-  role: "admin_officer",
-  position: "",
-  department: "",
-  office_location: "",
-  password: "",
-});
 
 const openCreate = () => {
   createForm.reset();
@@ -125,10 +123,10 @@ const deleteUser = async (user) => {
         <button
           type="button"
           @click="openCreate"
-          class="inline-flex items-center gap-2 text-sm text-slate-800 hover:text-slate-950"
+          class="group inline-flex items-center gap-2 text-sm text-slate-800 transition duration-200 hover:-translate-y-[1px] hover:text-slate-950 active:translate-y-0"
         >
           <svg
-            class="h-4 w-4"
+            class="h-4 w-4 transition-transform duration-200 group-hover:rotate-90"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -142,7 +140,7 @@ const deleteUser = async (user) => {
         </button>
       </div>
 
-      <div class="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
         <div class="bg-slate-900 px-4 py-3 text-white">
           <div
             class="grid items-center"
@@ -171,6 +169,7 @@ const deleteUser = async (user) => {
               >
                 <div class="flex items-center justify-center gap-2">
                   <input type="checkbox" class="accent-indigo-500" />
+
                   <button
                     class="text-slate-500 hover:text-slate-800"
                     @click="toggleExpand(u.id)"
@@ -178,7 +177,7 @@ const deleteUser = async (user) => {
                     title="Expand"
                   >
                     <svg
-                      class="h-4 w-4 transition-transform"
+                      class="h-4 w-4"
                       :class="isExpanded(u.id) ? 'rotate-180' : ''"
                       viewBox="0 0 24 24"
                       fill="none"
@@ -190,13 +189,19 @@ const deleteUser = async (user) => {
                   </button>
                 </div>
 
-                <div class="text-sm font-medium text-slate-800">{{ u.name }}</div>
+                <div class="text-sm font-medium text-slate-800">
+                  {{ u.name }}
+                </div>
                 <div class="text-sm text-slate-600">{{ u.position ?? "-" }}</div>
                 <div class="text-sm text-slate-600">{{ u.department ?? "-" }}</div>
                 <div class="text-sm text-slate-600">{{ u.email }}</div>
 
                 <div class="flex items-center justify-center gap-4 text-slate-500">
-                  <button class="hover:text-slate-800" type="button" title="Edit">
+                  <button
+                    class="hover:text-slate-800"
+                    type="button"
+                    title="Edit"
+                  >
                     <svg
                       class="h-4 w-4"
                       viewBox="0 0 24 24"
@@ -210,7 +215,7 @@ const deleteUser = async (user) => {
                   </button>
 
                   <button
-                    class="transition hover:text-red-600"
+                    class="hover:text-red-600"
                     type="button"
                     title="Delete"
                     @click="deleteUser(u)"
@@ -231,7 +236,9 @@ const deleteUser = async (user) => {
               </div>
 
               <div v-if="isExpanded(u.id)" class="mt-3">
-                <div class="rounded-lg border border-indigo-300 bg-white px-6 py-4">
+                <div
+                  class="rounded-lg border border-indigo-200 bg-white px-6 py-4 shadow-[0_6px_18px_rgba(15,23,42,0.04)]"
+                >
                   <div class="grid gap-10 md:grid-cols-2">
                     <div>
                       <div class="mb-2 text-xs font-semibold text-slate-700">
@@ -255,8 +262,12 @@ const deleteUser = async (user) => {
                     <div>
                       <div class="mb-2 text-xs font-semibold text-slate-700">Account</div>
                       <div class="text-sm text-slate-600">
-                        <div><span class="text-slate-500">Username:</span> {{ u.username }}</div>
-                        <div class="mt-1"><span class="text-slate-500">Role:</span> {{ u.role }}</div>
+                        <div>
+                          <span class="text-slate-500">Username:</span> {{ u.username }}
+                        </div>
+                        <div class="mt-1">
+                          <span class="text-slate-500">Role:</span> {{ u.role }}
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -277,7 +288,7 @@ const deleteUser = async (user) => {
 
           <div class="flex gap-2">
             <button
-              class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-50"
+              class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition duration-150 hover:-translate-y-[1px] hover:bg-slate-50 disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:bg-white"
               :disabled="!users.prev_page_url"
               @click="goTo(users.prev_page_url)"
               type="button"
@@ -286,7 +297,7 @@ const deleteUser = async (user) => {
             </button>
 
             <button
-              class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-50"
+              class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition duration-150 hover:-translate-y-[1px] hover:bg-slate-50 disabled:opacity-50 disabled:hover:translate-y-0 disabled:hover:bg-white"
               :disabled="!users.next_page_url"
               @click="goTo(users.next_page_url)"
               type="button"
@@ -297,132 +308,162 @@ const deleteUser = async (user) => {
         </div>
       </div>
 
-      <div
-        v-if="showCreate"
-        class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-        @click.self="closeCreate"
+      <Transition
+        enter-active-class="transition-opacity duration-150 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition-opacity duration-100 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
       >
-        <div class="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
-          <div class="flex items-center justify-between bg-slate-900 px-5 py-4 text-white">
-            <div class="font-semibold">Create New User</div>
-            <button class="text-white/80 hover:text-white" type="button" @click="closeCreate">
-              ✕
-            </button>
-          </div>
-
-          <div class="p-5">
-            <div class="grid gap-4 md:grid-cols-2">
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-slate-700">Username</label>
-                <input
-                  v-model="createForm.username"
-                  type="text"
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-                <p v-if="createForm.errors.username" class="mt-1 text-xs text-red-600">
-                  {{ createForm.errors.username }}
-                </p>
-              </div>
-
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-slate-700">Role</label>
-                <select
-                  v-model="createForm.role"
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+        <div
+          v-if="showCreate"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+          @click.self="closeCreate"
+        >
+          <Transition
+            appear
+            enter-active-class="transition-all duration-200 ease-out"
+            enter-from-class="opacity-0 translate-y-2 scale-[0.985]"
+            enter-to-class="opacity-100 translate-y-0 scale-100"
+            leave-active-class="transition-all duration-150 ease-in"
+            leave-from-class="opacity-100 translate-y-0 scale-100"
+            leave-to-class="opacity-0 translate-y-2 scale-[0.985]"
+          >
+            <div
+              v-if="showCreate"
+              class="w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            >
+              <div class="flex items-center justify-between bg-slate-900 px-5 py-4 text-white">
+                <div class="font-semibold">Create New User</div>
+                <button
+                  class="text-white/80 transition duration-200 hover:rotate-90 hover:text-white"
+                  type="button"
+                  @click="closeCreate"
                 >
-                  <option value="admin_officer">Admin Officer</option>
-                  <option value="admin">Admin</option>
-                </select>
-                <p v-if="createForm.errors.role" class="mt-1 text-xs text-red-600">
-                  {{ createForm.errors.role }}
-                </p>
+                  ✕
+                </button>
               </div>
 
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-slate-700">Full Name</label>
-                <input
-                  v-model="createForm.name"
-                  type="text"
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-                <p v-if="createForm.errors.name" class="mt-1 text-xs text-red-600">
-                  {{ createForm.errors.name }}
-                </p>
-              </div>
+              <div class="p-5">
+                <div class="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label class="mb-1 block text-xs font-semibold text-slate-700">Username</label>
+                    <input
+                      v-model="createForm.username"
+                      type="text"
+                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                    />
+                    <p v-if="createForm.errors.username" class="mt-1 text-xs text-red-600">
+                      {{ createForm.errors.username }}
+                    </p>
+                  </div>
 
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-slate-700">Email</label>
-                <input
-                  v-model="createForm.email"
-                  type="email"
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-                <p v-if="createForm.errors.email" class="mt-1 text-xs text-red-600">
-                  {{ createForm.errors.email }}
-                </p>
-              </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-semibold text-slate-700">Role</label>
+                    <select
+                      v-model="createForm.role"
+                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                    >
+                      <option value="admin_officer">Admin Officer</option>
+                      <option value="admin">Admin</option>
+                    </select>
+                    <p v-if="createForm.errors.role" class="mt-1 text-xs text-red-600">
+                      {{ createForm.errors.role }}
+                    </p>
+                  </div>
 
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-slate-700">Position</label>
-                <input
-                  v-model="createForm.position"
-                  type="text"
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-semibold text-slate-700">Full Name</label>
+                    <input
+                      v-model="createForm.name"
+                      type="text"
+                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                    />
+                    <p v-if="createForm.errors.name" class="mt-1 text-xs text-red-600">
+                      {{ createForm.errors.name }}
+                    </p>
+                  </div>
 
-              <div>
-                <label class="mb-1 block text-xs font-semibold text-slate-700">Department</label>
-                <input
-                  v-model="createForm.department"
-                  type="text"
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-semibold text-slate-700">Email</label>
+                    <input
+                      v-model="createForm.email"
+                      type="email"
+                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                    />
+                    <p v-if="createForm.errors.email" class="mt-1 text-xs text-red-600">
+                      {{ createForm.errors.email }}
+                    </p>
+                  </div>
 
-              <div class="md:col-span-2">
-                <label class="mb-1 block text-xs font-semibold text-slate-700">Office Location</label>
-                <input
-                  v-model="createForm.office_location"
-                  type="text"
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-              </div>
+                  <div>
+                    <label class="mb-1 block text-xs font-semibold text-slate-700">Position</label>
+                    <input
+                      v-model="createForm.position"
+                      type="text"
+                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                    />
+                  </div>
 
-              <div class="md:col-span-2">
-                <label class="mb-1 block text-xs font-semibold text-slate-700">Temporary Password</label>
-                <input
-                  v-model="createForm.password"
-                  type="password"
-                  class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
-                />
-                <p v-if="createForm.errors.password" class="mt-1 text-xs text-red-600">
-                  {{ createForm.errors.password }}
-                </p>
+                  <div>
+                    <label class="mb-1 block text-xs font-semibold text-slate-700">Department</label>
+                    <input
+                      v-model="createForm.department"
+                      type="text"
+                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                    />
+                  </div>
+
+                  <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-700">
+                      Office Location
+                    </label>
+                    <input
+                      v-model="createForm.office_location"
+                      type="text"
+                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                    />
+                  </div>
+
+                  <div class="md:col-span-2">
+                    <label class="mb-1 block text-xs font-semibold text-slate-700">
+                      Temporary Password
+                    </label>
+                    <input
+                      v-model="createForm.password"
+                      type="password"
+                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                    />
+                    <p v-if="createForm.errors.password" class="mt-1 text-xs text-red-600">
+                      {{ createForm.errors.password }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="mt-6 flex justify-end gap-2">
+                  <button
+                    class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-700 transition duration-150 hover:-translate-y-[1px] hover:bg-slate-50 active:translate-y-0"
+                    type="button"
+                    @click="closeCreate"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    class="rounded-lg bg-[#C9A84C] px-4 py-2 text-black transition duration-150 hover:-translate-y-[1px] hover:opacity-90 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0"
+                    type="button"
+                    :disabled="createForm.processing"
+                    @click="submitCreate"
+                  >
+                    {{ createForm.processing ? "Creating..." : "Create User" }}
+                  </button>
+                </div>
               </div>
             </div>
-
-            <div class="mt-6 flex justify-end gap-2">
-              <button
-                class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-700 hover:bg-slate-50"
-                type="button"
-                @click="closeCreate"
-              >
-                Cancel
-              </button>
-
-              <button
-                class="rounded-lg bg-[#C9A84C] px-4 py-2 text-black hover:opacity-90 disabled:opacity-50"
-                type="button"
-                :disabled="createForm.processing"
-                @click="submitCreate"
-              >
-                {{ createForm.processing ? "Creating..." : "Create User" }}
-              </button>
-            </div>
-          </div>
+          </Transition>
         </div>
-      </div>
+      </Transition>
     </div>
   </AdminLayout>
 </template>

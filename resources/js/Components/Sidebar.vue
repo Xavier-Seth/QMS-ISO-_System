@@ -4,32 +4,23 @@ import { Link, usePage } from "@inertiajs/vue3";
 
 const page = usePage();
 
-/**
- * Inertia page.url includes query string.
- * Example: "/documents?q=abc" -> we only want "/documents"
- */
 const currentPath = computed(() => {
     const url = page.url || "/";
-    const path = url.split("?")[0]; // remove query string
-    // remove trailing slash (optional, but keeps matching consistent)
+    const path = url.split("?")[0];
     return path !== "/" ? path.replace(/\/+$/, "") : "/";
 });
 
-// dropdown states
+const user = computed(() => page.props.auth?.user ?? null);
+const isAdmin = computed(() => user.value?.role === "admin");
+
 const openCreateDocuments = ref(false);
 const openManual = ref(false);
 
-/** exact match */
 const isActive = (href) => currentPath.value === href;
 
-/** prefix match: true for "/manual" and "/manual/1" etc */
 const isStartsWith = (prefix) =>
     currentPath.value === prefix || currentPath.value.startsWith(prefix + "/");
 
-/**
- * Auto-open dropdowns when you are inside their route group.
- * This prevents dropdown being closed when you refresh / open direct URL.
- */
 watch(
     currentPath,
     () => {
@@ -39,36 +30,58 @@ watch(
             isStartsWith("/ofi") ||
             isStartsWith("/ofi-form");
     },
-    { immediate: true },
+    { immediate: true }
 );
+
+const navItemClass = (active = false) => [
+    "group flex w-full items-center gap-3 rounded-[10px] px-[14px] py-[11px] text-left text-sm tracking-[0.01em] transition",
+    active
+        ? "bg-indigo-500/15 text-white font-medium"
+        : "text-slate-400 hover:bg-slate-400/10 hover:text-slate-200",
+];
+
+const iconClass = (active = false) => [
+    "h-[18px] w-[18px] shrink-0 transition",
+    active ? "stroke-indigo-400" : "stroke-slate-500 group-hover:stroke-slate-400",
+];
+
+const dropdownItemClass = (active = false) => [
+    "block rounded-lg px-[14px] py-[9px] pl-11 text-[13px] tracking-[0.01em] transition",
+    active
+        ? "bg-indigo-500/10 text-indigo-300"
+        : "text-slate-500 hover:bg-slate-400/5 hover:text-slate-300",
+];
 </script>
 
 <template>
-    <aside class="sidebar">
-        <!-- Logo Section -->
-        <div class="logo-section">
+    <aside
+        class="fixed left-0 top-0 z-[100] flex h-screen w-[280px] flex-col overflow-hidden border-r border-white/5 bg-[linear-gradient(180deg,#0d1424_0%,#111827_50%,#0f1e2e_100%)] font-sans text-slate-200"
+    >
+        <!-- Logo -->
+        <div class="flex shrink-0 items-center gap-3.5 px-6 pb-6 pt-7">
             <img
                 :src="`/images/QMS_logo.png`"
                 alt="QMS Logo"
-                class="logo-img"
+                class="h-[52px] w-[52px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
             />
-            <div class="brand-text">
+            <div class="flex flex-col text-[13.5px] font-medium leading-[1.4] tracking-[0.01em] text-slate-300">
                 <span>Quality Management</span>
                 <span>System</span>
             </div>
         </div>
 
-        <div class="divider"></div>
+        <div class="mx-5 mb-5 h-px shrink-0 bg-gradient-to-r from-transparent via-slate-400/15 to-transparent"></div>
 
-        <nav class="nav">
+        <nav
+            class="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto overflow-x-hidden px-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
             <!-- Dashboard -->
             <Link
                 href="/dashboard"
-                class="nav-item"
-                :class="{ active: isActive('/dashboard') }"
+                :class="navItemClass(isActive('/dashboard'))"
             >
                 <svg
-                    class="nav-icon"
+                    :class="iconClass(isActive('/dashboard'))"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -82,30 +95,23 @@ watch(
                 <span>Dashboard</span>
             </Link>
 
-            <!-- Create Documents Dropdown -->
-            <div class="dropdown-wrapper">
+            <!-- Create Documents -->
+            <div class="flex shrink-0 flex-col gap-0.5">
                 <button
-                    @click="openCreateDocuments = !openCreateDocuments"
-                    class="nav-item dropdown-trigger"
-                    :class="{
-                        active:
-                            openCreateDocuments ||
-                            isStartsWith('/dcr') ||
-                            isStartsWith('/ofi'),
-                    }"
                     type="button"
+                    @click="openCreateDocuments = !openCreateDocuments"
+                    :class="navItemClass(openCreateDocuments || isStartsWith('/dcr') || isStartsWith('/ofi') || isStartsWith('/ofi-form'))"
+                    class="justify-between border-0 bg-transparent"
                 >
-                    <div class="nav-item-left">
+                    <div class="flex items-center gap-3">
                         <svg
-                            class="nav-icon"
+                            :class="iconClass(openCreateDocuments || isStartsWith('/dcr') || isStartsWith('/ofi') || isStartsWith('/ofi-form'))"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
                             stroke-width="1.8"
                         >
-                            <path
-                                d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
-                            />
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                             <polyline points="14 2 14 8 20 8" />
                             <line x1="12" y1="18" x2="12" y2="12" />
                             <line x1="9" y1="15" x2="15" y2="15" />
@@ -114,8 +120,8 @@ watch(
                     </div>
 
                     <svg
-                        class="chevron"
-                        :class="{ rotated: openCreateDocuments }"
+                        class="h-[15px] w-[15px] shrink-0 stroke-slate-500 transition duration-200"
+                        :class="{ 'rotate-180': openCreateDocuments }"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
@@ -125,43 +131,37 @@ watch(
                     </svg>
                 </button>
 
-                <div v-if="openCreateDocuments" class="dropdown-menu">
+                <div v-if="openCreateDocuments" class="flex flex-col gap-px pb-1 pt-0.5">
                     <Link
                         href="/dcr"
-                        class="dropdown-item"
-                        :class="{ 'dropdown-item-active': isActive('/dcr') }"
+                        :class="dropdownItemClass(isActive('/dcr'))"
                     >
                         Create DCR Forms
                     </Link>
 
                     <Link
                         href="/ofi-form"
-                        class="dropdown-item"
-                        :class="{
-                            'dropdown-item-active': isActive('/ofi-form'),
-                        }"
+                        :class="dropdownItemClass(isActive('/ofi-form'))"
                     >
                         Create OFI Forms
                     </Link>
                 </div>
             </div>
 
-            <!-- Documents -->
+            <!-- Documents - admin only -->
             <Link
+                v-if="isAdmin"
                 href="/documents"
-                class="nav-item"
-                :class="{ active: isStartsWith('/documents') }"
+                :class="navItemClass(isStartsWith('/documents'))"
             >
                 <svg
-                    class="nav-icon"
+                    :class="iconClass(isStartsWith('/documents'))"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1.8"
                 >
-                    <path
-                        d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"
-                    />
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
                     <polyline points="14 2 14 8 20 8" />
                     <line x1="16" y1="13" x2="8" y2="13" />
                     <line x1="16" y1="17" x2="8" y2="17" />
@@ -169,97 +169,58 @@ watch(
                 <span>Documents</span>
             </Link>
 
-            <!-- ✅ Manual Dropdown (NEW) -->
-            <div class="dropdown-wrapper">
-                <button
-                    @click="openManual = !openManual"
-                    class="nav-item dropdown-trigger"
-                    :class="{ active: openManual || isStartsWith('/manual') }"
-                    type="button"
-                >
-                    <div class="nav-item-left">
-                        <svg
-                            class="nav-icon"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="1.8"
-                        >
-                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                            <path
-                                d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"
-                            />
-                            <line x1="8" y1="7" x2="18" y2="7" />
-                            <line x1="8" y1="11" x2="18" y2="11" />
-                        </svg>
-                        <span>Manual</span>
-                    </div>
+            <!-- Manual -->
+<div class="flex shrink-0 flex-col gap-0.5">
+    <button
+        type="button"
+        @click="openManual = !openManual"
+        :class="navItemClass(openManual || isStartsWith('/manual'))"
+        class="justify-between border-0 bg-transparent"
+    >
+        <div class="flex items-center gap-3">
+            <svg
+                :class="iconClass(openManual || isStartsWith('/manual'))"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+            >
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                <line x1="8" y1="7" x2="18" y2="7" />
+                <line x1="8" y1="11" x2="18" y2="11" />
+            </svg>
+            <span>Manual</span>
+        </div>
 
-                    <svg
-                        class="chevron"
-                        :class="{ rotated: openManual }"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        stroke-width="2"
-                    >
-                        <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                </button>
+        <svg
+            class="h-[15px] w-[15px] shrink-0 stroke-slate-500 transition duration-200"
+            :class="{ 'rotate-180': openManual }"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+        >
+            <polyline points="6 9 12 15 18 9" />
+        </svg>
+    </button>
 
-                <div v-if="openManual" class="dropdown-menu">
-                    <!-- change these hrefs to your real routes -->
-                    <Link
-                        href="/manual/asm"
-                        class="dropdown-item"
-                        :class="{
-                            'dropdown-item-active': isActive('/manual/asm'),
-                        }"
-                        >ASM</Link
-                    >
-                    <Link
-                        href="/manual/qsm"
-                        class="dropdown-item"
-                        :class="{
-                            'dropdown-item-active': isActive('/manual/qsm'),
-                        }"
-                        >QSM</Link
-                    >
-                    <Link
-                        href="/manual/hrm"
-                        class="dropdown-item"
-                        :class="{
-                            'dropdown-item-active': isActive('/manual/hrm'),
-                        }"
-                        >HRM</Link
-                    >
-                    <Link
-                        href="/manual/riem"
-                        class="dropdown-item"
-                        :class="{
-                            'dropdown-item-active': isActive('/manual/riem'),
-                        }"
-                        >RIEM</Link
-                    >
-                    <Link
-                        href="/manual/rem"
-                        class="dropdown-item"
-                        :class="{
-                            'dropdown-item-active': isActive('/manual/rem'),
-                        }"
-                        >REM</Link
-                    >
-                </div>
-            </div>
-
-            <!-- ✅ Upload (NEW) -->
+    <div v-if="openManual" class="flex flex-col gap-px pb-1 pt-0.5">
+        <Link href="/manual/asm" :class="dropdownItemClass(isActive('/manual/asm'))">ASM</Link>
+        <Link href="/manual/qsm" :class="dropdownItemClass(isActive('/manual/qsm'))">QSM</Link>
+        <Link href="/manual/hrm" :class="dropdownItemClass(isActive('/manual/hrm'))">HRM</Link>
+        <Link href="/manual/riem" :class="dropdownItemClass(isActive('/manual/riem'))">RIEM</Link>
+        <Link href="/manual/rem" :class="dropdownItemClass(isActive('/manual/rem'))">REM</Link>
+    </div>
+</div>
+            <!-- Upload - admin only -->
             <Link
+                v-if="isAdmin"
                 href="/upload"
-                class="nav-item"
-                :class="{ active: isActive('/upload') }"
+                :class="navItemClass(isActive('/upload'))"
             >
                 <svg
-                    class="nav-icon"
+                    :class="iconClass(isActive('/upload'))"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -275,32 +236,29 @@ watch(
             <!-- Inbox -->
             <Link
                 href="/inbox"
-                class="nav-item"
-                :class="{ active: isActive('/inbox') }"
+                :class="navItemClass(isActive('/inbox'))"
             >
                 <svg
-                    class="nav-icon"
+                    :class="iconClass(isActive('/inbox'))"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
                     stroke-width="1.8"
                 >
                     <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
-                    <path
-                        d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"
-                    />
+                    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
                 </svg>
                 <span>Inbox</span>
             </Link>
 
-            <!-- Users -->
+            <!-- Users - admin only -->
             <Link
+                v-if="isAdmin"
                 href="/users"
-                class="nav-item"
-                :class="{ active: isActive('/users') }"
+                :class="navItemClass(isActive('/users'))"
             >
                 <svg
-                    class="nav-icon"
+                    :class="iconClass(isActive('/users'))"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -315,11 +273,10 @@ watch(
             <!-- Logs -->
             <Link
                 href="/logs"
-                class="nav-item"
-                :class="{ active: isActive('/logs') }"
+                :class="navItemClass(isActive('/logs'))"
             >
                 <svg
-                    class="nav-icon"
+                    :class="iconClass(isActive('/logs'))"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -334,11 +291,10 @@ watch(
             <!-- Settings -->
             <Link
                 href="/settings"
-                class="nav-item"
-                :class="{ active: isActive('/settings') }"
+                :class="navItemClass(isActive('/settings'))"
             >
                 <svg
-                    class="nav-icon"
+                    :class="iconClass(isActive('/settings'))"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -354,13 +310,17 @@ watch(
         </nav>
 
         <!-- Logout -->
-        <div class="logout-section">
-            <Link href="/logout" method="post" as="button" class="logout-btn">
+        <div class="shrink-0 border-t border-slate-400/10 px-3 py-4">
+            <Link
+                href="/logout"
+                method="post"
+                as="button"
+                class="flex w-full items-center gap-3 rounded-[10px] px-[14px] py-[11px] text-sm tracking-[0.01em] text-slate-500 transition hover:bg-red-500/10 hover:text-red-400"
+            >
                 <svg
-                    class="nav-icon"
+                    class="h-[18px] w-[18px] shrink-0 stroke-current transition"
                     viewBox="0 0 24 24"
                     fill="none"
-                    stroke="currentColor"
                     stroke-width="1.8"
                 >
                     <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
@@ -372,250 +332,3 @@ watch(
         </div>
     </aside>
 </template>
-
-<style scoped>
-@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap");
-
-/* ─────────────────────────────────────────────────────
-   SIDEBAR
-   position: fixed  →  never scrolls with the page
-   height: 100vh    →  always full screen height
-   flex-column      →  logo + nav (scrollable) + logout (pinned)
-───────────────────────────────────────────────────── */
-.sidebar {
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 280px;
-    height: 100vh;
-    background: linear-gradient(180deg, #0d1424 0%, #111827 50%, #0f1e2e 100%);
-    color: #e2e8f0;
-    display: flex;
-    flex-direction: column;
-    font-family: "DM Sans", sans-serif;
-    border-right: 1px solid rgba(255, 255, 255, 0.04);
-    z-index: 100;
-    /* No overflow on sidebar itself */
-    overflow: hidden;
-}
-
-/* ── Logo (fixed, never scrolls) ── */
-.logo-section {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    gap: 14px;
-    padding: 28px 24px 24px;
-}
-
-.logo-img {
-    width: 52px;
-    height: 52px;
-    object-fit: contain;
-    flex-shrink: 0;
-    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.4));
-}
-
-.brand-text {
-    display: flex;
-    flex-direction: column;
-    font-size: 13.5px;
-    font-weight: 500;
-    line-height: 1.4;
-    color: #cbd5e1;
-    letter-spacing: 0.01em;
-}
-
-/* ── Divider ── */
-.divider {
-    flex-shrink: 0;
-    height: 1px;
-    background: linear-gradient(
-        90deg,
-        transparent,
-        rgba(148, 163, 184, 0.15),
-        transparent
-    );
-    margin: 0 20px 20px;
-}
-
-/* ─────────────────────────────────────────────────────
-   NAV
-   flex: 1 + overflow-y: auto  →  this section scrolls
-   if items overflow (e.g. dropdown open), but ONLY
-   this section — logo and logout stay fixed.
-───────────────────────────────────────────────────── */
-.nav {
-    flex: 1;
-    min-height: 0; /* required for overflow to work in flex */
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 0 12px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-
-    /* Hide scrollbar visually but keep it functional */
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-}
-.nav::-webkit-scrollbar {
-    display: none;
-}
-
-.nav-item {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 11px 14px;
-    border-radius: 10px;
-    font-size: 14px;
-    font-weight: 400;
-    color: #94a3b8;
-    text-decoration: none;
-    transition:
-        background 0.18s,
-        color 0.18s;
-    cursor: pointer;
-    border: none;
-    background: transparent;
-    width: 100%;
-    text-align: left;
-    letter-spacing: 0.01em;
-    flex-shrink: 0;
-}
-
-.nav-item:hover {
-    background: rgba(148, 163, 184, 0.08);
-    color: #e2e8f0;
-}
-
-.nav-item.active {
-    background: rgba(99, 130, 255, 0.15);
-    color: #ffffff;
-    font-weight: 500;
-}
-
-.nav-item.active .nav-icon {
-    stroke: #818cf8;
-}
-
-.nav-icon {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-    stroke: #64748b;
-    transition: stroke 0.18s;
-}
-
-.nav-item:hover .nav-icon {
-    stroke: #94a3b8;
-}
-
-/* ── Dropdown ── */
-.dropdown-wrapper {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    flex-shrink: 0;
-}
-
-.dropdown-trigger {
-    justify-content: space-between;
-}
-
-.nav-item-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-}
-
-.chevron {
-    width: 15px;
-    height: 15px;
-    stroke: #64748b;
-    transition: transform 0.25s ease;
-    flex-shrink: 0;
-}
-
-.chevron.rotated {
-    transform: rotate(180deg);
-}
-
-.dropdown-menu {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-    padding: 2px 0 4px 0;
-}
-
-.dropdown-item {
-    display: block;
-    padding: 9px 14px 9px 44px;
-    font-size: 13px;
-    color: #64748b;
-    text-decoration: none;
-    border-radius: 8px;
-    transition:
-        color 0.15s,
-        background 0.15s;
-    letter-spacing: 0.01em;
-    font-family: "DM Sans", sans-serif;
-}
-
-.dropdown-item:hover {
-    color: #cbd5e1;
-    background: rgba(148, 163, 184, 0.06);
-}
-
-.dropdown-item-active {
-    color: #a5b4fc;
-    background: rgba(99, 130, 255, 0.08);
-}
-
-/* ─────────────────────────────────────────────────────
-   LOGOUT — always pinned to the bottom of the sidebar.
-   flex-shrink: 0 prevents it from being compressed.
-   The border-top gives a visual separator.
-───────────────────────────────────────────────────── */
-.logout-section {
-    flex-shrink: 0;
-    padding: 16px 12px;
-    border-top: 1px solid rgba(148, 163, 184, 0.08);
-}
-
-.logout-btn {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    width: 100%;
-    padding: 11px 14px;
-    border-radius: 10px;
-    font-size: 14px;
-    font-weight: 400;
-    color: #64748b;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    text-decoration: none;
-    transition:
-        background 0.18s,
-        color 0.18s;
-    letter-spacing: 0.01em;
-    font-family: "DM Sans", sans-serif;
-}
-
-.logout-btn:hover {
-    background: rgba(239, 68, 68, 0.12);
-    color: #f87171;
-}
-
-.logout-btn:hover .nav-icon {
-    stroke: #f87171;
-}
-
-.logout-btn .nav-icon {
-    stroke: #64748b;
-    transition: stroke 0.18s;
-}
-</style>
