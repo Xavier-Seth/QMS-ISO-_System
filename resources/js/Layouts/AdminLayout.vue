@@ -33,7 +33,7 @@ import ConfirmModal from "@/Components/Feedback/ConfirmModal.vue";
   flex: 1;
   min-width: 0;
   height: 100vh;
-  overflow-y: auto;
+  overflow-y: scroll;
   overflow-x: hidden;
   display: flex;
   flex-direction: column;

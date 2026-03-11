@@ -465,110 +465,122 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
       </div>
 
       <!-- EMPTY -->
-      <Transition
-        enter-active-class="transition duration-200 ease-out"
-        enter-from-class="opacity-0 translate-y-1"
-        enter-to-class="opacity-100 translate-y-0"
-        leave-active-class="transition duration-150 ease-in"
-        leave-from-class="opacity-100 translate-y-0"
-        leave-to-class="opacity-0 -translate-y-1"
+      <div
+        v-if="!(documents?.data || []).length"
+        class="rounded-2xl border border-slate-200 bg-white p-10 text-center"
       >
-        <div
-          v-if="!(documents?.data || []).length"
-          class="rounded-2xl border border-slate-200 bg-white p-10 text-center"
-        >
-          <div class="text-lg font-semibold text-slate-900">No uploads yet</div>
-          <div class="mt-2 text-sm text-slate-600">
-            Start by uploading the first file for this document type.
-          </div>
-
-          <button
-            type="button"
-            @click="openUpload"
-            class="mt-4 inline-block rounded-xl bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-800"
-          >
-            {{ requiresRevision ? 'Upload First Revision' : 'Upload Files' }}
-          </button>
+        <div class="text-lg font-semibold text-slate-900">No uploads yet</div>
+        <div class="mt-2 text-sm text-slate-600">
+          Start by uploading the first file for this document type.
         </div>
-      </Transition>
+
+        <button
+          type="button"
+          @click="openUpload"
+          class="mt-4 inline-block rounded-xl bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-800"
+        >
+          {{ requiresRevision ? 'Upload First Revision' : 'Upload Files' }}
+        </button>
+      </div>
 
       <!-- TABLE -->
-      <Transition
-        enter-active-class="transition duration-200 ease-out"
-        enter-from-class="opacity-0 translate-y-1"
-        enter-to-class="opacity-100 translate-y-0"
-        leave-active-class="transition duration-150 ease-in"
-        leave-from-class="opacity-100 translate-y-0"
-        leave-to-class="opacity-0 -translate-y-1"
+      <div
+        v-if="(documents?.data || []).length"
+        class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
       >
-        <div
-          v-if="(documents?.data || []).length"
-          class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
-        >
-          <div class="overflow-x-auto">
-            <table class="min-w-full table-fixed text-sm">
-              <thead class="border-b border-slate-200 bg-slate-50">
-                <tr class="text-left">
-                  <th v-if="requiresRevision" class="px-5 py-3 font-semibold text-slate-700">
-                    Revision
-                  </th>
-                  <th class="px-5 py-3 font-semibold text-slate-700">File Name</th>
-                  <th v-if="requiresRevision" class="px-5 py-3 font-semibold text-slate-700">
-                    Status
-                  </th>
-                  <th class="px-5 py-3 font-semibold text-slate-700">Uploaded By</th>
-                  <th class="px-5 py-3 font-semibold text-slate-700">Date</th>
-                  <th class="px-5 py-3 text-right font-semibold text-slate-700">Actions</th>
-                </tr>
-              </thead>
+        <div class="overflow-x-auto">
+          <table class="min-w-full table-fixed text-sm">
+            <colgroup>
+              <template v-if="requiresRevision">
+                <col class="w-[90px]" />
+                <col />
+                <col class="w-[120px]" />
+                <col class="w-[170px]" />
+                <col class="w-[190px]" />
+                <col class="w-[170px]" />
+              </template>
 
-              <tbody>
-                <tr
-                  v-for="doc in documents.data"
-                  :key="doc.id"
-                  class="border-b border-slate-100 transition-colors duration-200 hover:bg-slate-50"
+              <template v-else>
+                <col />
+                <col class="w-[170px]" />
+                <col class="w-[190px]" />
+                <col class="w-[170px]" />
+              </template>
+            </colgroup>
+
+            <thead class="border-b border-slate-200 bg-slate-50">
+              <tr class="text-left">
+                <th v-if="requiresRevision" class="px-5 py-3 font-semibold text-slate-700">
+                  Revision
+                </th>
+                <th class="px-5 py-3 font-semibold text-slate-700">File Name</th>
+                <th v-if="requiresRevision" class="px-5 py-3 font-semibold text-slate-700">
+                  Status
+                </th>
+                <th class="px-5 py-3 font-semibold text-slate-700">Uploaded By</th>
+                <th class="px-5 py-3 font-semibold text-slate-700 whitespace-nowrap">Date</th>
+                <th class="px-5 py-3 text-right font-semibold text-slate-700 whitespace-nowrap">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              <tr
+                v-for="doc in documents.data"
+                :key="doc.id"
+                class="border-b border-slate-100 transition-colors duration-200 hover:bg-slate-50"
+              >
+                <td
+                  v-if="requiresRevision"
+                  class="px-5 py-4 font-medium text-slate-900 whitespace-nowrap align-middle"
                 >
-                  <td v-if="requiresRevision" class="px-5 py-4 font-medium text-slate-900">
-                    {{ doc.revision || '—' }}
-                  </td>
+                  {{ doc.revision || '—' }}
+                </td>
 
-                  <td class="px-5 py-4 text-slate-800">
-                    <div class="flex min-w-0 items-center gap-2">
-                      <span
-                        class="inline-flex shrink-0 items-center rounded-md px-1.5 py-[2px] text-[10px] font-bold tracking-wide ring-1"
-                        :class="getFileTypeClass(doc.file_name)"
-                      >
-                        {{ getFileTypeLabel(doc.file_name) }}
-                      </span>
-
-                      <div
-                        class="min-w-0 max-w-[250px] truncate overflow-hidden whitespace-nowrap"
-                        :title="doc.file_name"
-                      >
-                        {{ doc.file_name }}
-                      </div>
-                    </div>
-                  </td>
-
-                  <td v-if="requiresRevision" class="px-5 py-4">
-                    <span class="rounded-full px-2 py-1 text-xs ring-1 transition" :class="statusClass(doc.status)">
-                      {{ doc.status }}
+                <td class="px-5 py-4 text-slate-800 align-middle">
+                  <div class="flex min-w-0 items-center gap-2">
+                    <span
+                      class="inline-flex shrink-0 items-center rounded-md px-1.5 py-[2px] text-[10px] font-bold tracking-wide ring-1"
+                      :class="getFileTypeClass(doc.file_name)"
+                    >
+                      {{ getFileTypeLabel(doc.file_name) }}
                     </span>
-                  </td>
 
-                  <td class="px-5 py-4 text-slate-600">
+                    <div
+                      class="min-w-0 max-w-[250px] truncate overflow-hidden whitespace-nowrap"
+                      :title="doc.file_name"
+                    >
+                      {{ doc.file_name }}
+                    </div>
+                  </div>
+                </td>
+
+                <td v-if="requiresRevision" class="px-5 py-4 align-middle whitespace-nowrap">
+                  <span
+                    class="rounded-full px-2 py-1 text-xs ring-1 transition"
+                    :class="statusClass(doc.status)"
+                  >
+                    {{ doc.status }}
+                  </span>
+                </td>
+
+                <td class="px-5 py-4 text-slate-600 align-middle">
+                  <div class="line-clamp-2">
                     {{ doc.uploaded_by_name }}
-                  </td>
+                  </div>
+                </td>
 
-                  <td class="px-5 py-4 text-slate-600">
-                    {{ formatDate(doc.created_at) }}
-                  </td>
+                <td class="px-5 py-4 text-slate-600 align-middle whitespace-nowrap">
+                  {{ formatDate(doc.created_at) }}
+                </td>
 
-                  <td class="space-x-2 px-5 py-4 text-right">
+                <td class="px-5 py-4 align-middle">
+                  <div class="flex items-center justify-end gap-2 whitespace-nowrap">
                     <Link
                       v-if="!requiresRevision && doc.ofi_record_id"
                       :href="`/ofi-form?record=${doc.ofi_record_id}`"
-                      class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
+                      class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
                       title="Edit this OFI record"
                     >
                       Edit
@@ -577,7 +589,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                     <Link
                       v-else-if="!requiresRevision && doc.dcr_record_id"
                       :href="`/dcr?record=${doc.dcr_record_id}`"
-                      class="rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
+                      class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
                       title="Edit this DCR record"
                     >
                       Edit
@@ -587,94 +599,94 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                       :href="doc.preview_url || doc.file_url"
                       target="_blank"
                       rel="noopener"
-                      class="rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white transition hover:bg-slate-800"
+                      class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white transition hover:bg-slate-800"
                     >
                       View
                     </a>
 
                     <a
                       :href="doc.download_url || doc.file_url"
-                      class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
+                      class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
                     >
                       Download
                     </a>
-                  </td>
-                </tr>
+                  </div>
+                </td>
+              </tr>
 
-                <tr v-if="!documents.data.length">
-                  <td :colspan="tableColspan" class="px-5 py-6 text-center text-sm text-slate-500">
-                    No matching files found.
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+              <tr v-if="!documents.data.length">
+                <td :colspan="tableColspan" class="px-5 py-6 text-center text-sm text-slate-500">
+                  No matching files found.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
 
-          <!-- Pagination -->
-          <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-              <div class="text-sm text-slate-600">
-                Showing
-                <span class="font-medium text-slate-900">{{ documents.from ?? 0 }}</span>
-                to
-                <span class="font-medium text-slate-900">{{ documents.to ?? 0 }}</span>
-                of
-                <span class="font-medium text-slate-900">{{ documents.total ?? 0 }}</span>
-                files
-              </div>
-
-              <div class="flex items-center gap-2">
-                <label class="text-sm text-slate-600">Per page</label>
-                <select
-                  v-model="perPage"
-                  class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
-                >
-                  <option value="10">10</option>
-                  <option value="25">25</option>
-                  <option value="50">50</option>
-                  <option value="100">100</option>
-                </select>
-              </div>
+        <!-- Pagination -->
+        <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+            <div class="text-sm text-slate-600">
+              Showing
+              <span class="font-medium text-slate-900">{{ documents.from ?? 0 }}</span>
+              to
+              <span class="font-medium text-slate-900">{{ documents.to ?? 0 }}</span>
+              of
+              <span class="font-medium text-slate-900">{{ documents.total ?? 0 }}</span>
+              files
             </div>
 
-            <div class="flex flex-wrap items-center gap-2">
-              <template v-for="(link, index) in documents.links" :key="`${link.label}-${index}`">
-                <Link
-                  v-if="link.url"
-                  :href="link.url"
-                  preserve-scroll
-                  preserve-state
-                  class="inline-flex items-center rounded-lg border px-3 py-1.5 text-sm transition"
-                  :class="
-                    link.active
-                      ? 'border-slate-900 bg-slate-900 text-white'
-                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                  "
-                >
-                  <span v-html="link.label" />
-                </Link>
-
-                <span
-                  v-else
-                  class="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-400"
-                >
-                  <span v-html="link.label" />
-                </span>
-              </template>
+            <div class="flex items-center gap-2">
+              <label class="text-sm text-slate-600">Per page</label>
+              <select
+                v-model="perPage"
+                class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+              </select>
             </div>
           </div>
 
-          <div class="bg-slate-50 px-6 py-3 text-xs text-slate-500">
-            <template v-if="requiresRevision">
-              ISO Document Control: Only one version should remain Active.
-              Uploading a new revision should mark previous versions as Obsolete.
-            </template>
-            <template v-else>
-              Record storage: uploads are treated as records (no revision control).
+          <div class="flex flex-wrap items-center gap-2">
+            <template v-for="(link, index) in documents.links" :key="`${link.label}-${index}`">
+              <Link
+                v-if="link.url"
+                :href="link.url"
+                preserve-scroll
+                preserve-state
+                class="inline-flex items-center rounded-lg border px-3 py-1.5 text-sm transition"
+                :class="
+                  link.active
+                    ? 'border-slate-900 bg-slate-900 text-white'
+                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                "
+              >
+                <span v-html="link.label" />
+              </Link>
+
+              <span
+                v-else
+                class="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-400"
+              >
+                <span v-html="link.label" />
+              </span>
             </template>
           </div>
         </div>
-      </Transition>
+
+        <div class="bg-slate-50 px-6 py-3 text-xs text-slate-500">
+          <template v-if="requiresRevision">
+            ISO Document Control: Only one version should remain Active.
+            Uploading a new revision should mark previous versions as Obsolete.
+          </template>
+          <template v-else>
+            Record storage: uploads are treated as records (no revision control).
+          </template>
+        </div>
+      </div>
 
       <!-- UPLOAD MODAL -->
       <Transition
@@ -777,17 +789,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                       </div>
 
                       <div class="max-h-56 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50">
-                        <TransitionGroup
-                          tag="ul"
-                          class="divide-y divide-slate-200"
-                          enter-active-class="transition duration-200 ease-out"
-                          enter-from-class="opacity-0 translate-y-2"
-                          enter-to-class="opacity-100 translate-y-0"
-                          leave-active-class="transition duration-150 ease-in absolute w-[calc(100%-1.5rem)]"
-                          leave-from-class="opacity-100 translate-y-0"
-                          leave-to-class="opacity-0 translate-y-1"
-                          move-class="transition duration-200 ease-out"
-                        >
+                        <ul class="divide-y divide-slate-200">
                           <li
                             v-for="(file, index) in uploadForm.files"
                             :key="`${file.name}-${file.size}-${index}`"
@@ -816,7 +818,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                               Remove
                             </button>
                           </li>
-                        </TransitionGroup>
+                        </ul>
                       </div>
 
                       <p class="mt-2 text-xs text-slate-500">
