@@ -3,6 +3,8 @@
 namespace App\Services\DocumentPreview;
 
 use App\Models\DocumentUpload;
+use Illuminate\Contracts\Cache\LockTimeoutException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use RuntimeException;
@@ -35,7 +37,7 @@ class DocumentPreviewService
 
         return $this->buildInlineResponse(
             $previewAbsolutePath,
-            $upload->preview_mime ?: 'application/pdf',
+            $upload->fresh()->preview_mime ?: 'application/pdf',
             $this->buildPreviewFilename($upload)
         );
     }
@@ -54,6 +56,72 @@ class DocumentPreviewService
             return Storage::disk($upload->getPreviewDiskName())->path($upload->preview_path);
         }
 
+        $lockKey = $this->buildPreviewLockKey($upload, $sourceHash);
+        $lockTimeout = (int) config('document_preview.lock_timeout', 180);
+        $lockWaitSeconds = (int) config('document_preview.lock_wait_seconds', 15);
+
+        $previewLock = Cache::lock($lockKey, $lockTimeout);
+
+        try {
+            $previewLock->block($lockWaitSeconds);
+
+            $upload->refresh();
+
+            if ($this->hasReusablePreview($upload, $sourceHash)) {
+                return Storage::disk($upload->getPreviewDiskName())->path($upload->preview_path);
+            }
+
+            return $this->generateAndStorePreviewWithGlobalLimit(
+                $upload,
+                $originalAbsolutePath,
+                $sourceHash
+            );
+        } catch (LockTimeoutException $e) {
+            return $this->waitForPreviewOrFail($upload->fresh(), $sourceHash);
+        } finally {
+            optional($previewLock)->release();
+        }
+    }
+
+    protected function generateAndStorePreviewWithGlobalLimit(
+        DocumentUpload $upload,
+        string $originalAbsolutePath,
+        string $sourceHash
+    ): string {
+        $globalLimitEnabled = (bool) config('document_preview.global_conversion_limit_enabled', true);
+
+        if (!$globalLimitEnabled) {
+            return $this->generateAndStorePreview($upload, $originalAbsolutePath, $sourceHash);
+        }
+
+        $globalLockKey = (string) config('document_preview.global_conversion_lock_key', 'office-preview-global-conversion');
+        $globalLockTimeout = (int) config('document_preview.global_conversion_lock_timeout', 180);
+        $globalWaitSeconds = (int) config('document_preview.global_conversion_wait_seconds', 30);
+
+        $globalLock = Cache::lock($globalLockKey, $globalLockTimeout);
+
+        try {
+            $globalLock->block($globalWaitSeconds);
+
+            $upload->refresh();
+
+            if ($this->hasReusablePreview($upload, $sourceHash)) {
+                return Storage::disk($upload->getPreviewDiskName())->path($upload->preview_path);
+            }
+
+            return $this->generateAndStorePreview($upload, $originalAbsolutePath, $sourceHash);
+        } catch (LockTimeoutException $e) {
+            return $this->waitForPreviewOrFail($upload->fresh(), $sourceHash, $globalWaitSeconds);
+        } finally {
+            optional($globalLock)->release();
+        }
+    }
+
+    protected function generateAndStorePreview(
+        DocumentUpload $upload,
+        string $originalAbsolutePath,
+        string $sourceHash
+    ): string {
         $previewDisk = config('document_preview.preview_disk', 'private');
         $previewPath = $this->generatePreviewPath($upload, $sourceHash);
         $previewAbsolutePath = Storage::disk($previewDisk)->path($previewPath);
@@ -81,6 +149,33 @@ class DocumentPreviewService
         ])->save();
 
         return $previewAbsolutePath;
+    }
+
+    protected function waitForPreviewOrFail(
+        DocumentUpload $upload,
+        string $sourceHash,
+        ?int $waitSeconds = null
+    ): string {
+        $maxWaitSeconds = $waitSeconds ?? (int) config('document_preview.lock_wait_seconds', 15);
+        $pollMs = (int) config('document_preview.lock_poll_interval_ms', 250);
+        $maxIterations = max(1, (int) ceil(($maxWaitSeconds * 1000) / $pollMs));
+
+        for ($i = 0; $i < $maxIterations; $i++) {
+            usleep($pollMs * 1000);
+
+            $upload->refresh();
+
+            if ($this->hasReusablePreview($upload, $sourceHash)) {
+                return Storage::disk($upload->getPreviewDiskName())->path($upload->preview_path);
+            }
+        }
+
+        throw new RuntimeException('Preview generation is already in progress. Please try again in a moment.');
+    }
+
+    protected function buildPreviewLockKey(DocumentUpload $upload, string $sourceHash): string
+    {
+        return "document-preview:upload:{$upload->id}:hash:{$sourceHash}";
     }
 
     protected function hasReusablePreview(DocumentUpload $upload, string $currentSourceHash): bool
@@ -173,6 +268,7 @@ class DocumentPreviewService
 
         return mime_content_type($absolutePath) ?: null;
     }
+
     protected function generateSourceHash(string $absolutePath): string
     {
         $hash = hash_file('sha256', $absolutePath);

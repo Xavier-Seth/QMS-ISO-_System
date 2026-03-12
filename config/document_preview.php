@@ -92,4 +92,47 @@ return [
     */
 
     'conversion_timeout' => (int) env('DOCUMENT_PREVIEW_CONVERSION_TIMEOUT', 120),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Preview Generation Locking
+    |--------------------------------------------------------------------------
+    |
+    | These settings control Redis-based locking so multiple users cannot
+    | generate the same preview simultaneously.
+    |
+    */
+
+    'lock_timeout' => (int) env('DOCUMENT_PREVIEW_LOCK_TIMEOUT', 180),
+
+    'lock_wait_seconds' => (int) env('DOCUMENT_PREVIEW_LOCK_WAIT_SECONDS', 15),
+
+    'lock_poll_interval_ms' => (int) env('DOCUMENT_PREVIEW_LOCK_POLL_INTERVAL_MS', 250),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Global Office Conversion Limit
+    |--------------------------------------------------------------------------
+    |
+    | These settings protect the server from too many simultaneous LibreOffice
+    | conversions across different documents.
+    |
+    */
+
+    'global_conversion_limit_enabled' => env('DOCUMENT_PREVIEW_GLOBAL_LIMIT_ENABLED', true),
+
+    'global_conversion_lock_key' => env(
+        'DOCUMENT_PREVIEW_GLOBAL_LOCK_KEY',
+        'office-preview-global-conversion'
+    ),
+
+    'global_conversion_lock_timeout' => (int) env(
+        'DOCUMENT_PREVIEW_GLOBAL_LOCK_TIMEOUT',
+        180
+    ),
+
+    'global_conversion_wait_seconds' => (int) env(
+        'DOCUMENT_PREVIEW_GLOBAL_WAIT_SECONDS',
+        30
+    ),
 ];
