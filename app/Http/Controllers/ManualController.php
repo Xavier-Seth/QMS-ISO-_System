@@ -4,10 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
+use App\Services\DocumentPreview\DocumentDownloadService;
+use App\Services\DocumentPreview\DocumentPreviewService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -25,6 +26,12 @@ class ManualController extends Controller
         'controlled',
         'uncontrolled',
     ];
+
+    public function __construct(
+        protected DocumentPreviewService $documentPreviewService,
+        protected DocumentDownloadService $documentDownloadService,
+    ) {
+    }
 
     public function show(Request $request, string $category): Response
     {
@@ -157,6 +164,7 @@ class ManualController extends Controller
                 'status' => 'Active',
                 'file_name' => $file->getClientOriginalName(),
                 'file_path' => $storedPath,
+                'storage_disk' => 'public',
                 'remarks' => $validated['remarks'] ?? null,
             ]);
         });
@@ -174,13 +182,9 @@ class ManualController extends Controller
 
         $this->authorize('accessManualFile', $documentType);
 
-        abort_unless(Storage::disk('public')->exists($upload->file_path), 404);
+        abort_unless($this->documentPreviewService->canPreview($upload), 404, 'This file type is not supported for preview.');
 
-        $path = Storage::disk('public')->path($upload->file_path);
-
-        return response()->file($path, [
-            'Content-Disposition' => 'inline; filename="' . $upload->file_name . '"',
-        ]);
+        return $this->documentPreviewService->preview($upload);
     }
 
     public function download(Request $request, DocumentUpload $upload)
@@ -191,11 +195,7 @@ class ManualController extends Controller
 
         $this->authorize('accessManualFile', $documentType);
 
-        abort_unless(Storage::disk('public')->exists($upload->file_path), 404);
-
-        $path = Storage::disk('public')->path($upload->file_path);
-
-        return response()->download($path, $upload->file_name);
+        return $this->documentDownloadService->download($upload);
     }
 
     private function buildPageTitle(string $category): string

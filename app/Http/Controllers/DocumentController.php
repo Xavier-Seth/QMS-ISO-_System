@@ -6,15 +6,25 @@ use App\Models\DocumentSeries;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
 use App\Services\DCRFormGenerator;
+use App\Services\DocumentPreview\DocumentDownloadService;
+use App\Services\DocumentPreview\DocumentPreviewService;
+use App\Services\DocumentPreview\OfficeToPdfConverter;
 use App\Services\OFIFormGenerator;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use RuntimeException;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 
 class DocumentController extends Controller
 {
+    public function __construct(
+        protected DocumentPreviewService $documentPreviewService,
+        protected DocumentDownloadService $documentDownloadService,
+        protected OfficeToPdfConverter $officeToPdfConverter,
+    ) {
+    }
+
     public function index(Request $request)
     {
         $q = trim((string) $request->get('q', ''));
@@ -275,6 +285,7 @@ class DocumentController extends Controller
                 'status' => $isRevisionControlled ? 'Active' : null,
                 'file_name' => $file->getClientOriginalName(),
                 'file_path' => $path,
+                'storage_disk' => 'public',
                 'remarks' => $data['remarks'] ?? null,
             ]);
 
@@ -289,24 +300,20 @@ class DocumentController extends Controller
     public function preview(DocumentUpload $upload)
     {
         if ($upload->ofi_record_id && $upload->ofiRecord) {
-            return $this->serveLatestOfiDocxInline($upload);
+            return $this->previewLatestOfiAsPdf($upload);
         }
 
         if ($upload->dcr_record_id && $upload->dcrRecord) {
-            return $this->serveLatestDcrDocxInline($upload);
+            return $this->previewLatestDcrAsPdf($upload);
         }
 
-        $disk = Storage::disk('public');
+        abort_unless(
+            $this->documentPreviewService->canPreview($upload),
+            404,
+            'This file type is not supported for preview.'
+        );
 
-        abort_unless($upload->file_path && $disk->exists($upload->file_path), 404);
-
-        $absolutePath = $disk->path($upload->file_path);
-        $mime = File::mimeType($absolutePath) ?? 'application/octet-stream';
-
-        return response()->file($absolutePath, [
-            'Content-Type' => $mime,
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($upload->file_name) . '"',
-        ]);
+        return $this->documentPreviewService->preview($upload);
     }
 
     public function download(DocumentUpload $upload)
@@ -319,15 +326,7 @@ class DocumentController extends Controller
             return $this->downloadLatestDcrDocx($upload);
         }
 
-        $disk = Storage::disk('public');
-
-        abort_unless($upload->file_path && $disk->exists($upload->file_path), 404);
-
-        $absolutePath = $disk->path($upload->file_path);
-
-        return response()->download($absolutePath, $upload->file_name, [
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT . '; filename="' . addslashes($upload->file_name) . '"',
-        ]);
+        return $this->documentDownloadService->download($upload);
     }
 
     private function isRevisionControlled(DocumentType $documentType): bool
@@ -349,13 +348,17 @@ class DocumentController extends Controller
         ])->deleteFileAfterSend(true);
     }
 
-    private function serveLatestOfiDocxInline(DocumentUpload $upload)
+    private function previewLatestOfiAsPdf(DocumentUpload $upload)
     {
-        [$outputPath, $fileName] = $this->generateLatestOfiTempFile($upload);
+        [$docxPath, $fileName] = $this->generateLatestOfiTempFile($upload);
+        [$pdfPath, $pdfName] = $this->convertGeneratedDocxToPdfUsingExistingConverter($docxPath, $fileName);
 
-        return response()->file($outputPath, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($fileName) . '"',
+        return response()->file($pdfPath, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($pdfName) . '"',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, max-age=0, must-revalidate',
+            'Pragma' => 'public',
         ])->deleteFileAfterSend(true);
     }
 
@@ -400,13 +403,17 @@ class DocumentController extends Controller
         ])->deleteFileAfterSend(true);
     }
 
-    private function serveLatestDcrDocxInline(DocumentUpload $upload)
+    private function previewLatestDcrAsPdf(DocumentUpload $upload)
     {
-        [$outputPath, $fileName] = $this->generateLatestDcrTempFile($upload);
+        [$docxPath, $fileName] = $this->generateLatestDcrTempFile($upload);
+        [$pdfPath, $pdfName] = $this->convertGeneratedDocxToPdfUsingExistingConverter($docxPath, $fileName);
 
-        return response()->file($outputPath, [
-            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($fileName) . '"',
+        return response()->file($pdfPath, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($pdfName) . '"',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, max-age=0, must-revalidate',
+            'Pragma' => 'public',
         ])->deleteFileAfterSend(true);
     }
 
@@ -439,5 +446,39 @@ class DocumentController extends Controller
         $generator->generate($upload->dcrRecord->data ?? [], $outputPath);
 
         return [$outputPath, $fileName];
+    }
+
+    private function convertGeneratedDocxToPdfUsingExistingConverter(string $docxPath, string $originalFileName): array
+    {
+        if (!is_file($docxPath)) {
+            throw new RuntimeException("Generated DOCX file not found: {$docxPath}");
+        }
+
+        $tmpDir = storage_path('app/generated_preview_tmp');
+        if (!is_dir($tmpDir) && !mkdir($tmpDir, 0755, true) && !is_dir($tmpDir)) {
+            throw new RuntimeException("Unable to create generated preview temp directory: {$tmpDir}");
+        }
+
+        $safeBaseName = pathinfo($originalFileName, PATHINFO_FILENAME);
+        $safeBaseName = preg_replace('/[^A-Za-z0-9 _\-\(\)]/', '', $safeBaseName);
+        $safeBaseName = trim(preg_replace('/\s+/', ' ', $safeBaseName));
+
+        if ($safeBaseName === '') {
+            $safeBaseName = 'preview';
+        }
+
+        $pdfPath = $tmpDir . '/' . uniqid('generated_pdf_', true) . '_' . $safeBaseName . '.pdf';
+
+        try {
+            $this->officeToPdfConverter->convertToPdf($docxPath, $pdfPath);
+        } finally {
+            @unlink($docxPath);
+        }
+
+        if (!is_file($pdfPath)) {
+            throw new RuntimeException("Converted PDF was not created: {$pdfPath}");
+        }
+
+        return [$pdfPath, $safeBaseName . '.pdf'];
     }
 }
