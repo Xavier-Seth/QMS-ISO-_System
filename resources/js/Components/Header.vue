@@ -13,7 +13,6 @@ const page = usePage();
 const me = computed(() => page.props.auth?.user);
 
 const q = ref(props.searchValue);
-
 watch(
   () => props.searchValue,
   (v) => (q.value = v ?? "")

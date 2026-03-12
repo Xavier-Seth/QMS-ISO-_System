@@ -6,6 +6,7 @@ use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\DCRController;
 use App\Http\Controllers\DcrRecordController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\UsersController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\ManualController;
@@ -23,6 +24,8 @@ Route::middleware('guest')->group(function () {
 
 // Authenticated Routes
 Route::middleware('auth')->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
     // Shared routes (admin + admin_officer)

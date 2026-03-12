@@ -1,579 +1,278 @@
 <script setup>
-import AdminLayout from '@/Layouts/AdminLayout.vue'
-import { ref } from 'vue'
+import AdminLayout from "@/Layouts/AdminLayoutWithHeader.vue";
+import { computed } from "vue";
 
-const stats = [
-  {
-    label: 'Total Documents',
-    value: '284',
-    change: '+12 this month',
-    trend: 'up',
-    icon: 'docs',
-    color: '#6366f1',
-    bg: 'rgba(99,102,241,0.12)',
+const props = defineProps({
+  stats: { type: Array, default: () => [] },
+  recentActivity: { type: Array, default: () => [] },
+  pendingDocs: { type: Array, default: () => [] },
+  authUser: {
+    type: Object,
+    default: () => ({ name: "User", role: "User" }),
   },
-  {
-    label: 'Pending DCR Forms',
-    value: '17',
-    change: '4 awaiting review',
-    trend: 'neutral',
-    icon: 'dcr',
-    color: '#f59e0b',
-    bg: 'rgba(245,158,11,0.12)',
-  },
-  {
-    label: 'Open OFI Items',
-    value: '9',
-    change: '-3 from last week',
-    trend: 'down',
-    icon: 'ofi',
-    color: '#10b981',
-    bg: 'rgba(16,185,129,0.12)',
-  },
-  {
-    label: 'Active Users',
-    value: '43',
-    change: '+5 new this week',
-    trend: 'up',
-    icon: 'users',
-    color: '#3b82f6',
-    bg: 'rgba(59,130,246,0.12)',
-  },
-]
+});
 
-const recentActivity = [
-  { user: 'John Doe', action: 'submitted a DCR Form', doc: 'DCR-2025-0042', time: '2 mins ago', type: 'dcr' },
-  { user: 'Marco Reyes', action: 'created an OFI Form', doc: 'OFI-2025-0018', time: '14 mins ago', type: 'ofi' },
-  { user: 'Liza Fernandez', action: 'approved document', doc: 'QMS-DOC-2025-119', time: '1 hr ago', type: 'approve' },
-  { user: 'Jose Tan', action: 'submitted a DCR Form', doc: 'DCR-2025-0041', time: '3 hrs ago', type: 'dcr' },
-  { user: 'Maria Santos', action: 'reviewed OFI Form', doc: 'OFI-2025-0017', time: '5 hrs ago', type: 'ofi' },
-]
+const greeting = computed(() => {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 18) return "Good afternoon";
+  return "Good evening";
+});
 
-const pendingDocs = [
-  { id: 'DCR-2025-0042', type: 'DCR', dept: 'Academic Affairs', submitted: 'Feb 24, 2025', status: 'For Review' },
-  { id: 'DCR-2025-0041', type: 'DCR', dept: 'Finance Office', submitted: 'Feb 23, 2025', status: 'For Review' },
-  { id: 'OFI-2025-0018', type: 'OFI', dept: 'IT Services', submitted: 'Feb 23, 2025', status: 'In Progress' },
-  { id: 'OFI-2025-0017', type: 'OFI', dept: 'Registrar', submitted: 'Feb 22, 2025', status: 'For Review' },
-]
+const trendTextClass = (trend) => {
+  if (trend === "up") return "text-emerald-600";
+  if (trend === "down") return "text-amber-600";
+  return "text-slate-500";
+};
+
+const typeBadgeClass = (type) => {
+  const t = String(type || "").toLowerCase();
+  if (t === "dcr") return "bg-indigo-50 text-indigo-600";
+  if (t === "ofi") return "bg-emerald-50 text-emerald-600";
+  return "bg-slate-100 text-slate-600";
+};
+
+const actDotClass = (type) => {
+  const t = String(type || "").toLowerCase();
+  if (t === "dcr") return "bg-indigo-500";
+  if (t === "ofi") return "bg-emerald-500";
+  if (t === "approve") return "bg-blue-500";
+  return "bg-slate-400";
+};
 </script>
 
 <template>
-  <AdminLayout>
-    <div class="dashboard">
+  <!-- showSearch=false so Header shows SLOT-LEFT instead of search -->
+  <AdminLayout :showSearch="false">
+    <!-- ✅ This is the aligned header-left content -->
+    <template #header-left>
+      <div class="pt-1">
+        <p class="text-sm text-slate-500 mb-1">{{ greeting }} 👋</p>
+        <h1 class="text-[28px] font-extrabold tracking-[-0.5px] text-slate-900 leading-tight">
+          {{ props.authUser?.name ?? "User" }}
+        </h1>
+        <p class="text-[13px] text-slate-400 mt-1">
+          {{ props.authUser?.role ?? "User" }} · Quality Management System
+        </p>
+      </div>
+    </template>
 
-      <!-- Header -->
-      <div class="dash-header">
-        <div class="header-left">
-          <p class="welcome-sub">Good morning 👋</p>
-          <h1 class="welcome-title">John Doe</h1>
-          <p class="welcome-role">Administrator · Quality Management System</p>
-        </div>
+    <!-- ✅ Page content -->
+    <div class="px-10 py-8 bg-slate-100 min-h-screen flex flex-col gap-7">
+      <!-- Stats -->
+      <div class="grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2 max-[560px]:grid-cols-1">
+        <div
+          v-for="stat in props.stats"
+          :key="stat.label"
+          class="relative bg-white border border-slate-200/70 rounded-2xl p-6 shadow-sm hover:shadow-md transition"
+        >
+          <!-- top accent bar -->
+          <div
+            class="absolute left-0 right-0 top-0 h-[3px] rounded-t-2xl opacity-70"
+            :style="{ background: stat.color || '#94a3b8' }"
+          ></div>
 
-        <!-- Right: icons + profile -->
-        <div class="header-right">
+          <div class="flex items-start gap-4">
+            <!-- Icon wrap -->
+            <div
+              class="w-11 h-11 rounded-xl flex items-center justify-center shrink-0"
+              :style="{ background: stat.bg || '#f1f5f9' }"
+            >
+              <!-- docs -->
+              <svg
+                v-if="stat.icon === 'docs'"
+                class="w-5 h-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                :style="{ color: stat.color || '#64748b' }"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+              </svg>
 
-          <!-- Mail icon -->
-          <button class="icon-btn" title="Messages">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-              <polyline points="22,6 12,13 2,6"/>
-            </svg>
-          </button>
+              <!-- dcr -->
+              <svg
+                v-else-if="stat.icon === 'dcr'"
+                class="w-5 h-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                :style="{ color: stat.color || '#64748b' }"
+              >
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="12" y1="18" x2="12" y2="12" />
+                <line x1="9" y1="15" x2="15" y2="15" />
+              </svg>
 
-          <!-- Bell icon with red dot -->
-          <button class="icon-btn has-notif" title="Notifications">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
-              <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
-            </svg>
-            <span class="notif-dot"></span>
-          </button>
+              <!-- ofi -->
+              <svg
+                v-else-if="stat.icon === 'ofi'"
+                class="w-5 h-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                :style="{ color: stat.color || '#64748b' }"
+              >
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
 
-          <!-- Vertical divider -->
-          <div class="header-divider"></div>
+              <!-- users -->
+              <svg
+                v-else-if="stat.icon === 'users'"
+                class="w-5 h-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                :style="{ color: stat.color || '#64748b' }"
+              >
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            </div>
 
-          <!-- Profile card -->
-          <div class="profile-card">
-            <img :src="`/images/LNU_logo.png`" alt="LNU Logo" class="profile-avatar" />
-            <div class="profile-info">
-              <span class="profile-name">John Doe</span>
-              <span class="profile-role">Admin</span>
+            <!-- Text -->
+            <div class="flex-1">
+              <div class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold">
+                {{ stat.label }}
+              </div>
+
+              <div class="mt-2 text-3xl font-extrabold text-slate-900 leading-none">
+                {{ stat.value }}
+              </div>
+
+              <div class="mt-2 text-xs flex items-center gap-1" :class="trendTextClass(stat.trend)">
+                <svg
+                  v-if="stat.trend === 'up'"
+                  class="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                >
+                  <polyline points="18 15 12 9 6 15" />
+                </svg>
+                <svg
+                  v-else-if="stat.trend === 'down'"
+                  class="w-3.5 h-3.5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2.5"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                <span class="text-slate-500" v-if="!stat.trend">{{ stat.change }}</span>
+                <span v-else>{{ stat.change }}</span>
+              </div>
             </div>
           </div>
-
         </div>
       </div>
 
-      <!-- Stats Grid -->
-      <div class="stats-grid">
-        <div
-          v-for="stat in stats"
-          :key="stat.label"
-          class="stat-card"
-          :style="{ '--accent': stat.color, '--accent-bg': stat.bg }"
-        >
-          <div class="stat-icon-wrap">
-            <svg v-if="stat.icon === 'docs'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
-            </svg>
-            <svg v-if="stat.icon === 'dcr'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="12" y1="18" x2="12" y2="12"/>
-              <line x1="9" y1="15" x2="15" y2="15"/>
-            </svg>
-            <svg v-if="stat.icon === 'ofi'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="12" y1="8" x2="12" y2="12"/>
-              <line x1="12" y1="16" x2="12.01" y2="16"/>
-            </svg>
-            <svg v-if="stat.icon === 'users'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-            </svg>
-          </div>
-          <div class="stat-body">
-            <span class="stat-label">{{ stat.label }}</span>
-            <span class="stat-value">{{ stat.value }}</span>
-            <span class="stat-change" :class="stat.trend">
-              <svg v-if="stat.trend === 'up'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="trend-icon"><polyline points="18 15 12 9 6 15"/></svg>
-              <svg v-if="stat.trend === 'down'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="trend-icon"><polyline points="6 9 12 15 18 9"/></svg>
-              {{ stat.change }}
+      <!-- Two Column -->
+      <div class="grid grid-cols-[1fr_1.3fr] gap-4 max-[1100px]:grid-cols-1">
+        <!-- Recent Activity -->
+        <div class="bg-white rounded-2xl border border-slate-200/70 shadow-sm overflow-hidden">
+          <div class="px-6 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between">
+            <h2 class="font-semibold text-slate-900">Recent Activity</h2>
+            <span class="text-xs font-semibold text-emerald-600 bg-emerald-50 px-3 py-1 rounded-full flex items-center gap-2">
+              <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span>
+              Live
             </span>
           </div>
-        </div>
-      </div>
 
-      <!-- Two Column Layout -->
-      <div class="two-col">
+          <ul class="py-2">
+            <li
+              v-for="(act, idx) in props.recentActivity"
+              :key="`${act.doc}-${idx}`"
+              class="px-6 py-3 border-b border-slate-50 hover:bg-slate-50 transition flex items-start gap-3"
+            >
+              <span class="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" :class="actDotClass(act.type)"></span>
 
-        <!-- Recent Activity -->
-        <div class="panel">
-          <div class="panel-header">
-            <h2 class="panel-title">Recent Activity</h2>
-            <span class="panel-badge">Live</span>
-          </div>
-          <ul class="activity-list">
-            <li v-for="act in recentActivity" :key="act.doc" class="activity-item">
-              <div class="act-dot" :class="act.type"></div>
-              <div class="act-body">
-                <p class="act-text">
-                  <strong>{{ act.user }}</strong> {{ act.action }}
+              <div class="flex-1 min-w-0">
+                <p class="text-sm text-slate-700 leading-snug">
+                  <span class="font-semibold text-slate-900">{{ act.user }}</span>
+                  {{ act.action }}
                 </p>
-                <p class="act-doc">{{ act.doc }}</p>
+                <p class="text-xs text-slate-400 mt-1 font-mono truncate">
+                  {{ act.doc }}
+                </p>
               </div>
-              <span class="act-time">{{ act.time }}</span>
+
+              <div class="text-xs text-slate-400 whitespace-nowrap mt-1">
+                {{ act.time }}
+              </div>
+            </li>
+
+            <li v-if="props.recentActivity.length === 0" class="px-6 py-4 text-sm text-slate-400">
+              No recent activity yet.
             </li>
           </ul>
         </div>
 
         <!-- Pending Documents -->
-        <div class="panel">
-          <div class="panel-header">
-            <h2 class="panel-title">Pending Documents</h2>
-            <a href="#" class="panel-link">View all</a>
+        <div class="bg-white rounded-2xl border border-slate-200/70 shadow-sm overflow-hidden">
+          <div class="px-6 pt-5 pb-4 border-b border-slate-100 flex items-center justify-between">
+            <h2 class="font-semibold text-slate-900">Pending Documents</h2>
+            <a href="#" class="text-sm text-indigo-600 hover:underline">View all</a>
           </div>
-          <div class="table-wrap">
-            <table class="doc-table">
+
+          <div class="overflow-x-auto">
+            <table class="w-full text-sm">
               <thead>
-                <tr>
-                  <th>Document ID</th>
-                  <th>Type</th>
-                  <th>Department</th>
-                  <th>Status</th>
+                <tr class="bg-slate-50 text-slate-400 text-[11px] uppercase tracking-wider">
+                  <th class="text-left px-6 py-3 font-semibold">Document ID</th>
+                  <th class="text-left px-6 py-3 font-semibold">Type</th>
+                  <th class="text-left px-6 py-3 font-semibold">Department</th>
+                  <th class="text-left px-6 py-3 font-semibold">Status</th>
                 </tr>
               </thead>
+
               <tbody>
-                <tr v-for="doc in pendingDocs" :key="doc.id">
-                  <td class="doc-id">{{ doc.id }}</td>
-                  <td>
-                    <span class="type-badge" :class="doc.type.toLowerCase()">{{ doc.type }}</span>
+                <tr
+                  v-for="doc in props.pendingDocs"
+                  :key="doc.id"
+                  class="border-t border-slate-50 hover:bg-slate-50 transition"
+                >
+                  <td class="px-6 py-3 font-mono text-slate-900">{{ doc.id }}</td>
+
+                  <td class="px-6 py-3">
+                    <span class="text-[11px] font-bold px-2.5 py-1 rounded-md" :class="typeBadgeClass(doc.type)">
+                      {{ doc.type }}
+                    </span>
                   </td>
-                  <td class="doc-dept">{{ doc.dept }}</td>
-                  <td>
-                    <span class="status-badge">{{ doc.status }}</span>
+
+                  <td class="px-6 py-3 text-slate-600">{{ doc.dept }}</td>
+
+                  <td class="px-6 py-3">
+                    <span class="text-[11px] px-3 py-1 rounded-full bg-amber-50 text-amber-600 font-semibold">
+                      {{ doc.status }}
+                    </span>
+                  </td>
+                </tr>
+
+                <tr v-if="props.pendingDocs.length === 0">
+                  <td colspan="4" class="px-6 py-6 text-slate-400 text-sm">
+                    No pending documents yet.
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
-
       </div>
-
     </div>
   </AdminLayout>
 </template>
-
-<style scoped>
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Sora:wght@400;600;700&display=swap');
-
-.dashboard {
-  padding: 36px 40px;
-  font-family: 'DM Sans', sans-serif;
-  background: #f1f5f9;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  gap: 28px;
-}
-
-/* ── Header ── */
-.dash-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.welcome-sub {
-  font-size: 14px;
-  color: #64748b;
-  margin: 0 0 4px;
-}
-
-.welcome-title {
-  font-family: 'Sora', sans-serif;
-  font-size: 28px;
-  font-weight: 700;
-  color: #0f172a;
-  margin: 0 0 4px;
-  letter-spacing: -0.5px;
-}
-
-.welcome-role {
-  font-size: 13px;
-  color: #94a3b8;
-  margin: 0;
-}
-
-/* ── Right cluster ── */
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Icon buttons */
-.icon-btn {
-  position: relative;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.06);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition: background 0.15s, box-shadow 0.15s;
-  flex-shrink: 0;
-  padding: 0;
-}
-
-.icon-btn:hover {
-  background: #f8fafc;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-}
-
-.icon-btn svg {
-  width: 17px;
-  height: 17px;
-  stroke: #64748b;
-  transition: stroke 0.15s;
-}
-
-.icon-btn:hover svg {
-  stroke: #1e293b;
-}
-
-/* Red notification dot on bell */
-.notif-dot {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #ef4444;
-  border: 1.5px solid #fff;
-}
-
-/* Thin vertical divider */
-.header-divider {
-  width: 1px;
-  height: 30px;
-  background: #e2e8f0;
-  margin: 0 4px;
-  flex-shrink: 0;
-}
-
-/* Profile card */
-.profile-card {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: #fff;
-  border: 1px solid #e2e8f0;
-  border-radius: 14px;
-  padding: 8px 14px 8px 8px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-  cursor: pointer;
-  transition: box-shadow 0.15s;
-}
-
-.profile-card:hover {
-  box-shadow: 0 3px 10px rgba(0,0,0,0.1);
-}
-
-.profile-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 9px;
-  object-fit: contain;
-  background: #0d1424;
-  padding: 3px;
-  flex-shrink: 0;
-}
-
-.profile-name {
-  display: block;
-  font-size: 13.5px;
-  font-weight: 600;
-  color: #1e293b;
-  white-space: nowrap;
-}
-
-.profile-role {
-  display: block;
-  font-size: 11.5px;
-  color: #94a3b8;
-}
-
-/* ── Stats ── */
-.stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 18px;
-}
-
-.stat-card {
-  background: #fff;
-  border-radius: 16px;
-  padding: 22px 22px 18px;
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-  border: 1px solid #e8edf3;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  transition: transform 0.2s, box-shadow 0.2s;
-  position: relative;
-  overflow: hidden;
-}
-
-.stat-card::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 3px;
-  background: var(--accent);
-  opacity: 0.7;
-}
-
-.stat-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0,0,0,0.08);
-}
-
-.stat-icon-wrap {
-  width: 44px;
-  height: 44px;
-  border-radius: 12px;
-  background: var(--accent-bg);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.stat-icon-wrap svg {
-  width: 20px;
-  height: 20px;
-  stroke: var(--accent);
-}
-
-.stat-body {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  flex: 1;
-}
-
-.stat-label {
-  font-size: 12px;
-  color: #94a3b8;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-}
-
-.stat-value {
-  font-family: 'Sora', sans-serif;
-  font-size: 30px;
-  font-weight: 700;
-  color: #0f172a;
-  line-height: 1;
-  margin: 4px 0;
-}
-
-.stat-change {
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  color: #94a3b8;
-}
-
-.stat-change.up { color: #10b981; }
-.stat-change.down { color: #f59e0b; }
-
-.trend-icon { width: 13px; height: 13px; }
-
-/* ── Two Column ── */
-.two-col {
-  display: grid;
-  grid-template-columns: 1fr 1.3fr;
-  gap: 18px;
-}
-
-/* ── Panel ── */
-.panel {
-  background: #fff;
-  border-radius: 16px;
-  border: 1px solid #e8edf3;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-  overflow: hidden;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 20px 24px 16px;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.panel-title {
-  font-family: 'Sora', sans-serif;
-  font-size: 15px;
-  font-weight: 600;
-  color: #1e293b;
-  margin: 0;
-}
-
-.panel-badge {
-  font-size: 11px;
-  font-weight: 600;
-  color: #10b981;
-  background: rgba(16,185,129,0.1);
-  padding: 3px 9px;
-  border-radius: 20px;
-  letter-spacing: 0.04em;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-}
-
-.panel-badge::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #10b981;
-  animation: pulse 1.8s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
-
-.panel-link {
-  font-size: 13px;
-  color: #6366f1;
-  text-decoration: none;
-  font-weight: 500;
-}
-.panel-link:hover { text-decoration: underline; }
-
-/* ── Activity List ── */
-.activity-list { list-style: none; margin: 0; padding: 8px 0; }
-
-.activity-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 14px;
-  padding: 13px 24px;
-  border-bottom: 1px solid #f8fafc;
-  transition: background 0.15s;
-}
-
-.activity-item:last-child { border-bottom: none; }
-.activity-item:hover { background: #f8fafc; }
-
-.act-dot {
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  margin-top: 5px;
-  flex-shrink: 0;
-}
-
-.act-dot.dcr { background: #6366f1; }
-.act-dot.ofi { background: #10b981; }
-.act-dot.approve { background: #3b82f6; }
-
-.act-body { flex: 1; }
-
-.act-text { font-size: 13px; color: #334155; margin: 0 0 2px; line-height: 1.4; }
-.act-text strong { color: #0f172a; font-weight: 600; }
-
-.act-doc { font-size: 11.5px; color: #94a3b8; margin: 0; font-family: 'DM Mono', monospace; }
-
-.act-time { font-size: 11.5px; color: #94a3b8; white-space: nowrap; flex-shrink: 0; margin-top: 2px; }
-
-/* ── Table ── */
-.table-wrap { overflow-x: auto; }
-
-.doc-table { width: 100%; border-collapse: collapse; font-size: 13px; }
-.doc-table thead tr { background: #f8fafc; }
-
-.doc-table th {
-  padding: 11px 20px;
-  text-align: left;
-  font-size: 11px;
-  font-weight: 600;
-  color: #94a3b8;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.doc-table td { padding: 13px 20px; color: #334155; border-bottom: 1px solid #f8fafc; }
-.doc-table tbody tr:last-child td { border-bottom: none; }
-.doc-table tbody tr:hover td { background: #f8fafc; }
-
-.doc-id { font-family: 'DM Mono', monospace; font-size: 12.5px; color: #0f172a; font-weight: 500; }
-.doc-dept { color: #64748b; }
-
-.type-badge { font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 6px; letter-spacing: 0.04em; }
-.type-badge.dcr { background: rgba(99,102,241,0.1); color: #6366f1; }
-.type-badge.ofi { background: rgba(16,185,129,0.1); color: #10b981; }
-
-.status-badge { font-size: 11.5px; color: #f59e0b; background: rgba(245,158,11,0.1); padding: 3px 10px; border-radius: 20px; font-weight: 500; }
-</style>
