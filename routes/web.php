@@ -8,6 +8,7 @@ use App\Http\Controllers\DcrRecordController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\UsersController;
 use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\ManualController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -24,7 +25,7 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
-    // Shared routes (admin + user/admin_officer)
+    // Shared routes (admin + admin_officer)
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
     Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
@@ -55,11 +56,20 @@ Route::middleware('auth')->group(function () {
         ->name('dcr.records.publish');
 
     // Manual routes
-    Route::get('/manual/asm', fn() => Inertia::render('Manual/ASM'))->name('manual.asm');
-    Route::get('/manual/qsm', fn() => Inertia::render('Manual/QSM'))->name('manual.qsm');
-    Route::get('/manual/hrm', fn() => Inertia::render('Manual/HRM'))->name('manual.hrm');
-    Route::get('/manual/riem', fn() => Inertia::render('Manual/RIEM'))->name('manual.riem');
-    Route::get('/manual/rem', fn() => Inertia::render('Manual/REM'))->name('manual.rem');
+    Route::get('/manual/{category}', [ManualController::class, 'show'])
+        ->where('category', 'asm|qsm|hrm|riem|rem')
+        ->name('manual.show');
+
+    Route::post('/manual/{category}/{access}/upload', [ManualController::class, 'upload'])
+        ->where('category', 'asm|qsm|hrm|riem|rem')
+        ->where('access', 'controlled|uncontrolled')
+        ->name('manual.upload');
+
+    Route::get('/manual/uploads/{upload}/preview', [ManualController::class, 'preview'])
+        ->name('manual.uploads.preview');
+
+    Route::get('/manual/uploads/{upload}/download', [ManualController::class, 'download'])
+        ->name('manual.uploads.download');
 
     // Placeholder shared pages
     Route::get('/inbox', fn() => Inertia::render('Inbox'))->name('inbox');
