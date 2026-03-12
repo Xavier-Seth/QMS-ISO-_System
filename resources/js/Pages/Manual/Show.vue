@@ -235,7 +235,7 @@ const isCurrentUpload = (item, manual) => {
 
 <template>
   <AdminLayout>
-    <div class="p-6 space-y-6">
+    <div class="space-y-6 p-6">
       <!-- Top header -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-4 py-3">
@@ -315,11 +315,10 @@ const isCurrentUpload = (item, manual) => {
         </p>
       </div>
 
-      <!-- Compact table sections -->
+      <!-- Manual sections stacked vertically -->
       <div
         v-else
         class="grid grid-cols-1 gap-6"
-        :class="{ 'xl:grid-cols-2': canSeeControlledSection && canSeeUncontrolledSection }"
       >
         <!-- Controlled Manual -->
         <section
@@ -376,7 +375,7 @@ const isCurrentUpload = (item, manual) => {
                   :class="isCurrentUpload(item, controlledManual) ? 'bg-emerald-50/50' : 'bg-white'"
                 >
                   <td class="px-4 py-3">
-                    <div class="max-w-[260px] break-words font-medium text-slate-900">
+                    <div class="max-w-[420px] break-words font-medium text-slate-900">
                       {{ item.file_name }}
                     </div>
 
@@ -438,10 +437,7 @@ const isCurrentUpload = (item, manual) => {
             </table>
           </div>
 
-          <div
-            v-else
-            class="px-5 py-10"
-          >
+          <div v-else class="px-5 py-10">
             <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center">
               <div class="text-base font-semibold text-slate-900">No controlled manual uploaded</div>
               <div class="mt-1 text-sm text-slate-500">
@@ -506,7 +502,7 @@ const isCurrentUpload = (item, manual) => {
                   :class="isCurrentUpload(item, uncontrolledManual) ? 'bg-emerald-50/50' : 'bg-white'"
                 >
                   <td class="px-4 py-3">
-                    <div class="max-w-[260px] break-words font-medium text-slate-900">
+                    <div class="max-w-[420px] break-words font-medium text-slate-900">
                       {{ item.file_name }}
                     </div>
 
@@ -568,10 +564,7 @@ const isCurrentUpload = (item, manual) => {
             </table>
           </div>
 
-          <div
-            v-else
-            class="px-5 py-10"
-          >
+          <div v-else class="px-5 py-10">
             <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center">
               <div class="text-base font-semibold text-slate-900">No uncontrolled manual uploaded</div>
               <div class="mt-1 text-sm text-slate-500">
