@@ -2,12 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\ActivityLogService;
+use App\Services\OFIFormGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
-use App\Services\OFIFormGenerator;
 
 class OFIController extends Controller
 {
+    public function __construct(
+        protected ActivityLogService $activityLogService
+    ) {
+    }
+
     public function generate(Request $request)
     {
         // 1. Validate incoming data
@@ -17,7 +23,7 @@ class OFIController extends Controller
             'to' => 'nullable|string',
             'ofiNo' => 'nullable|string',
             'from' => 'nullable|string',
-            'followSig' => 'nullable|string', // ✅ added
+            'followSig' => 'nullable|string',
         ]);
 
         if ($validator->fails()) {
@@ -67,10 +73,8 @@ class OFIController extends Controller
             'dcrUpdated' => $request->input('dcrNo', ''),
             'verifiedBy2' => $request->input('verifiedBy2', ''),
 
-            // ✅ Section 5 - Follow-up signature
+            // Section 5
             'followSig' => $request->input('followSig', ''),
-
-            // Section 5 - Follow-up rows
             'followUp' => $request->input('followUp', []),
 
             // Section 6
@@ -82,6 +86,7 @@ class OFIController extends Controller
         // 3. Define paths
         $templatePath = base_path('templates/F-QMS-007_template_fixed_v6.docx');
         $outputDir = storage_path('app/ofi_forms');
+        $recordLabel = $request->input('ofiNo', '');
         $fileName = 'OFI_' . now()->format('Ymd_His') . '.docx';
         $outputPath = $outputDir . '/' . $fileName;
 
@@ -97,6 +102,22 @@ class OFIController extends Controller
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to generate document: ' . $e->getMessage()], 500);
         }
+
+        $this->activityLogService->log([
+            'module' => 'ofi',
+            'action' => 'downloaded',
+            'record_label' => $recordLabel !== '' ? $recordLabel : $fileName,
+            'file_type' => 'docx',
+            'description' => $recordLabel !== ''
+                ? 'Downloaded generated OFI form ' . $recordLabel
+                : 'Downloaded generated OFI form ' . $fileName,
+            'new_values' => [
+                'file_name' => $fileName,
+                'ref_no' => $request->input('refNo', ''),
+                'to' => $request->input('to', ''),
+                'from' => $request->input('from', ''),
+            ],
+        ]);
 
         // 6. Return the file as a download then delete it
         return response()->download($outputPath, $fileName, [

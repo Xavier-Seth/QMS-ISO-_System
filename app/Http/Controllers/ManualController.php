@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
+use App\Services\ActivityLogService;
 use App\Services\DocumentPreview\DocumentDownloadService;
 use App\Services\DocumentPreview\DocumentPreviewService;
 use Illuminate\Http\RedirectResponse;
@@ -30,6 +31,7 @@ class ManualController extends Controller
     public function __construct(
         protected DocumentPreviewService $documentPreviewService,
         protected DocumentDownloadService $documentDownloadService,
+        protected ActivityLogService $activityLogService,
     ) {
     }
 
@@ -176,24 +178,52 @@ class ManualController extends Controller
 
     public function preview(Request $request, DocumentUpload $upload)
     {
+        $upload->loadMissing('documentType.series');
+
         $documentType = $upload->documentType;
 
         abort_unless($documentType && $documentType->isManual(), 404);
 
         $this->authorize('accessManualFile', $documentType);
 
-        abort_unless($this->documentPreviewService->canPreview($upload), 404, 'This file type is not supported for preview.');
+        abort_unless(
+            $this->documentPreviewService->canPreview($upload),
+            404,
+            'This file type is not supported for preview.'
+        );
+
+        $this->activityLogService->log([
+            'module' => 'manuals',
+            'action' => 'previewed',
+            'entity_type' => DocumentUpload::class,
+            'entity_id' => $upload->id,
+            'record_label' => $this->resolveManualRecordLabel($upload),
+            'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+            'description' => 'Previewed manual ' . $this->resolveManualRecordLabel($upload),
+        ]);
 
         return $this->documentPreviewService->preview($upload);
     }
 
     public function download(Request $request, DocumentUpload $upload)
     {
+        $upload->loadMissing('documentType.series');
+
         $documentType = $upload->documentType;
 
         abort_unless($documentType && $documentType->isManual(), 404);
 
         $this->authorize('accessManualFile', $documentType);
+
+        $this->activityLogService->log([
+            'module' => 'manuals',
+            'action' => 'downloaded',
+            'entity_type' => DocumentUpload::class,
+            'entity_id' => $upload->id,
+            'record_label' => $this->resolveManualRecordLabel($upload),
+            'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+            'description' => 'Downloaded manual ' . $this->resolveManualRecordLabel($upload),
+        ]);
 
         return $this->documentDownloadService->download($upload);
     }
@@ -208,6 +238,21 @@ class ManualController extends Controller
             'REM' => 'REM Manuals',
             default => $category . ' Manuals',
         };
+    }
+
+    private function resolveManualRecordLabel(DocumentUpload $upload): string
+    {
+        $documentType = $upload->documentType;
+
+        if ($documentType?->code) {
+            return $documentType->code;
+        }
+
+        if ($documentType?->title) {
+            return $documentType->title;
+        }
+
+        return $upload->file_name ?: 'Manual #' . $upload->id;
     }
 
     private function transformManualType(?DocumentType $documentType): ?array

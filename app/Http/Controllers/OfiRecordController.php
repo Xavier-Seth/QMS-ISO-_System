@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
 use App\Models\OfiRecord;
+use App\Services\ActivityLogService;
 use App\Services\OFIFormGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
@@ -12,6 +13,11 @@ use Illuminate\Support\Facades\Storage;
 
 class OfiRecordController extends Controller
 {
+    public function __construct(
+        protected ActivityLogService $activityLogService
+    ) {
+    }
+
     private function rQms018TypeId(): int
     {
         return DocumentType::where('code', 'R-QMS-018')->value('id')
@@ -154,6 +160,16 @@ class OfiRecordController extends Controller
 
         $this->generateDocxToPath($ofiRecord, $outputPath);
 
+        $this->activityLogService->log([
+            'module' => 'ofi',
+            'action' => 'downloaded',
+            'entity_type' => OfiRecord::class,
+            'entity_id' => $ofiRecord->id,
+            'record_label' => $ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id,
+            'file_type' => 'docx',
+            'description' => 'Downloaded generated OFI form ' . ($ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id),
+        ]);
+
         return response()->download($outputPath, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ])->deleteFileAfterSend(true);
@@ -210,6 +226,22 @@ class OfiRecordController extends Controller
         ]);
 
         @unlink($tmpPath);
+
+        $this->activityLogService->log([
+            'module' => 'ofi',
+            'action' => 'published',
+            'entity_type' => OfiRecord::class,
+            'entity_id' => $ofiRecord->id,
+            'record_label' => $ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id,
+            'file_type' => 'docx',
+            'description' => 'Published OFI record ' . ($ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id) . ' as document ' . $fileName,
+            'new_values' => [
+                'upload_id' => $upload->id,
+                'file_name' => $fileName,
+                'file_path' => $publicPath,
+                'remarks' => $data['remarks'] ?? null,
+            ],
+        ]);
 
         return response()->json([
             'ok' => true,
