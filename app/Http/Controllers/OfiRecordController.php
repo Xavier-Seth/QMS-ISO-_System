@@ -107,17 +107,24 @@ class OfiRecordController extends Controller
         }
     }
 
+    private function isAdminUser(): bool
+    {
+        return auth()->user()?->role === 'admin';
+    }
+
     public function store(Request $request)
     {
         $payload = $request->all();
+
+        $isAdmin = $this->isAdminUser();
 
         $record = OfiRecord::create([
             'document_type_id' => $this->rQms018TypeId(),
             'ofi_no' => $payload['ofiNo'] ?? null,
             'ref_no' => $payload['refNo'] ?? null,
             'to' => $payload['to'] ?? null,
-            'status' => $payload['status'] ?? 'draft',
-            'workflow_status' => 'pending',
+            'status' => 'draft',
+            'workflow_status' => $isAdmin ? 'approved' : null,
             'resolution_status' => 'open',
             'data' => $payload,
             'created_by' => auth()->id(),
@@ -126,6 +133,7 @@ class OfiRecordController extends Controller
 
         return response()->json([
             'id' => $record->id,
+            'status' => $record->status,
             'workflow_status' => $record->workflow_status,
             'resolution_status' => $record->resolution_status,
         ]);
@@ -150,7 +158,7 @@ class OfiRecordController extends Controller
             'ofi_no' => $payload['ofiNo'] ?? $ofiRecord->ofi_no,
             'ref_no' => $payload['refNo'] ?? $ofiRecord->ref_no,
             'to' => $payload['to'] ?? $ofiRecord->to,
-            'status' => $payload['status'] ?? $ofiRecord->status,
+            'status' => $payload['status'] ?? $ofiRecord->status ?? 'draft',
             'data' => $payload,
             'updated_by' => auth()->id(),
         ]);
@@ -159,8 +167,48 @@ class OfiRecordController extends Controller
 
         return response()->json([
             'ok' => true,
+            'status' => $ofiRecord->fresh()->status,
             'workflow_status' => $ofiRecord->fresh()->workflow_status,
             'resolution_status' => $ofiRecord->fresh()->resolution_status,
+        ]);
+    }
+
+    public function submitForApproval(OfiRecord $ofiRecord)
+    {
+        if ($ofiRecord->created_by !== auth()->id() && !$this->isAdminUser()) {
+            return response()->json([
+                'message' => 'You are not allowed to submit this OFI record.',
+            ], 403);
+        }
+
+        if ($this->isAdminUser()) {
+            return response()->json([
+                'message' => 'Admin-created OFI records do not need inbox submission.',
+            ], 422);
+        }
+
+        if ($ofiRecord->workflow_status === 'approved') {
+            return response()->json([
+                'message' => 'This OFI record is already approved.',
+            ], 422);
+        }
+
+        if ($ofiRecord->workflow_status === 'pending') {
+            return response()->json([
+                'message' => 'This OFI record is already submitted for approval.',
+            ], 422);
+        }
+
+        $ofiRecord->update([
+            'status' => 'submitted',
+            'workflow_status' => 'pending',
+            'updated_by' => auth()->id(),
+        ]);
+
+        return response()->json([
+            'message' => 'OFI submitted to admin for approval successfully.',
+            'status' => $ofiRecord->status,
+            'workflow_status' => $ofiRecord->workflow_status,
         ]);
     }
 
@@ -276,8 +324,12 @@ class OfiRecordController extends Controller
         }
 
         $records = OfiRecord::query()
-            ->with(['creator:id,name'])
+            ->with(['creator:id,name,role'])
+            ->where('status', 'submitted')
             ->where('workflow_status', $status)
+            ->whereHas('creator', function ($query) {
+                $query->where('role', '!=', 'admin');
+            })
             ->latest()
             ->paginate(10)
             ->withQueryString()
@@ -286,6 +338,7 @@ class OfiRecordController extends Controller
                 'ofi_no' => $record->ofi_no,
                 'ref_no' => $record->ref_no,
                 'to' => $record->to,
+                'status' => $record->status,
                 'workflow_status' => $record->workflow_status,
                 'resolution_status' => $record->resolution_status,
                 'created_at' => $record->created_at,
@@ -293,9 +346,23 @@ class OfiRecordController extends Controller
             ]);
 
         $counts = [
-            'pending' => OfiRecord::where('workflow_status', 'pending')->count(),
-            'approved' => OfiRecord::where('workflow_status', 'approved')->count(),
-            'rejected' => OfiRecord::where('workflow_status', 'rejected')->count(),
+            'pending' => OfiRecord::query()
+                ->where('status', 'submitted')
+                ->where('workflow_status', 'pending')
+                ->whereHas('creator', fn($q) => $q->where('role', '!=', 'admin'))
+                ->count(),
+
+            'approved' => OfiRecord::query()
+                ->where('status', 'submitted')
+                ->where('workflow_status', 'approved')
+                ->whereHas('creator', fn($q) => $q->where('role', '!=', 'admin'))
+                ->count(),
+
+            'rejected' => OfiRecord::query()
+                ->where('status', 'submitted')
+                ->where('workflow_status', 'rejected')
+                ->whereHas('creator', fn($q) => $q->where('role', '!=', 'admin'))
+                ->count(),
         ];
 
         return Inertia::render('Inbox/OFIInbox', [
@@ -309,19 +376,25 @@ class OfiRecordController extends Controller
 
     public function approve(OfiRecord $ofiRecord)
     {
-        if ($ofiRecord->workflow_status !== 'approved') {
-            $ofiRecord->update([
-                'workflow_status' => 'approved',
-                'resolution_status' => $ofiRecord->resolution_status ?: 'open',
-                'updated_by' => auth()->id(),
-            ]);
+        if ($ofiRecord->status !== 'submitted' || $ofiRecord->workflow_status !== 'pending') {
+            return back()->with('error', 'Only submitted pending OFI records can be approved.');
         }
+
+        $ofiRecord->update([
+            'workflow_status' => 'approved',
+            'resolution_status' => $ofiRecord->resolution_status ?: 'open',
+            'updated_by' => auth()->id(),
+        ]);
 
         return back()->with('success', 'OFI approved successfully.');
     }
 
     public function reject(OfiRecord $ofiRecord)
     {
+        if ($ofiRecord->status !== 'submitted' || $ofiRecord->workflow_status !== 'pending') {
+            return back()->with('error', 'Only submitted pending OFI records can be rejected.');
+        }
+
         $ofiRecord->update([
             'workflow_status' => 'rejected',
             'updated_by' => auth()->id(),
@@ -342,8 +415,23 @@ class OfiRecordController extends Controller
             ], 422);
         }
 
+        $newStatus = $validated['resolution_status'];
+        $currentStatus = $ofiRecord->resolution_status;
+
+        $allowedTransitions = [
+            'open' => ['open', 'ongoing', 'closed'],
+            'ongoing' => ['ongoing', 'closed'],
+            'closed' => ['closed'],
+        ];
+
+        if (!in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)) {
+            return response()->json([
+                'message' => "Invalid resolution status transition from {$currentStatus} to {$newStatus}.",
+            ], 422);
+        }
+
         $ofiRecord->update([
-            'resolution_status' => $validated['resolution_status'],
+            'resolution_status' => $newStatus,
             'updated_by' => auth()->id(),
         ]);
 

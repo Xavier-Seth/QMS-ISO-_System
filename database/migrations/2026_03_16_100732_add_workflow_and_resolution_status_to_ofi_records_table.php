@@ -9,7 +9,7 @@ return new class extends Migration {
     {
         Schema::table('ofi_records', function (Blueprint $table) {
             $table->enum('workflow_status', ['pending', 'approved', 'rejected'])
-                ->default('pending')
+                ->nullable()
                 ->after('status');
 
             $table->enum('resolution_status', ['open', 'ongoing', 'closed'])

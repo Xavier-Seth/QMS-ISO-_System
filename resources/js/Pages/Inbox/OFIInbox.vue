@@ -55,6 +55,14 @@ function resolutionBadgeClass(status) {
   if (status === 'ongoing') return 'bg-blue-50 text-blue-700 ring-blue-200'
   return 'bg-slate-100 text-slate-700 ring-slate-200'
 }
+
+function recordStatusBadgeClass(status) {
+  if (status === 'submitted') return 'bg-indigo-50 text-indigo-700 ring-indigo-200'
+  if (status === 'draft') return 'bg-slate-100 text-slate-700 ring-slate-200'
+  if (status === 'closed') return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+  if (status === 'final') return 'bg-violet-50 text-violet-700 ring-violet-200'
+  return 'bg-slate-100 text-slate-700 ring-slate-200'
+}
 </script>
 
 <template>
@@ -64,7 +72,7 @@ function resolutionBadgeClass(status) {
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5">
           <h1 class="text-xl font-semibold text-white">OFI Inbox</h1>
           <p class="mt-1 text-sm text-slate-300">
-            Review submitted Opportunities for Improvement.
+            Review submitted OFI records from departments, users, and admin officers.
           </p>
         </div>
 
@@ -101,6 +109,7 @@ function resolutionBadgeClass(status) {
                 <th class="px-5 py-3 font-semibold text-slate-700">Ref No.</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">To</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Created By</th>
+                <th class="px-5 py-3 font-semibold text-slate-700">Record Status</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Workflow</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Resolution</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Date Submitted</th>
@@ -118,6 +127,16 @@ function resolutionBadgeClass(status) {
                 <td class="px-5 py-4 text-slate-600">{{ record.ref_no || '—' }}</td>
                 <td class="px-5 py-4 text-slate-600">{{ record.to || '—' }}</td>
                 <td class="px-5 py-4 text-slate-600">{{ record.created_by_name }}</td>
+
+                <td class="px-5 py-4">
+                  <span
+                    class="rounded-full px-2 py-1 text-xs ring-1"
+                    :class="recordStatusBadgeClass(record.status)"
+                  >
+                    {{ record.status }}
+                  </span>
+                </td>
+
                 <td class="px-5 py-4">
                   <span
                     class="rounded-full px-2 py-1 text-xs ring-1"
@@ -126,6 +145,7 @@ function resolutionBadgeClass(status) {
                     {{ record.workflow_status }}
                   </span>
                 </td>
+
                 <td class="px-5 py-4">
                   <span
                     class="rounded-full px-2 py-1 text-xs ring-1"
@@ -134,7 +154,9 @@ function resolutionBadgeClass(status) {
                     {{ record.resolution_status }}
                   </span>
                 </td>
+
                 <td class="px-5 py-4 text-slate-600">{{ formatDate(record.created_at) }}</td>
+
                 <td class="px-5 py-4">
                   <div class="flex justify-end gap-2">
                     <Link
@@ -144,7 +166,7 @@ function resolutionBadgeClass(status) {
                       View
                     </Link>
 
-                    <template v-if="record.workflow_status === 'pending'">
+                    <template v-if="record.status === 'submitted' && record.workflow_status === 'pending'">
                       <button
                         type="button"
                         @click="approve(record.id)"
@@ -166,8 +188,8 @@ function resolutionBadgeClass(status) {
               </tr>
 
               <tr v-if="!records.data.length">
-                <td colspan="8" class="px-5 py-8 text-center text-sm text-slate-500">
-                  No OFI records found for this status.
+                <td colspan="9" class="px-5 py-8 text-center text-sm text-slate-500">
+                  No submitted OFI records found for this status.
                 </td>
               </tr>
             </tbody>

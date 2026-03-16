@@ -40,6 +40,10 @@ Route::middleware('auth')->group(function () {
     Route::post('/ofi/records/{ofiRecord}/publish', [OfiRecordController::class, 'publish'])
         ->name('ofi.records.publish');
 
+    // Submit OFI to admin for review
+    Route::post('/ofi/records/{ofiRecord}/submit', [OfiRecordController::class, 'submitForApproval'])
+        ->name('ofi.records.submit');
+
     Route::post('/dcr/generate', [DCRController::class, 'generate'])->name('dcr.generate');
 
     Route::post('/dcr/records', [DcrRecordController::class, 'store'])->name('dcr.records.store');
@@ -89,6 +93,8 @@ Route::middleware('auth')->group(function () {
         Route::get('/inbox/ofi', [OfiRecordController::class, 'inbox'])->name('ofi.inbox');
         Route::post('/inbox/ofi/{ofiRecord}/approve', [OfiRecordController::class, 'approve'])->name('ofi.inbox.approve');
         Route::post('/inbox/ofi/{ofiRecord}/reject', [OfiRecordController::class, 'reject'])->name('ofi.inbox.reject');
+
+        // Admin-only resolution management
         Route::patch('/ofi/records/{ofiRecord}/resolution-status', [OfiRecordController::class, 'updateResolutionStatus'])
             ->name('ofi.records.resolution-status');
     });

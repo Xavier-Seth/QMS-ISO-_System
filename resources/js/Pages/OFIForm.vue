@@ -18,10 +18,12 @@ const recordId = ref(null)
 const isSaving = ref(false)
 const isGenerating = ref(false)
 const isPublishing = ref(false)
+const isSubmitting = ref(false)
 const isLoadingRecord = ref(false)
 const isUpdatingResolution = ref(false)
 
 // workflow / resolution states
+const recordStatus = ref('draft')
 const workflowStatus = ref(null)
 const resolutionStatus = ref('open')
 
@@ -31,12 +33,17 @@ const publishFileName = ref('')
 // rename modal
 const showPublishRenameModal = ref(false)
 
-// UI-only display flag.
-// Do not use this as the real permission check.
-// Backend route middleware remains the source of truth.
 const isAdmin = computed(() => {
   const role = String(page.props.auth?.user?.role || '').toLowerCase().trim()
   return role === 'admin'
+})
+
+const canSubmitToAdmin = computed(() => {
+  return !isAdmin.value && !!recordId.value && workflowStatus.value !== 'pending' && workflowStatus.value !== 'approved'
+})
+
+const canUpdateResolution = computed(() => {
+  return isAdmin.value && workflowStatus.value === 'approved' && !!recordId.value
 })
 
 function emptyForm() {
@@ -85,8 +92,17 @@ const form = reactive(emptyForm())
 
 const suggestedPublishName = computed(() => `OFI_${form.ofiNo || recordId.value || 'record'}`)
 
-const canUpdateResolution = computed(() => {
-  return workflowStatus.value === 'approved' && !!recordId.value
+const workflowBadgeClass = computed(() => {
+  if (workflowStatus.value === 'approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (workflowStatus.value === 'rejected') return 'border-rose-200 bg-rose-50 text-rose-700'
+  if (workflowStatus.value === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
+  return 'border-slate-200 bg-white text-slate-600'
+})
+
+const resolutionBadgeClass = computed(() => {
+  if (resolutionStatus.value === 'closed') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (resolutionStatus.value === 'ongoing') return 'border-blue-200 bg-blue-50 text-blue-700'
+  return 'border-slate-200 bg-white text-slate-600'
 })
 
 function currentFileLabel() {
@@ -138,6 +154,7 @@ function resetFormState() {
   })
 
   recordId.value = null
+  recordStatus.value = 'draft'
   publishFileName.value = ''
   showPublishRenameModal.value = false
   workflowStatus.value = null
@@ -193,6 +210,7 @@ async function loadRecord(id) {
   await runTask(isLoadingRecord, 'Loading saved record...', async () => {
     const res = await axios.get(`/ofi/records/${id}`)
     recordId.value = id
+    recordStatus.value = res.data.status ?? 'draft'
     applyDataToForm(res.data.data || {})
     workflowStatus.value = res.data.workflow_status ?? null
     resolutionStatus.value = res.data.resolution_status ?? 'open'
@@ -213,6 +231,7 @@ async function upsertRecord(status = 'draft') {
   if (!recordId.value) {
     const res = await axios.post('/ofi/records', { ...form, status })
     recordId.value = res.data.id
+    recordStatus.value = res.data.status ?? 'draft'
     workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
     resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
 
@@ -221,6 +240,7 @@ async function upsertRecord(status = 'draft') {
     window.history.replaceState({}, '', url)
   } else {
     const res = await axios.put(`/ofi/records/${recordId.value}`, { ...form, status })
+    recordStatus.value = res.data.status ?? recordStatus.value
     workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
     resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
   }
@@ -254,6 +274,38 @@ async function saveDraft() {
   }).catch((err) => {
     console.error(err)
     toast.error('Failed to save draft. Please try again.')
+  })
+}
+
+async function submitToAdmin() {
+  if (!recordId.value) {
+    toast.error('Save the draft first before submitting to admin.')
+    return
+  }
+
+  if (isAdmin.value) {
+    toast.error('Admin-created OFI records do not need inbox submission.')
+    return
+  }
+
+  await runTask(isSubmitting, 'Submitting OFI to admin...', async () => {
+    await ensureDraftSaved()
+
+    const res = await axios.post(`/ofi/records/${recordId.value}/submit`)
+
+    recordStatus.value = res.data.status ?? 'submitted'
+    workflowStatus.value = res.data.workflow_status ?? 'pending'
+
+    toast.success(res?.data?.message || 'OFI submitted to admin successfully.')
+  }).catch((err) => {
+    console.error(err)
+
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      'Failed to submit OFI to admin.'
+
+    toast.error(message)
   })
 }
 
@@ -458,13 +510,29 @@ onBeforeUnmount(() => {
             <p class="mt-1 text-[13px] text-slate-400">Opportunities for Improvement · Leyte Normal University</p>
 
             <div v-if="recordId" class="mt-3 flex flex-wrap items-center gap-3">
-              <div class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-semibold text-slate-600">
-                Workflow: {{ workflowStatus || '—' }}
+              <div
+                class="inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold"
+                :class="workflowBadgeClass"
+              >
+                Workflow: {{ workflowStatus || 'draft' }}
+              </div>
+
+              <div
+                class="inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold"
+                :class="resolutionBadgeClass"
+              >
+                Resolution: {{ resolutionStatus || 'open' }}
+              </div>
+
+              <div
+                class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-semibold text-slate-600"
+              >
+                Status: {{ recordStatus || 'draft' }}
               </div>
 
               <template v-if="isAdmin">
                 <div class="flex flex-wrap items-center gap-2">
-                  <label class="text-[12px] font-semibold text-slate-600">Resolution:</label>
+                  <label class="text-[12px] font-semibold text-slate-600">Update Resolution:</label>
 
                   <select
                     v-model="resolutionStatus"
@@ -484,12 +552,6 @@ onBeforeUnmount(() => {
                   >
                     {{ isUpdatingResolution ? 'Updating...' : 'Update Status' }}
                   </button>
-                </div>
-              </template>
-
-              <template v-else>
-                <div class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-semibold text-slate-600">
-                  Resolution: {{ resolutionStatus || '—' }}
                 </div>
               </template>
             </div>
@@ -522,6 +584,17 @@ onBeforeUnmount(() => {
             </button>
 
             <button
+              v-if="!isAdmin"
+              class="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="submitToAdmin"
+              :disabled="!canSubmitToAdmin || isSubmitting"
+              title="Submit this OFI to admin for review"
+            >
+              <span>{{ isSubmitting ? 'Submitting...' : 'Submit to Admin' }}</span>
+            </button>
+
+            <button
+              v-if="isAdmin"
               class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
               @click="openPublishRenameModal"
               :disabled="isPublishing || !recordId"

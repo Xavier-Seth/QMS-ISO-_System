@@ -3,8 +3,8 @@
 namespace App\Observers;
 
 use App\Models\OfiRecord;
-use App\Services\ActivityLogService;
 use App\Models\User;
+use App\Services\ActivityLogService;
 
 class OfiRecordObserver
 {
@@ -59,19 +59,30 @@ class OfiRecordObserver
         $action = 'updated';
 
         if (isset($changes['workflow_status'])) {
-            $description = 'Changed OFI workflow status of ' . $this->recordLabel($ofiRecord)
-                . ' from ' . $this->stringify($changes['workflow_status']['old'])
-                . ' to ' . $this->stringify($changes['workflow_status']['new']);
-            $action = 'workflow_status_changed';
+            $old = $changes['workflow_status']['old'] ?? null;
+            $new = $changes['workflow_status']['new'] ?? null;
+
+            if ($new === 'approved') {
+                $action = 'approved';
+                $description = 'Approved OFI record ' . $this->recordLabel($ofiRecord);
+            } elseif ($new === 'rejected') {
+                $action = 'rejected';
+                $description = 'Rejected OFI record ' . $this->recordLabel($ofiRecord);
+            } else {
+                $action = 'workflow_status_changed';
+                $description = 'Changed OFI workflow status of ' . $this->recordLabel($ofiRecord)
+                    . ' from ' . $this->stringify($old)
+                    . ' to ' . $this->stringify($new);
+            }
         } elseif (isset($changes['resolution_status'])) {
             $description = 'Changed OFI resolution status of ' . $this->recordLabel($ofiRecord)
-                . ' from ' . $this->stringify($changes['resolution_status']['old'])
-                . ' to ' . $this->stringify($changes['resolution_status']['new']);
+                . ' from ' . $this->stringify($changes['resolution_status']['old'] ?? null)
+                . ' to ' . $this->stringify($changes['resolution_status']['new'] ?? null);
             $action = 'resolution_status_changed';
         } elseif (isset($changes['status'])) {
             $description = 'Changed OFI status of ' . $this->recordLabel($ofiRecord)
-                . ' from ' . $this->stringify($changes['status']['old'])
-                . ' to ' . $this->stringify($changes['status']['new']);
+                . ' from ' . $this->stringify($changes['status']['old'] ?? null)
+                . ' to ' . $this->stringify($changes['status']['new'] ?? null);
             $action = 'status_changed';
         }
 
