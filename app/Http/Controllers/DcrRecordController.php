@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DcrRecord;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
+use App\Services\ActivityLogService;
 use App\Services\DCRFormGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
@@ -12,6 +13,11 @@ use Illuminate\Support\Facades\Storage;
 
 class DcrRecordController extends Controller
 {
+    public function __construct(
+        protected ActivityLogService $activityLogService
+    ) {
+    }
+
     private function rQms013TypeId(): int
     {
         $id = DocumentType::where('code', 'R-QMS-013')->value('id');
@@ -185,6 +191,16 @@ class DcrRecordController extends Controller
 
         $this->generateDocxToPath($dcrRecord, $outputPath);
 
+        $this->activityLogService->log([
+            'module' => 'dcr',
+            'action' => 'downloaded',
+            'entity_type' => DcrRecord::class,
+            'entity_id' => $dcrRecord->id,
+            'record_label' => $dcrRecord->dcr_no ?: 'DCR #' . $dcrRecord->id,
+            'file_type' => 'docx',
+            'description' => 'Downloaded generated DCR form ' . ($dcrRecord->dcr_no ?: 'DCR #' . $dcrRecord->id),
+        ]);
+
         return response()->download($outputPath, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         ])->deleteFileAfterSend(true);
@@ -242,6 +258,22 @@ class DcrRecordController extends Controller
             ]);
 
             @unlink($tmpPath);
+
+            $this->activityLogService->log([
+                'module' => 'dcr',
+                'action' => 'published',
+                'entity_type' => DcrRecord::class,
+                'entity_id' => $dcrRecord->id,
+                'record_label' => $dcrRecord->dcr_no ?: 'DCR #' . $dcrRecord->id,
+                'file_type' => 'docx',
+                'description' => 'Published DCR record ' . ($dcrRecord->dcr_no ?: 'DCR #' . $dcrRecord->id) . ' as document ' . $fileName,
+                'new_values' => [
+                    'upload_id' => $upload->id,
+                    'file_name' => $fileName,
+                    'file_path' => $publicPath,
+                    'remarks' => $data['remarks'] ?? null,
+                ],
+            ]);
 
             return response()->json([
                 'ok' => true,

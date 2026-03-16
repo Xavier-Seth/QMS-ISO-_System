@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
+use App\Services\ActivityLogService;
 use App\Services\DCRFormGenerator;
 use App\Services\DocumentPreview\DocumentDownloadService;
 use App\Services\DocumentPreview\DocumentPreviewService;
@@ -22,6 +23,7 @@ class DocumentController extends Controller
         protected DocumentPreviewService $documentPreviewService,
         protected DocumentDownloadService $documentDownloadService,
         protected OfficeToPdfConverter $officeToPdfConverter,
+        protected ActivityLogService $activityLogService,
     ) {
     }
 
@@ -299,11 +301,33 @@ class DocumentController extends Controller
 
     public function preview(DocumentUpload $upload)
     {
+        $upload->loadMissing(['documentType.series', 'ofiRecord', 'dcrRecord']);
+
         if ($upload->ofi_record_id && $upload->ofiRecord) {
+            $this->activityLogService->log([
+                'module' => 'ofi',
+                'action' => 'previewed',
+                'entity_type' => DocumentUpload::class,
+                'entity_id' => $upload->id,
+                'record_label' => $upload->ofiRecord->ofi_no ?: 'OFI #' . $upload->ofiRecord->id,
+                'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+                'description' => 'Previewed published OFI document ' . ($upload->file_name ?: 'file'),
+            ]);
+
             return $this->previewLatestOfiAsPdf($upload);
         }
 
         if ($upload->dcr_record_id && $upload->dcrRecord) {
+            $this->activityLogService->log([
+                'module' => 'dcr',
+                'action' => 'previewed',
+                'entity_type' => DocumentUpload::class,
+                'entity_id' => $upload->id,
+                'record_label' => $upload->dcrRecord->dcr_no ?: 'DCR #' . $upload->dcrRecord->id,
+                'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+                'description' => 'Previewed published DCR document ' . ($upload->file_name ?: 'file'),
+            ]);
+
             return $this->previewLatestDcrAsPdf($upload);
         }
 
@@ -313,18 +337,60 @@ class DocumentController extends Controller
             'This file type is not supported for preview.'
         );
 
+        $this->activityLogService->log([
+            'module' => $this->resolveModuleFromUpload($upload),
+            'action' => 'previewed',
+            'entity_type' => DocumentUpload::class,
+            'entity_id' => $upload->id,
+            'record_label' => $this->resolveDocumentRecordLabel($upload),
+            'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+            'description' => 'Previewed document ' . $this->resolveDocumentRecordLabel($upload),
+        ]);
+
         return $this->documentPreviewService->preview($upload);
     }
 
     public function download(DocumentUpload $upload)
     {
+        $upload->loadMissing(['documentType.series', 'ofiRecord', 'dcrRecord']);
+
         if ($upload->ofi_record_id && $upload->ofiRecord) {
+            $this->activityLogService->log([
+                'module' => 'ofi',
+                'action' => 'downloaded',
+                'entity_type' => DocumentUpload::class,
+                'entity_id' => $upload->id,
+                'record_label' => $upload->ofiRecord->ofi_no ?: 'OFI #' . $upload->ofiRecord->id,
+                'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+                'description' => 'Downloaded published OFI document ' . ($upload->file_name ?: 'file'),
+            ]);
+
             return $this->downloadLatestOfiDocx($upload);
         }
 
         if ($upload->dcr_record_id && $upload->dcrRecord) {
+            $this->activityLogService->log([
+                'module' => 'dcr',
+                'action' => 'downloaded',
+                'entity_type' => DocumentUpload::class,
+                'entity_id' => $upload->id,
+                'record_label' => $upload->dcrRecord->dcr_no ?: 'DCR #' . $upload->dcrRecord->id,
+                'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+                'description' => 'Downloaded published DCR document ' . ($upload->file_name ?: 'file'),
+            ]);
+
             return $this->downloadLatestDcrDocx($upload);
         }
+
+        $this->activityLogService->log([
+            'module' => $this->resolveModuleFromUpload($upload),
+            'action' => 'downloaded',
+            'entity_type' => DocumentUpload::class,
+            'entity_id' => $upload->id,
+            'record_label' => $this->resolveDocumentRecordLabel($upload),
+            'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+            'description' => 'Downloaded document ' . $this->resolveDocumentRecordLabel($upload),
+        ]);
 
         return $this->documentDownloadService->download($upload);
     }
@@ -336,6 +402,20 @@ class DocumentController extends Controller
         }
 
         return str_starts_with(strtoupper((string) $documentType->code), 'F-QMS');
+    }
+
+    private function resolveModuleFromUpload(DocumentUpload $upload): string
+    {
+        return strtoupper((string) $upload->documentType?->series?->code_prefix) === 'MANUAL'
+            ? 'manuals'
+            : 'documents';
+    }
+
+    private function resolveDocumentRecordLabel(DocumentUpload $upload): string
+    {
+        return $upload->documentType?->code
+            ?: $upload->file_name
+            ?: 'Upload #' . $upload->id;
     }
 
     private function downloadLatestOfiDocx(DocumentUpload $upload)

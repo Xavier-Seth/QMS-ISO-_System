@@ -272,6 +272,7 @@ const dropdownItemClass = (active = false) => [
 
             <!-- Logs -->
             <Link
+                
                 href="/logs"
                 :class="navItemClass(isActive('/logs'))"
             >

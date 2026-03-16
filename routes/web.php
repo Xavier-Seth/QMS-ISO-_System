@@ -1,14 +1,15 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\OFIController;
-use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\DCRController;
 use App\Http\Controllers\DcrRecordController;
 use App\Http\Controllers\DocumentController;
-use App\Http\Controllers\UsersController;
-use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\LogsController;
 use App\Http\Controllers\ManualController;
+use App\Http\Controllers\OFIController;
+use App\Http\Controllers\OfiRecordController;
+use App\Http\Controllers\SettingsController;
+use App\Http\Controllers\UsersController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -73,11 +74,13 @@ Route::middleware('auth')->group(function () {
 
     // Placeholder shared pages
     Route::get('/inbox', fn() => Inertia::render('Inbox'))->name('inbox');
-    Route::get('/logs', fn() => Inertia::render('Logs'))->name('logs');
 
     // Admin Only Routes
     Route::middleware('can:admin-only')->group(function () {
         Route::get('/admin/dashboard', fn() => Inertia::render('Dashboard'))->name('admin.dashboard');
+
+        // Logs
+        Route::get('/logs', [LogsController::class, 'index'])->name('logs');
 
         // Users
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
