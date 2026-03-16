@@ -206,6 +206,8 @@ class DocumentController extends Controller
                 'created_at' => $d->created_at,
                 'ofi_record_id' => $d->ofi_record_id,
                 'dcr_record_id' => $d->dcr_record_id,
+                'ofi_workflow_status' => $d->ofiRecord?->workflow_status,
+                'ofi_resolution_status' => $d->ofiRecord?->resolution_status,
                 'preview_url' => route('documents.uploads.preview', $d->id),
                 'download_url' => route('documents.uploads.download', $d->id),
                 'file_url' => $d->file_path ? Storage::url($d->file_path) : null,
