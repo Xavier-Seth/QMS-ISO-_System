@@ -32,6 +32,7 @@ class UserObserver
     public function updated(User $user): void
     {
         $keys = [
+            'username',
             'name',
             'role',
             'position',
@@ -56,11 +57,17 @@ class UserObserver
             $description = 'Changed user role of ' . $user->name
                 . ' from ' . $this->stringify($changes['role']['old'])
                 . ' to ' . $this->stringify($changes['role']['new']);
+        } elseif (isset($changes['username'])) {
+            $description = 'Changed username of ' . $user->name
+                . ' from ' . $this->stringify($changes['username']['old'])
+                . ' to ' . $this->stringify($changes['username']['new']);
         }
 
         $this->activityLogService->logModelEvent(
             module: 'users',
-            action: isset($changes['role']) ? 'role_changed' : 'updated',
+            action: isset($changes['role'])
+            ? 'role_changed'
+            : (isset($changes['username']) ? 'username_changed' : 'updated'),
             model: $user,
             recordLabel: $user->name,
             description: $description,
