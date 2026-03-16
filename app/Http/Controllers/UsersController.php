@@ -11,7 +11,7 @@ class UsersController extends Controller
 {
     public function index(Request $request)
     {
-        $q = trim((string) $request->get('q', ''));
+        $q = trim((string) $request->input('q', ''));
 
         $users = User::query()
             ->select([

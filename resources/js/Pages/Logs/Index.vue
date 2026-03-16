@@ -4,14 +4,8 @@ import { router } from '@inertiajs/vue3'
 import { ref, watch } from 'vue'
 
 const props = defineProps({
-  logs: {
-    type: Object,
-    required: true,
-  },
-  filters: {
-    type: Object,
-    default: () => ({}),
-  },
+  logs: { type: Object, required: true },
+  filters: { type: Object, default: () => ({}) },
   options: {
     type: Object,
     default: () => ({
@@ -19,6 +13,7 @@ const props = defineProps({
       file_types: [],
       actions: [],
       modules: [],
+      users: [],
     }),
   },
 })
@@ -27,26 +22,21 @@ const search = ref(props.filters?.q ?? '')
 const department = ref(props.filters?.department ?? '')
 const fileType = ref(props.filters?.file_type ?? '')
 const action = ref(props.filters?.action ?? '')
-const moduleValue = ref(props.filters?.module ?? '')
-const dateFrom = ref(props.filters?.date_from ?? '')
-const dateTo = ref(props.filters?.date_to ?? '')
+const user = ref(props.filters?.user ?? '')
 
 let debounceTimer = null
 
 function applyFilters() {
   router.get(
-    route('logs'),
+    '/logs',
     {
       q: search.value || undefined,
       department: department.value || undefined,
       file_type: fileType.value || undefined,
       action: action.value || undefined,
-      module: moduleValue.value || undefined,
-      date_from: dateFrom.value || undefined,
-      date_to: dateTo.value || undefined,
+      user: user.value || undefined,
     },
     {
-      preserveState: true,
       preserveScroll: true,
       replace: true,
     }
@@ -60,15 +50,10 @@ watch(search, () => {
   }, 400)
 })
 
-watch([department, fileType, action, moduleValue, dateFrom, dateTo], () => {
-  applyFilters()
-})
-
 function goToPage(url) {
   if (!url) return
 
   router.visit(url, {
-    preserveState: true,
     preserveScroll: true,
   })
 }
@@ -78,7 +63,6 @@ function goToPage(url) {
   <AdminLayoutWithHeader>
     <div class="px-8 pt-6 pb-8">
       <div class="mx-auto w-full max-w-[1120px]">
-        <!-- Filters -->
         <div class="mb-8 flex flex-wrap items-center gap-3">
           <div class="relative w-[275px]">
             <span class="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
@@ -96,7 +80,8 @@ function goToPage(url) {
 
           <select
             v-model="department"
-            class="h-11 min-w-[140px] rounded-xl border border-[#425170] bg-white px-4 text-sm text-[#425170] outline-none"
+            @change="applyFilters()"
+            class="h-11 min-w-[160px] rounded-xl border border-[#425170] bg-white px-4 text-sm text-[#425170] outline-none"
           >
             <option value="">Office/Department</option>
             <option v-for="item in props.options.departments" :key="item" :value="item">
@@ -106,7 +91,8 @@ function goToPage(url) {
 
           <select
             v-model="fileType"
-            class="h-11 min-w-[95px] rounded-xl border border-[#425170] bg-white px-4 text-sm text-[#425170] outline-none"
+            @change="applyFilters()"
+            class="h-11 min-w-[110px] rounded-xl border border-[#425170] bg-white px-4 text-sm text-[#425170] outline-none"
           >
             <option value="">File Type</option>
             <option v-for="item in props.options.file_types" :key="item" :value="item">
@@ -116,7 +102,8 @@ function goToPage(url) {
 
           <select
             v-model="action"
-            class="h-11 min-w-[95px] rounded-xl border border-[#425170] bg-white px-4 text-sm text-[#425170] outline-none"
+            @change="applyFilters()"
+            class="h-11 min-w-[110px] rounded-xl border border-[#425170] bg-white px-4 text-sm text-[#425170] outline-none"
           >
             <option value="">Action</option>
             <option v-for="item in props.options.actions" :key="item" :value="item">
@@ -124,20 +111,18 @@ function goToPage(url) {
             </option>
           </select>
 
-              <select
-            v-model="action"
-            class="h-11 min-w-[95px] rounded-xl border border-[#425170] bg-white px-4 text-sm text-[#425170] outline-none"
+          <select
+            v-model="user"
+            @change="applyFilters()"
+            class="h-11 min-w-[150px] rounded-xl border border-[#425170] bg-white px-4 text-sm text-[#425170] outline-none"
           >
             <option value="">User</option>
-            <option v-for="item in props.options.actions" :key="item" :value="item">
+            <option v-for="item in props.options.users" :key="item" :value="item">
               {{ item }}
             </option>
           </select>
         </div>
 
-        
-
-        <!-- Table Card -->
         <div class="overflow-hidden rounded-2xl bg-white shadow-sm">
           <div class="overflow-x-auto">
             <table class="min-w-full table-fixed">
@@ -159,28 +144,13 @@ function goToPage(url) {
                   :key="log.id"
                   class="text-sm text-gray-700 odd:bg-[#d9d9d9] even:bg-[#ececec]"
                 >
-                  <td class="px-7 py-3 align-middle">
-                    {{ log.created_at || '—' }}
-                  </td>
-                  <td class="px-5 py-3 align-middle">
-                    {{ log.user_name || 'System' }}
-                  </td>
-                  <td class="px-5 py-3 align-middle">
-                    {{ log.department || '—' }}
-                  </td>
-                  <td class="px-5 py-3 align-middle">
-                    {{ log.module || '—' }}
-                  </td>
-                  <td class="px-5 py-3 align-middle">
-                    {{ log.record_label || '—' }}
-                  </td>
-                  <td class="px-5 py-3 align-middle">
-                    {{ log.action || '—' }}
-                  </td>
-                  <td
-                    class="max-w-[250px] truncate px-5 py-3 align-middle"
-                    :title="log.description"
-                  >
+                  <td class="px-7 py-3 align-middle">{{ log.created_at || '—' }}</td>
+                  <td class="px-5 py-3 align-middle">{{ log.user_name || 'System' }}</td>
+                  <td class="px-5 py-3 align-middle">{{ log.department || '—' }}</td>
+                  <td class="px-5 py-3 align-middle">{{ log.module || '—' }}</td>
+                  <td class="px-5 py-3 align-middle">{{ log.record_label || '—' }}</td>
+                  <td class="px-5 py-3 align-middle">{{ log.action || '—' }}</td>
+                  <td class="max-w-[250px] truncate px-5 py-3 align-middle" :title="log.description">
                     {{ log.description || '—' }}
                   </td>
                 </tr>
@@ -194,7 +164,6 @@ function goToPage(url) {
             </table>
           </div>
 
-          <!-- Pagination -->
           <div
             v-if="props.logs.links?.length > 3"
             class="flex flex-col gap-3 border-t border-gray-200 bg-white px-6 py-4 md:flex-row md:items-center md:justify-between"
