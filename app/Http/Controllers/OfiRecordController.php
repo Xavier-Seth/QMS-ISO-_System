@@ -10,6 +10,7 @@ use App\Services\OFIFormGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
 
 class OfiRecordController extends Controller
 {
@@ -116,12 +117,18 @@ class OfiRecordController extends Controller
             'ref_no' => $payload['refNo'] ?? null,
             'to' => $payload['to'] ?? null,
             'status' => $payload['status'] ?? 'draft',
+            'workflow_status' => 'pending',
+            'resolution_status' => 'open',
             'data' => $payload,
             'created_by' => auth()->id(),
             'updated_by' => auth()->id(),
         ]);
 
-        return response()->json(['id' => $record->id]);
+        return response()->json([
+            'id' => $record->id,
+            'workflow_status' => $record->workflow_status,
+            'resolution_status' => $record->resolution_status,
+        ]);
     }
 
     public function show(OfiRecord $ofiRecord)
@@ -129,6 +136,8 @@ class OfiRecordController extends Controller
         return response()->json([
             'id' => $ofiRecord->id,
             'status' => $ofiRecord->status,
+            'workflow_status' => $ofiRecord->workflow_status,
+            'resolution_status' => $ofiRecord->resolution_status,
             'data' => $ofiRecord->data,
         ]);
     }
@@ -148,7 +157,11 @@ class OfiRecordController extends Controller
 
         $this->syncPublishedUploads($ofiRecord->fresh());
 
-        return response()->json(['ok' => true]);
+        return response()->json([
+            'ok' => true,
+            'workflow_status' => $ofiRecord->fresh()->workflow_status,
+            'resolution_status' => $ofiRecord->fresh()->resolution_status,
+        ]);
     }
 
     public function download(OfiRecord $ofiRecord)
@@ -248,6 +261,90 @@ class OfiRecordController extends Controller
             'upload_id' => $upload->id,
             'ofi_record_id' => $ofiRecord->id,
             'file_name' => $fileName,
+            'workflow_status' => $ofiRecord->workflow_status,
+            'resolution_status' => $ofiRecord->resolution_status,
         ]);
+    }
+
+    public function inbox(Request $request)
+    {
+        $status = $request->input('workflow_status', 'pending');
+        $allowed = ['pending', 'approved', 'rejected'];
+
+        if (!in_array($status, $allowed, true)) {
+            $status = 'pending';
+        }
+
+        $records = OfiRecord::query()
+            ->with(['creator:id,name'])
+            ->where('workflow_status', $status)
+            ->latest()
+            ->paginate(10)
+            ->withQueryString()
+            ->through(fn(OfiRecord $record) => [
+                'id' => $record->id,
+                'ofi_no' => $record->ofi_no,
+                'ref_no' => $record->ref_no,
+                'to' => $record->to,
+                'workflow_status' => $record->workflow_status,
+                'resolution_status' => $record->resolution_status,
+                'created_at' => $record->created_at,
+                'created_by_name' => $record->creator?->name ?? '—',
+            ]);
+
+        $counts = [
+            'pending' => OfiRecord::where('workflow_status', 'pending')->count(),
+            'approved' => OfiRecord::where('workflow_status', 'approved')->count(),
+            'rejected' => OfiRecord::where('workflow_status', 'rejected')->count(),
+        ];
+
+        return Inertia::render('Inbox/OFIInbox', [
+            'records' => $records,
+            'filters' => [
+                'workflow_status' => $status,
+            ],
+            'counts' => $counts,
+        ]);
+    }
+
+    public function approve(OfiRecord $ofiRecord)
+    {
+        if ($ofiRecord->workflow_status !== 'approved') {
+            $ofiRecord->update([
+                'workflow_status' => 'approved',
+                'resolution_status' => $ofiRecord->resolution_status ?: 'open',
+                'updated_by' => auth()->id(),
+            ]);
+        }
+
+        return back()->with('success', 'OFI approved successfully.');
+    }
+
+    public function reject(OfiRecord $ofiRecord)
+    {
+        $ofiRecord->update([
+            'workflow_status' => 'rejected',
+            'updated_by' => auth()->id(),
+        ]);
+
+        return back()->with('success', 'OFI rejected successfully.');
+    }
+
+    public function updateResolutionStatus(Request $request, OfiRecord $ofiRecord)
+    {
+        $validated = $request->validate([
+            'resolution_status' => ['required', 'in:open,ongoing,closed'],
+        ]);
+
+        if ($ofiRecord->workflow_status !== 'approved') {
+            return back()->with('error', 'Only approved OFI records can update resolution status.');
+        }
+
+        $ofiRecord->update([
+            'resolution_status' => $validated['resolution_status'],
+            'updated_by' => auth()->id(),
+        ]);
+
+        return back()->with('success', 'OFI resolution status updated successfully.');
     }
 }

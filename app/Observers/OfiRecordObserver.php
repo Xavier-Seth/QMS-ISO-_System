@@ -26,6 +26,8 @@ class OfiRecordObserver
                 'ref_no' => $ofiRecord->ref_no,
                 'to' => $ofiRecord->to,
                 'status' => $ofiRecord->status,
+                'workflow_status' => $ofiRecord->workflow_status,
+                'resolution_status' => $ofiRecord->resolution_status,
             ],
             user: $this->resolveActor($ofiRecord)
         );
@@ -33,7 +35,16 @@ class OfiRecordObserver
 
     public function updated(OfiRecord $ofiRecord): void
     {
-        $keys = ['ofi_no', 'ref_no', 'to', 'status', 'data'];
+        $keys = [
+            'ofi_no',
+            'ref_no',
+            'to',
+            'status',
+            'workflow_status',
+            'resolution_status',
+            'data',
+        ];
+
         $changes = $this->activityLogService->onlyChanged(
             $ofiRecord->getOriginal(),
             $ofiRecord->getAttributes(),
@@ -45,16 +56,28 @@ class OfiRecordObserver
         }
 
         $description = 'Updated OFI record ' . $this->recordLabel($ofiRecord);
+        $action = 'updated';
 
-        if (isset($changes['status'])) {
+        if (isset($changes['workflow_status'])) {
+            $description = 'Changed OFI workflow status of ' . $this->recordLabel($ofiRecord)
+                . ' from ' . $this->stringify($changes['workflow_status']['old'])
+                . ' to ' . $this->stringify($changes['workflow_status']['new']);
+            $action = 'workflow_status_changed';
+        } elseif (isset($changes['resolution_status'])) {
+            $description = 'Changed OFI resolution status of ' . $this->recordLabel($ofiRecord)
+                . ' from ' . $this->stringify($changes['resolution_status']['old'])
+                . ' to ' . $this->stringify($changes['resolution_status']['new']);
+            $action = 'resolution_status_changed';
+        } elseif (isset($changes['status'])) {
             $description = 'Changed OFI status of ' . $this->recordLabel($ofiRecord)
                 . ' from ' . $this->stringify($changes['status']['old'])
                 . ' to ' . $this->stringify($changes['status']['new']);
+            $action = 'status_changed';
         }
 
         $this->activityLogService->logModelEvent(
             module: 'ofi',
-            action: isset($changes['status']) ? 'status_changed' : 'updated',
+            action: $action,
             model: $ofiRecord,
             recordLabel: $this->recordLabel($ofiRecord),
             description: $description,
@@ -75,6 +98,8 @@ class OfiRecordObserver
             oldValues: [
                 'ofi_no' => $ofiRecord->ofi_no,
                 'status' => $ofiRecord->status,
+                'workflow_status' => $ofiRecord->workflow_status,
+                'resolution_status' => $ofiRecord->resolution_status,
             ],
             user: $this->resolveActor($ofiRecord)
         );
