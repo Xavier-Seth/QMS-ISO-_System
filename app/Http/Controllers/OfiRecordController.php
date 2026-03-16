@@ -9,6 +9,7 @@ use App\Services\ActivityLogService;
 use App\Services\OFIFormGenerator;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
@@ -101,6 +102,7 @@ class OfiRecordController extends Controller
             $upload->update([
                 'file_name' => $fileName,
                 'file_path' => $publicPath,
+                'storage_disk' => 'public',
             ]);
 
             @unlink($tmpPath);
@@ -112,10 +114,96 @@ class OfiRecordController extends Controller
         return auth()->user()?->role === 'admin';
     }
 
+    private function resolveSafeStatusForSave(OfiRecord $ofiRecord, ?string $requestedStatus): string
+    {
+        $currentStatus = $ofiRecord->status ?: 'draft';
+        $requestedStatus = trim((string) $requestedStatus);
+
+        if ($requestedStatus === '' || $requestedStatus === 'draft') {
+            if (
+                in_array($ofiRecord->workflow_status, ['pending', 'approved', 'rejected'], true)
+                || $currentStatus === 'submitted'
+            ) {
+                return 'submitted';
+            }
+
+            return 'draft';
+        }
+
+        return $requestedStatus;
+    }
+
+    private function publishRecordDocument(
+        OfiRecord $ofiRecord,
+        ?string $requestedFileName = null,
+        ?string $remarks = null
+    ): DocumentUpload {
+        $existingUpload = DocumentUpload::query()
+            ->where('ofi_record_id', $ofiRecord->id)
+            ->orderByDesc('id')
+            ->first();
+
+        $tmpDir = $this->ensureTmpDir();
+        $disk = Storage::disk('public');
+
+        if ($existingUpload) {
+            $fileName = $existingUpload->file_name
+                ?: ($this->sanitizeBaseFileName($requestedFileName, $ofiRecord) . '.docx');
+
+            $tmpPath = $tmpDir . '/' . uniqid('ofi_republish_', true) . '_' . $fileName;
+            $this->generateDocxToPath($ofiRecord, $tmpPath);
+
+            $publicPath = $existingUpload->file_path ?: ('documents/ofi/' . $fileName);
+            $disk->put($publicPath, file_get_contents($tmpPath));
+
+            $existingUpload->update([
+                'document_type_id' => $this->rQms018TypeId(),
+                'uploaded_by' => auth()->id(),
+                'file_name' => $fileName,
+                'file_path' => $publicPath,
+                'storage_disk' => 'public',
+                'remarks' => $remarks ?? $existingUpload->remarks,
+            ]);
+
+            @unlink($tmpPath);
+
+            return $existingUpload->fresh();
+        }
+
+        $baseName = $this->sanitizeBaseFileName($requestedFileName, $ofiRecord);
+        $fileName = "{$baseName}.docx";
+        $publicPath = 'documents/ofi/' . $fileName;
+
+        if ($disk->exists($publicPath)) {
+            $fileName = "{$baseName}_" . now()->format('His') . '.docx';
+            $publicPath = 'documents/ofi/' . $fileName;
+        }
+
+        $tmpPath = $tmpDir . '/' . uniqid('ofi_publish_', true) . '_' . $fileName;
+        $this->generateDocxToPath($ofiRecord, $tmpPath);
+
+        $disk->put($publicPath, file_get_contents($tmpPath));
+
+        $upload = DocumentUpload::create([
+            'document_type_id' => $this->rQms018TypeId(),
+            'uploaded_by' => auth()->id(),
+            'ofi_record_id' => $ofiRecord->id,
+            'revision' => null,
+            'status' => null,
+            'file_name' => $fileName,
+            'file_path' => $publicPath,
+            'storage_disk' => 'public',
+            'remarks' => $remarks,
+        ]);
+
+        @unlink($tmpPath);
+
+        return $upload;
+    }
+
     public function store(Request $request)
     {
         $payload = $request->all();
-
         $isAdmin = $this->isAdminUser();
 
         $record = OfiRecord::create([
@@ -141,35 +229,42 @@ class OfiRecordController extends Controller
 
     public function show(OfiRecord $ofiRecord)
     {
+        $ofiRecord->load('creator:id,name,department');
+
         return response()->json([
             'id' => $ofiRecord->id,
             'status' => $ofiRecord->status,
             'workflow_status' => $ofiRecord->workflow_status,
             'resolution_status' => $ofiRecord->resolution_status,
             'data' => $ofiRecord->data,
+            'created_by_name' => $ofiRecord->creator?->name ?? '—',
+            'created_by_department' => $ofiRecord->creator?->department ?? '—',
         ]);
     }
 
     public function update(Request $request, OfiRecord $ofiRecord)
     {
         $payload = $request->all();
+        $safeStatus = $this->resolveSafeStatusForSave($ofiRecord, $payload['status'] ?? null);
 
         $ofiRecord->update([
             'ofi_no' => $payload['ofiNo'] ?? $ofiRecord->ofi_no,
             'ref_no' => $payload['refNo'] ?? $ofiRecord->ref_no,
             'to' => $payload['to'] ?? $ofiRecord->to,
-            'status' => $payload['status'] ?? $ofiRecord->status ?? 'draft',
+            'status' => $safeStatus,
             'data' => $payload,
             'updated_by' => auth()->id(),
         ]);
 
         $this->syncPublishedUploads($ofiRecord->fresh());
 
+        $fresh = $ofiRecord->fresh();
+
         return response()->json([
             'ok' => true,
-            'status' => $ofiRecord->fresh()->status,
-            'workflow_status' => $ofiRecord->fresh()->workflow_status,
-            'resolution_status' => $ofiRecord->fresh()->resolution_status,
+            'status' => $fresh->status,
+            'workflow_status' => $fresh->workflow_status,
+            'resolution_status' => $fresh->resolution_status,
         ]);
     }
 
@@ -245,11 +340,16 @@ class OfiRecordController extends Controller
 
         if ($request->has('data')) {
             $payload = (array) $request->input('data', []);
+            $safeStatus = $this->resolveSafeStatusForSave(
+                $ofiRecord,
+                $request->input('status', $ofiRecord->status)
+            );
+
             $ofiRecord->update([
                 'ofi_no' => $payload['ofiNo'] ?? $ofiRecord->ofi_no,
                 'ref_no' => $payload['refNo'] ?? $ofiRecord->ref_no,
                 'to' => $payload['to'] ?? $ofiRecord->to,
-                'status' => $request->input('status', $ofiRecord->status),
+                'status' => $safeStatus,
                 'data' => $payload ?: $ofiRecord->data,
                 'updated_by' => auth()->id(),
             ]);
@@ -257,36 +357,11 @@ class OfiRecordController extends Controller
 
         $ofiRecord = $ofiRecord->fresh();
 
-        $tmpDir = $this->ensureTmpDir();
-        $disk = Storage::disk('public');
-
-        $baseName = $this->sanitizeBaseFileName($data['file_name'] ?? null, $ofiRecord);
-        $fileName = "{$baseName}.docx";
-
-        $tmpPath = $tmpDir . '/' . uniqid('ofi_publish_', true) . '_' . $fileName;
-        $this->generateDocxToPath($ofiRecord, $tmpPath);
-
-        $publicPath = 'documents/ofi/' . $fileName;
-
-        if ($disk->exists($publicPath)) {
-            $fileName = "{$baseName}_" . now()->format('His') . ".docx";
-            $publicPath = 'documents/ofi/' . $fileName;
-        }
-
-        $disk->put($publicPath, file_get_contents($tmpPath));
-
-        $upload = DocumentUpload::create([
-            'document_type_id' => $this->rQms018TypeId(),
-            'uploaded_by' => auth()->id(),
-            'ofi_record_id' => $ofiRecord->id,
-            'revision' => null,
-            'status' => null,
-            'file_name' => $fileName,
-            'file_path' => $publicPath,
-            'remarks' => $data['remarks'] ?? null,
-        ]);
-
-        @unlink($tmpPath);
+        $upload = $this->publishRecordDocument(
+            $ofiRecord,
+            $data['file_name'] ?? null,
+            $data['remarks'] ?? null
+        );
 
         $this->activityLogService->log([
             'module' => 'ofi',
@@ -295,12 +370,12 @@ class OfiRecordController extends Controller
             'entity_id' => $ofiRecord->id,
             'record_label' => $ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id,
             'file_type' => 'docx',
-            'description' => 'Published OFI record ' . ($ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id) . ' as document ' . $fileName,
+            'description' => 'Published OFI record ' . ($ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id) . ' as document ' . $upload->file_name,
             'new_values' => [
                 'upload_id' => $upload->id,
-                'file_name' => $fileName,
-                'file_path' => $publicPath,
-                'remarks' => $data['remarks'] ?? null,
+                'file_name' => $upload->file_name,
+                'file_path' => $upload->file_path,
+                'remarks' => $upload->remarks,
             ],
         ]);
 
@@ -308,7 +383,7 @@ class OfiRecordController extends Controller
             'ok' => true,
             'upload_id' => $upload->id,
             'ofi_record_id' => $ofiRecord->id,
-            'file_name' => $fileName,
+            'file_name' => $upload->file_name,
             'workflow_status' => $ofiRecord->workflow_status,
             'resolution_status' => $ofiRecord->resolution_status,
         ]);
@@ -324,7 +399,7 @@ class OfiRecordController extends Controller
         }
 
         $records = OfiRecord::query()
-            ->with(['creator:id,name,role'])
+            ->with(['creator:id,name,department,role'])
             ->where('status', 'submitted')
             ->where('workflow_status', $status)
             ->whereHas('creator', function ($query) {
@@ -343,6 +418,7 @@ class OfiRecordController extends Controller
                 'resolution_status' => $record->resolution_status,
                 'created_at' => $record->created_at,
                 'created_by_name' => $record->creator?->name ?? '—',
+                'created_by_department' => $record->creator?->department ?? '—',
             ]);
 
         $counts = [
@@ -351,13 +427,11 @@ class OfiRecordController extends Controller
                 ->where('workflow_status', 'pending')
                 ->whereHas('creator', fn($q) => $q->where('role', '!=', 'admin'))
                 ->count(),
-
             'approved' => OfiRecord::query()
                 ->where('status', 'submitted')
                 ->where('workflow_status', 'approved')
                 ->whereHas('creator', fn($q) => $q->where('role', '!=', 'admin'))
                 ->count(),
-
             'rejected' => OfiRecord::query()
                 ->where('status', 'submitted')
                 ->where('workflow_status', 'rejected')
@@ -380,13 +454,38 @@ class OfiRecordController extends Controller
             return back()->with('error', 'Only submitted pending OFI records can be approved.');
         }
 
-        $ofiRecord->update([
-            'workflow_status' => 'approved',
-            'resolution_status' => $ofiRecord->resolution_status ?: 'open',
-            'updated_by' => auth()->id(),
-        ]);
+        DB::transaction(function () use ($ofiRecord) {
+            $ofiRecord->update([
+                'workflow_status' => 'approved',
+                'resolution_status' => $ofiRecord->resolution_status ?: 'open',
+                'updated_by' => auth()->id(),
+            ]);
 
-        return back()->with('success', 'OFI approved successfully.');
+            $upload = $this->publishRecordDocument(
+                $ofiRecord->fresh(),
+                null,
+                'Auto-published after admin approval'
+            );
+
+            $fresh = $ofiRecord->fresh();
+
+            $this->activityLogService->log([
+                'module' => 'ofi',
+                'action' => 'approved',
+                'entity_type' => OfiRecord::class,
+                'entity_id' => $fresh->id,
+                'record_label' => $fresh->ofi_no ?: 'OFI #' . $fresh->id,
+                'file_type' => 'docx',
+                'description' => 'Approved OFI and published document ' . $upload->file_name,
+                'new_values' => [
+                    'workflow_status' => $fresh->workflow_status,
+                    'resolution_status' => $fresh->resolution_status,
+                    'upload_id' => $upload->id,
+                ],
+            ]);
+        });
+
+        return back()->with('success', 'OFI approved and published successfully.');
     }
 
     public function reject(OfiRecord $ofiRecord)

@@ -68,6 +68,8 @@ function recordStatusBadgeClass(status) {
 <template>
   <AdminLayoutWithHeader>
     <div class="space-y-6 p-6">
+      
+      <!-- Header -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5">
           <h1 class="text-xl font-semibold text-white">OFI Inbox</h1>
@@ -76,6 +78,7 @@ function recordStatusBadgeClass(status) {
           </p>
         </div>
 
+        <!-- Tabs -->
         <div class="border-t border-slate-200 px-6 py-4">
           <div class="flex flex-wrap gap-2">
             <button
@@ -89,9 +92,12 @@ function recordStatusBadgeClass(status) {
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
             >
               <span>{{ tab.label }}</span>
+
               <span
                 class="rounded-full px-2 py-0.5 text-xs"
-                :class="workflowStatus === tab.key ? 'bg-white/15 text-white' : 'bg-slate-100 text-slate-600'"
+                :class="workflowStatus === tab.key
+                  ? 'bg-white/15 text-white'
+                  : 'bg-slate-100 text-slate-600'"
               >
                 {{ tab.count }}
               </span>
@@ -100,16 +106,17 @@ function recordStatusBadgeClass(status) {
         </div>
       </div>
 
+      <!-- Table -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm">
+            
             <thead class="border-b border-slate-200 bg-slate-50">
               <tr class="text-left">
                 <th class="px-5 py-3 font-semibold text-slate-700">OFI No.</th>
-                <th class="px-5 py-3 font-semibold text-slate-700">Ref No.</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">To</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Created By</th>
-                <th class="px-5 py-3 font-semibold text-slate-700">Record Status</th>
+                <th class="px-5 py-3 font-semibold text-slate-700">Department</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Workflow</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Resolution</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Date Submitted</th>
@@ -123,18 +130,20 @@ function recordStatusBadgeClass(status) {
                 :key="record.id"
                 class="border-b border-slate-100 hover:bg-slate-50"
               >
-                <td class="px-5 py-4 font-medium text-slate-900">{{ record.ofi_no || '—' }}</td>
-                <td class="px-5 py-4 text-slate-600">{{ record.ref_no || '—' }}</td>
-                <td class="px-5 py-4 text-slate-600">{{ record.to || '—' }}</td>
-                <td class="px-5 py-4 text-slate-600">{{ record.created_by_name }}</td>
+                <td class="px-5 py-4 font-medium text-slate-900">
+                  {{ record.ofi_no || '—' }}
+                </td>
 
-                <td class="px-5 py-4">
-                  <span
-                    class="rounded-full px-2 py-1 text-xs ring-1"
-                    :class="recordStatusBadgeClass(record.status)"
-                  >
-                    {{ record.status }}
-                  </span>
+                <td class="px-5 py-4 text-slate-600">
+                  {{ record.to || '—' }}
+                </td>
+
+                <td class="px-5 py-4 text-slate-600">
+                  {{ record.created_by_name }}
+                </td>
+
+                <td class="px-5 py-4 text-slate-600">
+                  {{ record.created_by_department || '—' }}
                 </td>
 
                 <td class="px-5 py-4">
@@ -155,10 +164,13 @@ function recordStatusBadgeClass(status) {
                   </span>
                 </td>
 
-                <td class="px-5 py-4 text-slate-600">{{ formatDate(record.created_at) }}</td>
+                <td class="px-5 py-4 text-slate-600">
+                  {{ formatDate(record.created_at) }}
+                </td>
 
                 <td class="px-5 py-4">
                   <div class="flex justify-end gap-2">
+                    
                     <Link
                       :href="`/ofi-form?record=${record.id}`"
                       class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
@@ -183,21 +195,25 @@ function recordStatusBadgeClass(status) {
                         Reject
                       </button>
                     </template>
+
                   </div>
                 </td>
               </tr>
 
               <tr v-if="!records.data.length">
-                <td colspan="9" class="px-5 py-8 text-center text-sm text-slate-500">
+                <td colspan="10" class="px-5 py-8 text-center text-sm text-slate-500">
                   No submitted OFI records found for this status.
                 </td>
               </tr>
             </tbody>
+
           </table>
         </div>
 
+        <!-- Pagination -->
         <div class="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">
           <template v-for="(link, index) in records.links" :key="`${link.label}-${index}`">
+            
             <Link
               v-if="link.url"
               :href="link.url"
@@ -217,8 +233,10 @@ function recordStatusBadgeClass(status) {
             >
               <span v-html="link.label" />
             </span>
+
           </template>
         </div>
+
       </div>
     </div>
   </AdminLayoutWithHeader>

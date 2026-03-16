@@ -227,9 +227,27 @@ async function loadRecord(id) {
    RECORD HELPERS
 ========================= */
 
-async function upsertRecord(status = 'draft') {
+async function upsertRecord(requestedStatus = null) {
+  let safeStatus = requestedStatus
+
+  if (recordId.value) {
+    const isWorkflowLocked =
+      workflowStatus.value === 'pending' ||
+      workflowStatus.value === 'approved' ||
+      workflowStatus.value === 'rejected' ||
+      recordStatus.value === 'submitted'
+
+    if (isWorkflowLocked) {
+      safeStatus = recordStatus.value || 'submitted'
+    } else {
+      safeStatus = requestedStatus ?? recordStatus.value ?? 'draft'
+    }
+  } else {
+    safeStatus = requestedStatus ?? 'draft'
+  }
+
   if (!recordId.value) {
-    const res = await axios.post('/ofi/records', { ...form, status })
+    const res = await axios.post('/ofi/records', { ...form, status: safeStatus })
     recordId.value = res.data.id
     recordStatus.value = res.data.status ?? 'draft'
     workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
@@ -239,7 +257,7 @@ async function upsertRecord(status = 'draft') {
     url.searchParams.set('record', recordId.value)
     window.history.replaceState({}, '', url)
   } else {
-    const res = await axios.put(`/ofi/records/${recordId.value}`, { ...form, status })
+    const res = await axios.put(`/ofi/records/${recordId.value}`, { ...form, status: safeStatus })
     recordStatus.value = res.data.status ?? recordStatus.value
     workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
     resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
@@ -253,7 +271,11 @@ async function upsertRecord(status = 'draft') {
 }
 
 async function ensureDraftSaved() {
-  return await upsertRecord('draft')
+  const requestedStatus = recordId.value
+    ? (recordStatus.value || 'draft')
+    : 'draft'
+
+  return await upsertRecord(requestedStatus)
 }
 
 /* =========================
@@ -263,7 +285,8 @@ async function ensureDraftSaved() {
 async function saveDraft() {
   await runTask(isSaving, 'Saving draft...', async () => {
     const wasNew = !recordId.value
-    const id = await upsertRecord('draft')
+    const requestedStatus = wasNew ? 'draft' : (recordStatus.value || 'draft')
+    const id = await upsertRecord(requestedStatus)
     const name = currentFileLabel()
 
     toast.success(

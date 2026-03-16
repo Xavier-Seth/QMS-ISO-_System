@@ -40,9 +40,4 @@ class OfiRecord extends Model
     {
         return $this->belongsTo(User::class, 'updated_by');
     }
-
-    public function isCreatedByAdmin(): bool
-    {
-        return $this->creator?->role === 'admin';
-    }
 }
