@@ -22,7 +22,6 @@ class UserObserver
             description: 'Created user ' . $user->name,
             newValues: [
                 'username' => $user->username,
-                'email' => $user->email,
                 'role' => $user->role,
                 'department' => $user->department,
                 'position' => $user->position,
@@ -34,7 +33,6 @@ class UserObserver
     {
         $keys = [
             'name',
-            'email',
             'role',
             'position',
             'department',
@@ -81,7 +79,6 @@ class UserObserver
             description: 'Deleted user ' . $user->name,
             oldValues: [
                 'username' => $user->username,
-                'email' => $user->email,
                 'role' => $user->role,
                 'department' => $user->department,
             ]

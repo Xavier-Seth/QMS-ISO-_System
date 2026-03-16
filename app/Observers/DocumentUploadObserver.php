@@ -4,6 +4,7 @@ namespace App\Observers;
 
 use App\Models\DocumentUpload;
 use App\Services\ActivityLogService;
+use Illuminate\Support\Facades\Auth;
 
 class DocumentUploadObserver
 {
@@ -75,7 +76,7 @@ class DocumentUploadObserver
             fileType: $this->resolveFileType($upload),
             oldValues: $this->compactChanges($changes, 'old'),
             newValues: $this->compactChanges($changes, 'new'),
-            user: $upload->uploader
+            user: Auth::user() ?? $upload->uploader
         );
     }
 
@@ -95,7 +96,7 @@ class DocumentUploadObserver
                 'revision' => $upload->revision,
                 'status' => $upload->status,
             ],
-            user: $upload->uploader
+            user: Auth::user() ?? $upload->uploader
         );
     }
 
