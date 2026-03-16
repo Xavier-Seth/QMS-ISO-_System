@@ -15,6 +15,8 @@ class OfiRecord extends Model
         'ref_no',
         'to',
         'status',
+        'workflow_status',
+        'resolution_status',
         'data',
         'created_by',
         'updated_by',
