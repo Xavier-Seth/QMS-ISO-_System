@@ -337,7 +337,9 @@ class OfiRecordController extends Controller
         ]);
 
         if ($ofiRecord->workflow_status !== 'approved') {
-            return back()->with('error', 'Only approved OFI records can update resolution status.');
+            return response()->json([
+                'message' => 'Only approved OFI records can update resolution status.',
+            ], 422);
         }
 
         $ofiRecord->update([
@@ -345,6 +347,9 @@ class OfiRecordController extends Controller
             'updated_by' => auth()->id(),
         ]);
 
-        return back()->with('success', 'OFI resolution status updated successfully.');
+        return response()->json([
+            'message' => 'OFI resolution status updated successfully.',
+            'resolution_status' => $ofiRecord->resolution_status,
+        ]);
     }
 }

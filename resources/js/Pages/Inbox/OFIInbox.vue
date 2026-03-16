@@ -12,7 +12,7 @@ const props = defineProps({
 const workflowStatus = ref(props.filters?.workflow_status ?? 'pending')
 
 watch(workflowStatus, (value) => {
-  router.get(route('ofi.inbox'), {
+  router.get('/inbox/ofi', {
     workflow_status: value,
   }, {
     preserveState: true,
@@ -28,13 +28,13 @@ const tabs = computed(() => [
 ])
 
 function approve(id) {
-  router.post(route('ofi.inbox.approve', id), {}, {
+  router.post(`/inbox/ofi/${id}/approve`, {}, {
     preserveScroll: true,
   })
 }
 
 function reject(id) {
-  router.post(route('ofi.inbox.reject', id), {}, {
+  router.post(`/inbox/ofi/${id}/reject`, {}, {
     preserveScroll: true,
   })
 }

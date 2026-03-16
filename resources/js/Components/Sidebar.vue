@@ -235,11 +235,11 @@ const dropdownItemClass = (active = false) => [
 
             <!-- Inbox -->
             <Link
-                href="/inbox"
-                :class="navItemClass(isActive('/inbox'))"
+                href="/inbox/ofi"
+                :class="navItemClass(isActive('/inbox/ofi'))"
             >
                 <svg
-                    :class="iconClass(isActive('/inbox'))"
+                    :class="iconClass(isActive('/inbox/ofi'))"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
