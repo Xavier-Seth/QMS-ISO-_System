@@ -15,6 +15,11 @@ class OfiRecord extends Model
         'ref_no',
         'to',
         'status',
+        'workflow_status',
+        'resolution_status',
+        'rejection_reason',
+        'rejected_at',
+        'rejected_by',
         'data',
         'created_by',
         'updated_by',
@@ -22,6 +27,7 @@ class OfiRecord extends Model
 
     protected $casts = [
         'data' => 'array',
+        'rejected_at' => 'datetime',
     ];
 
     public function documentType(): BelongsTo
@@ -37,5 +43,10 @@ class OfiRecord extends Model
     public function updater(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function rejectedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejected_by');
     }
 }

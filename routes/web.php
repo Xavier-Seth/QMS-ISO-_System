@@ -13,30 +13,29 @@ use App\Http\Controllers\UsersController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-// Public Landing Page
 Route::get('/', fn() => Inertia::render('Home'));
 
-// Guest Only
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'show'])->name('login');
     Route::post('/login', [LoginController::class, 'store']);
 });
 
-// Authenticated Routes
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
-    // Shared routes (admin + admin_officer)
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
     Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
     Route::get('/settings', fn() => Inertia::render('Settings/Index'))->name('settings');
 
-    // Settings
     Route::post('/settings/profile', [SettingsController::class, 'updateProfile'])
         ->name('settings.profile.update');
 
-    // OFI
+    /*
+    |--------------------------------------------------------------------------
+    | OFI
+    |--------------------------------------------------------------------------
+    */
     Route::post('/ofi/generate', [OFIController::class, 'generate'])->name('ofi.generate');
 
     Route::post('/ofi/records', [OfiRecordController::class, 'store'])->name('ofi.records.store');
@@ -46,7 +45,19 @@ Route::middleware('auth')->group(function () {
     Route::post('/ofi/records/{ofiRecord}/publish', [OfiRecordController::class, 'publish'])
         ->name('ofi.records.publish');
 
-    // DCR
+    // Submit or resubmit OFI to admin for review
+    Route::post('/ofi/records/{ofiRecord}/submit', [OfiRecordController::class, 'submitForApproval'])
+        ->name('ofi.records.submit');
+
+    // User / Admin Officer OFI tracking page
+    Route::get('/ofi/my-records', [OfiRecordController::class, 'myRecords'])
+        ->name('ofi.records.mine');
+
+    /*
+    |--------------------------------------------------------------------------
+    | DCR
+    |--------------------------------------------------------------------------
+    */
     Route::post('/dcr/generate', [DCRController::class, 'generate'])->name('dcr.generate');
 
     Route::post('/dcr/records', [DcrRecordController::class, 'store'])->name('dcr.records.store');
@@ -56,7 +67,11 @@ Route::middleware('auth')->group(function () {
     Route::post('/dcr/records/{dcrRecord}/publish', [DcrRecordController::class, 'publish'])
         ->name('dcr.records.publish');
 
-    // Manual routes
+    /*
+    |--------------------------------------------------------------------------
+    | Manuals
+    |--------------------------------------------------------------------------
+    */
     Route::get('/manual/{category}', [ManualController::class, 'show'])
         ->where('category', 'asm|qsm|hrm|riem|rem')
         ->name('manual.show');
@@ -72,34 +87,43 @@ Route::middleware('auth')->group(function () {
     Route::get('/manual/uploads/{upload}/download', [ManualController::class, 'download'])
         ->name('manual.uploads.download');
 
-    // Placeholder shared pages
-    Route::get('/inbox', fn() => Inertia::render('Inbox'))->name('inbox');
-
-    // Admin Only Routes
+    /*
+    |--------------------------------------------------------------------------
+    | Admin Only
+    |--------------------------------------------------------------------------
+    */
     Route::middleware('can:admin-only')->group(function () {
         Route::get('/admin/dashboard', fn() => Inertia::render('Dashboard'))->name('admin.dashboard');
 
-        // Logs
         Route::get('/logs', [LogsController::class, 'index'])->name('logs');
 
-        // Users
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
         Route::post('/users', [UsersController::class, 'store'])->name('users.store');
         Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
 
-        // Documents
         Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
         Route::get('/documents/{documentType}', [DocumentController::class, 'show'])->name('documents.show');
         Route::post('/documents/{documentType}/upload', [DocumentController::class, 'upload'])->name('documents.upload');
 
-        // Document preview & download
         Route::get('/documents/uploads/{upload}/preview', [DocumentController::class, 'preview'])
             ->name('documents.uploads.preview');
 
         Route::get('/documents/uploads/{upload}/download', [DocumentController::class, 'download'])
             ->name('documents.uploads.download');
 
-        // Upload page, if you have one
         Route::get('/upload', fn() => Inertia::render('Upload'))->name('upload');
+
+        /*
+        |--------------------------------------------------------------------------
+        | OFI Inbox
+        |--------------------------------------------------------------------------
+        */
+        Route::get('/inbox/ofi', [OfiRecordController::class, 'inbox'])->name('ofi.inbox');
+        Route::post('/inbox/ofi/{ofiRecord}/approve', [OfiRecordController::class, 'approve'])->name('ofi.inbox.approve');
+        Route::post('/inbox/ofi/{ofiRecord}/reject', [OfiRecordController::class, 'reject'])->name('ofi.inbox.reject');
+
+        // Admin-only resolution management
+        Route::patch('/ofi/records/{ofiRecord}/resolution-status', [OfiRecordController::class, 'updateResolutionStatus'])
+            ->name('ofi.records.resolution-status');
     });
 });

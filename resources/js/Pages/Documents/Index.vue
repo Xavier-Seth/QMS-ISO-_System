@@ -1,7 +1,9 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import { computed, ref, watch } from 'vue'
-import { router, Link } from '@inertiajs/vue3'
+import { router, Link, usePage } from '@inertiajs/vue3'
+
+const page = usePage()
 
 const props = defineProps({
   documentTypes: {
@@ -16,53 +18,96 @@ const props = defineProps({
     type: Object,
     default: () => ({
       q: '',
-      series: 'All',
+      series: '',
       sort: 'code_asc',
       view: 'group',
+      mode: '',
     }),
   },
 })
 
 const q = ref(props.filters.q ?? '')
-const series = ref(props.filters.series ?? 'All')
+const series = ref(props.filters.series ?? '')
 const sort = ref(props.filters.sort ?? 'code_asc')
 const view = ref(props.filters.view ?? 'group')
 const isFiltering = ref(false)
+
+const mode = computed(() => {
+  const url = page.url || ''
+  return url.includes('mode=performance') ? 'performance' : ''
+})
+
+const showPerformanceTypeDropdown = computed(() => mode.value === 'performance')
+
+const performanceOptions = [
+  { label: 'IPCR', value: 'IPCR' },
+  { label: 'DPCR', value: 'DPCR' },
+  { label: 'UPCR', value: 'UPCR' },
+]
 
 let debounceTimer = null
 
 function applyFilters() {
   isFiltering.value = true
 
-  router.get(
-    '/documents',
-    {
-      q: q.value || undefined,
-      series: series.value !== 'All' ? series.value : undefined,
-      sort: sort.value || undefined,
-      view: view.value || undefined,
-    },
-    {
-      preserveState: true,
-      replace: true,
-      preserveScroll: true,
-      onFinish: () => (isFiltering.value = false),
-    }
-  )
+  const params = {
+    q: q.value || undefined,
+    sort: sort.value || undefined,
+    view: view.value || undefined,
+  }
+
+  if (showPerformanceTypeDropdown.value) {
+    params.mode = 'performance'
+    params.series = series.value || undefined
+  } else {
+    params.series = series.value || undefined
+  }
+
+  router.get('/documents', params, {
+    preserveState: true,
+    replace: true,
+    preserveScroll: true,
+    onFinish: () => (isFiltering.value = false),
+  })
 }
 
-watch([q, series, sort, view], () => {
+watch(q, () => {
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(applyFilters, 220)
 })
 
-function resetFilters() {
-  q.value = ''
-  series.value = 'All'
-  sort.value = 'code_asc'
-  view.value = 'group'
+watch([sort, view], () => {
   applyFilters()
-}
+})
+
+watch(series, () => {
+  applyFilters()
+})
+
+watch(
+  () => props.filters,
+  (newFilters) => {
+    q.value = newFilters?.q ?? ''
+    series.value = newFilters?.series ?? ''
+    sort.value = newFilters?.sort ?? 'code_asc'
+    view.value = newFilters?.view ?? 'group'
+  },
+  { immediate: true, deep: true }
+)
+
+watch(
+  () => page.url,
+  (url) => {
+    const isPerformance = (url || '').includes('mode=performance')
+
+    if (isPerformance) {
+      if (!['IPCR', 'DPCR', 'UPCR'].includes(series.value)) {
+        series.value = ''
+      }
+    }
+  },
+  { immediate: true }
+)
 
 const normalized = computed(() => {
   let rows = [...props.documentTypes]
@@ -90,7 +135,7 @@ const normalized = computed(() => {
 })
 
 const grouped = computed(() => {
-  if (series.value === 'R-QMS' || series.value === 'All') {
+  if (!showPerformanceTypeDropdown.value && series.value === 'R-QMS') {
     const groups = {
       'R-QMS-001 to R-QMS-061': [],
       'R-QMS-100 to R-QMS-112': [],
@@ -126,7 +171,6 @@ function formatDate(d) {
 <template>
   <AdminLayout>
     <div class="p-6 space-y-6">
-      <!-- Top header -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-4 py-2">
           <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -137,26 +181,14 @@ function formatDate(d) {
               </p>
             </div>
 
-            <div class="flex items-center gap-2">
-              <!-- Optional reset button -->
-              <!--
-              <button
-                type="button"
-                @click="resetFilters"
-                class="rounded-lg border border-white/10 bg-white/10 px-3 py-2 text-sm text-white transition hover:bg-white/15"
-              >
-                Reset
-              </button>
-              -->
-            </div>
+            <div class="flex items-center gap-2"></div>
           </div>
         </div>
 
-        <!-- Controls -->
         <div class="px-4 py-2">
           <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
             <!-- Search -->
-            <div class="md:col-span-6">
+            <div :class="showPerformanceTypeDropdown ? 'md:col-span-6' : 'md:col-span-8'">
               <label class="text-xs font-medium text-slate-600">Search</label>
               <div class="relative mt-1">
                 <input
@@ -201,22 +233,22 @@ function formatDate(d) {
               </div>
             </div>
 
-            <div class="md:col-span-2"></div>
+            <div :class="showPerformanceTypeDropdown ? 'md:col-span-2' : 'md:col-span-2'"></div>
 
-            <!-- File Type -->
-            <div class="md:col-span-2">
+            <!-- File Type only for performance -->
+            <div v-if="showPerformanceTypeDropdown" class="md:col-span-2">
               <label class="text-xs font-medium text-slate-600">File Type</label>
               <select
                 v-model="series"
                 class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
               >
-                <option value="All">All</option>
+                <option value="">Select</option>
                 <option
-                  v-for="s in seriesOptions"
-                  :key="s.id"
-                  :value="s.code_prefix"
+                  v-for="option in performanceOptions"
+                  :key="option.value"
+                  :value="option.value"
                 >
-                  {{ s.code_prefix }}
+                  {{ option.label }}
                 </option>
               </select>
             </div>
@@ -236,7 +268,6 @@ function formatDate(d) {
             </div>
           </div>
 
-          <!-- View toggle -->
           <div class="mt-4 flex items-center justify-between">
             <div class="text-xs text-slate-500">
               Showing
@@ -271,7 +302,6 @@ function formatDate(d) {
         </div>
       </div>
 
-      <!-- Empty -->
       <Transition
         enter-active-class="transition duration-200 ease-out"
         enter-from-class="opacity-0 translate-y-1"
@@ -289,7 +319,6 @@ function formatDate(d) {
         </div>
       </Transition>
 
-      <!-- Animated view switch -->
       <Transition
         mode="out-in"
         enter-active-class="transition duration-200 ease-out"
@@ -299,7 +328,6 @@ function formatDate(d) {
         leave-from-class="opacity-100 translate-y-0"
         leave-to-class="opacity-0 -translate-y-1"
       >
-        <!-- Browse / Group View -->
         <div
           v-if="view === 'group' && normalized.length"
           key="group-view"
@@ -315,7 +343,6 @@ function formatDate(d) {
               <span class="text-xs text-slate-500">{{ items.length }} items</span>
             </div>
 
-            <!-- changed to 4 per row on xl -->
             <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
               <div
                 v-for="row in items"
@@ -348,7 +375,6 @@ function formatDate(d) {
                   </span>
                 </div>
 
-                <!-- removed upload button -->
                 <div class="mt-4">
                   <Link
                     :href="`/documents/${row.id}`"
@@ -362,7 +388,6 @@ function formatDate(d) {
           </div>
         </div>
 
-        <!-- Table View -->
         <div
           v-else-if="view === 'table' && normalized.length"
           key="table-view"
