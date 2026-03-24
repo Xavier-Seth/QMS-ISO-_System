@@ -15,6 +15,7 @@ const isAdmin = computed(() => user.value?.role === "admin");
 
 const openCreateDocuments = ref(false);
 const openManual = ref(false);
+const openDocuments = ref(false);
 
 const isActive = (href) => currentPath.value === href;
 
@@ -29,6 +30,7 @@ watch(
             isStartsWith("/dcr") ||
             isStartsWith("/ofi") ||
             isStartsWith("/ofi-form");
+        openDocuments.value = isStartsWith("/documents");
     },
     { immediate: true }
 );
@@ -149,70 +151,110 @@ const dropdownItemClass = (active = false) => [
             </div>
 
             <!-- Documents - admin only -->
-            <Link
-                v-if="isAdmin"
-                href="/documents"
-                :class="navItemClass(isStartsWith('/documents'))"
-            >
-                <svg
-                    :class="iconClass(isStartsWith('/documents'))"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
+            <div v-if="isAdmin" class="flex shrink-0 flex-col gap-0.5">
+                <button
+                    type="button"
+                    @click="openDocuments = !openDocuments"
+                    :class="navItemClass(openDocuments || isStartsWith('/documents'))"
+                    class="justify-between border-0 bg-transparent"
                 >
-                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                </svg>
-                <span>Documents</span>
-            </Link>
+                    <div class="flex items-center gap-3">
+                        <svg
+                            :class="iconClass(openDocuments || isStartsWith('/documents'))"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                        >
+                            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                            <polyline points="14 2 14 8 20 8" />
+                            <line x1="16" y1="13" x2="8" y2="13" />
+                            <line x1="16" y1="17" x2="8" y2="17" />
+                        </svg>
+                        <span>Documents</span>
+                    </div>
+
+                    <svg
+                        class="h-[15px] w-[15px] shrink-0 stroke-slate-500 transition duration-200"
+                        :class="{ 'rotate-180': openDocuments }"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                </button>
+
+                <div v-if="openDocuments" class="flex flex-col gap-px pb-1 pt-0.5">
+                    <Link
+                        href="/documents?series=F-QMS"
+                        :class="dropdownItemClass(page.url.includes('series=F-QMS'))"
+                    >
+                        F-QMS
+                    </Link>
+
+                    <Link
+                        href="/documents?series=R-QMS"
+                        :class="dropdownItemClass(page.url.includes('series=R-QMS'))"
+                    >
+                        R-QMS
+                    </Link>
+
+                    <Link
+                        href="/documents?mode=performance"
+                        :class="dropdownItemClass(page.url.includes('mode=performance'))"
+                    >
+                        Performance Commitment and Review Forms
+                    </Link>
+                </div>
+            </div>
 
             <!-- Manual -->
-<div class="flex shrink-0 flex-col gap-0.5">
-    <button
-        type="button"
-        @click="openManual = !openManual"
-        :class="navItemClass(openManual || isStartsWith('/manual'))"
-        class="justify-between border-0 bg-transparent"
-    >
-        <div class="flex items-center gap-3">
-            <svg
-                :class="iconClass(openManual || isStartsWith('/manual'))"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1.8"
-            >
-                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-                <line x1="8" y1="7" x2="18" y2="7" />
-                <line x1="8" y1="11" x2="18" y2="11" />
-            </svg>
-            <span>Manual</span>
-        </div>
+            <div class="flex shrink-0 flex-col gap-0.5">
+                <button
+                    type="button"
+                    @click="openManual = !openManual"
+                    :class="navItemClass(openManual || isStartsWith('/manual'))"
+                    class="justify-between border-0 bg-transparent"
+                >
+                    <div class="flex items-center gap-3">
+                        <svg
+                            :class="iconClass(openManual || isStartsWith('/manual'))"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="1.8"
+                        >
+                            <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                            <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+                            <line x1="8" y1="7" x2="18" y2="7" />
+                            <line x1="8" y1="11" x2="18" y2="11" />
+                        </svg>
+                        <span>Manual</span>
+                    </div>
 
-        <svg
-            class="h-[15px] w-[15px] shrink-0 stroke-slate-500 transition duration-200"
-            :class="{ 'rotate-180': openManual }"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-        >
-            <polyline points="6 9 12 15 18 9" />
-        </svg>
-    </button>
+                    <svg
+                        class="h-[15px] w-[15px] shrink-0 stroke-slate-500 transition duration-200"
+                        :class="{ 'rotate-180': openManual }"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                    >
+                        <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                </button>
 
-    <div v-if="openManual" class="flex flex-col gap-px pb-1 pt-0.5">
-        <Link href="/manual/asm" :class="dropdownItemClass(isActive('/manual/asm'))">ASM</Link>
-        <Link href="/manual/qsm" :class="dropdownItemClass(isActive('/manual/qsm'))">QSM</Link>
-        <Link href="/manual/hrm" :class="dropdownItemClass(isActive('/manual/hrm'))">HRM</Link>
-        <Link href="/manual/riem" :class="dropdownItemClass(isActive('/manual/riem'))">RIEM</Link>
-        <Link href="/manual/rem" :class="dropdownItemClass(isActive('/manual/rem'))">REM</Link>
-    </div>
-</div>
+                <div v-if="openManual" class="flex flex-col gap-px pb-1 pt-0.5">
+                    <Link href="/manual/asm" :class="dropdownItemClass(isActive('/manual/asm'))">ASM</Link>
+                    <Link href="/manual/qsm" :class="dropdownItemClass(isActive('/manual/qsm'))">QSM</Link>
+                    <Link href="/manual/hrm" :class="dropdownItemClass(isActive('/manual/hrm'))">HRM</Link>
+                    <Link href="/manual/riem" :class="dropdownItemClass(isActive('/manual/riem'))">RIEM</Link>
+                    <Link href="/manual/rem" :class="dropdownItemClass(isActive('/manual/rem'))">REM</Link>
+                </div>
+            </div>
+
             <!-- Upload - admin only -->
             <Link
                 v-if="isAdmin"
@@ -233,8 +275,9 @@ const dropdownItemClass = (active = false) => [
                 <span>Upload</span>
             </Link>
 
-            <!-- Inbox -->
+            <!-- Admin Inbox -->
             <Link
+                v-if="isAdmin"
                 href="/inbox/ofi"
                 :class="navItemClass(isActive('/inbox/ofi'))"
             >
@@ -249,6 +292,27 @@ const dropdownItemClass = (active = false) => [
                     <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
                 </svg>
                 <span>Inbox</span>
+            </Link>
+
+            <!-- My OFIs - non-admin -->
+            <Link
+                v-else
+                href="/ofi/my-records"
+                :class="navItemClass(isActive('/ofi/my-records'))"
+            >
+                <svg
+                    :class="iconClass(isActive('/ofi/my-records'))"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                >
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="8" y1="13" x2="16" y2="13" />
+                    <line x1="8" y1="17" x2="13" y2="17" />
+                </svg>
+                <span>My OFIs</span>
             </Link>
 
             <!-- Users - admin only -->
@@ -270,9 +334,9 @@ const dropdownItemClass = (active = false) => [
                 <span>Users</span>
             </Link>
 
-            <!-- Logs -->
+            <!-- Logs - admin only -->
             <Link
-                
+                v-if="isAdmin"
                 href="/logs"
                 :class="navItemClass(isActive('/logs'))"
             >

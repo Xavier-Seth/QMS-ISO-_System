@@ -1,5 +1,5 @@
 <script setup>
-import AdminLayoutWithHeader from '@/Layouts/AdminLayout.vue'
+import AdminLayout from '@/Layouts/AdminLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
 import { computed, ref, watch } from 'vue'
 
@@ -9,13 +9,10 @@ const props = defineProps({
   counts: Object,
 })
 
-/* ---------------------------
-   Filters
---------------------------- */
-const workflowStatus = ref(props.filters?.workflow_status ?? 'pending')
+const workflowStatus = ref(props.filters?.workflow_status ?? 'all')
 
 watch(workflowStatus, (value) => {
-  router.get('/inbox/ofi', {
+  router.get('/ofi/my-records', {
     workflow_status: value,
   }, {
     preserveState: true,
@@ -24,70 +21,13 @@ watch(workflowStatus, (value) => {
   })
 })
 
-/* ---------------------------
-   Tabs
---------------------------- */
 const tabs = computed(() => [
+  { key: 'all', label: 'All', count: props.counts?.all ?? 0 },
   { key: 'pending', label: 'Pending', count: props.counts?.pending ?? 0 },
   { key: 'approved', label: 'Approved', count: props.counts?.approved ?? 0 },
   { key: 'rejected', label: 'Rejected', count: props.counts?.rejected ?? 0 },
 ])
 
-/* ---------------------------
-   Reject Modal
---------------------------- */
-const showRejectModal = ref(false)
-const rejectRecordId = ref(null)
-const rejectReason = ref('')
-
-function openRejectModal(id) {
-  rejectRecordId.value = id
-  rejectReason.value = ''
-  showRejectModal.value = true
-}
-
-function closeRejectModal() {
-  showRejectModal.value = false
-  rejectRecordId.value = null
-  rejectReason.value = ''
-}
-
-function submitReject() {
-  if (!rejectReason.value.trim()) {
-    alert('Rejection reason is required.')
-    return
-  }
-
-  router.post(
-    `/inbox/ofi/${rejectRecordId.value}/reject`,
-    {
-      rejection_reason: rejectReason.value,
-    },
-    {
-      preserveScroll: true,
-      onSuccess: () => {
-        closeRejectModal()
-      },
-      onError: (errors) => {
-        console.log(errors)
-        alert(errors.rejection_reason || 'Failed to reject OFI.')
-      },
-    }
-  )
-}
-
-/* ---------------------------
-   Actions
---------------------------- */
-function approve(id) {
-  router.post(`/inbox/ofi/${id}/approve`, {}, {
-    preserveScroll: true,
-  })
-}
-
-/* ---------------------------
-   Helpers
---------------------------- */
 function formatDate(value) {
   if (!value) return '—'
   return new Date(value).toLocaleString()
@@ -96,7 +36,8 @@ function formatDate(value) {
 function workflowBadgeClass(status) {
   if (status === 'approved') return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
   if (status === 'rejected') return 'bg-rose-50 text-rose-700 ring-rose-200'
-  return 'bg-amber-50 text-amber-700 ring-amber-200'
+  if (status === 'pending') return 'bg-amber-50 text-amber-700 ring-amber-200'
+  return 'bg-slate-100 text-slate-700 ring-slate-200'
 }
 
 function resolutionBadgeClass(status) {
@@ -107,60 +48,16 @@ function resolutionBadgeClass(status) {
 </script>
 
 <template>
-  <AdminLayoutWithHeader>
-    <!-- Reject Modal -->
-    <div
-      v-if="showRejectModal"
-      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      @click.self="closeRejectModal"
-    >
-      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
-        <h3 class="text-lg font-semibold text-slate-900">
-          Reject OFI Record
-        </h3>
-
-        <p class="mt-1 text-sm text-slate-500">
-          Please provide a reason for rejecting this OFI.
-        </p>
-
-        <textarea
-          v-model="rejectReason"
-          rows="4"
-          class="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-          placeholder="Enter rejection reason..."
-        ></textarea>
-
-        <div class="mt-6 flex justify-end gap-2">
-          <button
-            type="button"
-            class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-            @click="closeRejectModal"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
-            @click="submitReject"
-          >
-            Reject OFI
-          </button>
-        </div>
-      </div>
-    </div>
-
+  <AdminLayout>
     <div class="space-y-6 p-6">
-      <!-- Header -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5">
-          <h1 class="text-xl font-semibold text-white">OFI Inbox</h1>
+          <h1 class="text-xl font-semibold text-white">My OFIs</h1>
           <p class="mt-1 text-sm text-slate-300">
-            Review submitted OFI records from departments and users.
+            Track your submitted OFI records and reopen rejected ones for correction.
           </p>
         </div>
 
-        <!-- Tabs -->
         <div class="border-t border-slate-200 px-6 py-4">
           <div class="flex flex-wrap gap-2">
             <button
@@ -174,7 +71,6 @@ function resolutionBadgeClass(status) {
                 : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
             >
               <span>{{ tab.label }}</span>
-
               <span
                 class="rounded-full px-2 py-0.5 text-xs"
                 :class="workflowStatus === tab.key
@@ -188,7 +84,6 @@ function resolutionBadgeClass(status) {
         </div>
       </div>
 
-      <!-- Table -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white">
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm">
@@ -196,11 +91,10 @@ function resolutionBadgeClass(status) {
               <tr class="text-left">
                 <th class="px-5 py-3 font-semibold text-slate-700">OFI No.</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">To</th>
-                <th class="px-5 py-3 font-semibold text-slate-700">Created By</th>
-                <th class="px-5 py-3 font-semibold text-slate-700">Department</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Workflow</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Resolution</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Date Submitted</th>
+                <th class="px-5 py-3 font-semibold text-slate-700">Remarks</th>
                 <th class="px-5 py-3 text-right font-semibold text-slate-700">Actions</th>
               </tr>
             </thead>
@@ -219,20 +113,12 @@ function resolutionBadgeClass(status) {
                   {{ record.to || '—' }}
                 </td>
 
-                <td class="px-5 py-4 text-slate-600">
-                  {{ record.created_by_name }}
-                </td>
-
-                <td class="px-5 py-4 text-slate-600">
-                  {{ record.created_by_department || '—' }}
-                </td>
-
                 <td class="px-5 py-4">
                   <span
                     class="rounded-full px-2 py-1 text-xs ring-1"
                     :class="workflowBadgeClass(record.workflow_status)"
                   >
-                    {{ record.workflow_status }}
+                    {{ record.workflow_status || 'draft' }}
                   </span>
                 </td>
 
@@ -241,12 +127,23 @@ function resolutionBadgeClass(status) {
                     class="rounded-full px-2 py-1 text-xs ring-1"
                     :class="resolutionBadgeClass(record.resolution_status)"
                   >
-                    {{ record.resolution_status }}
+                    {{ record.resolution_status || 'open' }}
                   </span>
                 </td>
 
                 <td class="px-5 py-4 text-slate-600">
                   {{ formatDate(record.created_at) }}
+                </td>
+
+                <td class="px-5 py-4 text-slate-600">
+                  <span
+                    v-if="record.workflow_status === 'rejected' && record.rejection_reason"
+                    class="line-clamp-2"
+                    :title="record.rejection_reason"
+                  >
+                    {{ record.rejection_reason }}
+                  </span>
+                  <span v-else>—</span>
                 </td>
 
                 <td class="px-5 py-4">
@@ -255,40 +152,21 @@ function resolutionBadgeClass(status) {
                       :href="`/ofi-form?record=${record.id}`"
                       class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
                     >
-                      View
+                      {{ record.workflow_status === 'rejected' ? 'Edit / Resubmit' : 'View' }}
                     </Link>
-
-                    <template v-if="record.status === 'submitted' && record.workflow_status === 'pending'">
-                      <button
-                        type="button"
-                        @click="approve(record.id)"
-                        class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-500"
-                      >
-                        Approve
-                      </button>
-
-                      <button
-                        type="button"
-                        @click="openRejectModal(record.id)"
-                        class="rounded-lg bg-rose-600 px-3 py-1.5 text-xs text-white hover:bg-rose-500"
-                      >
-                        Reject
-                      </button>
-                    </template>
                   </div>
                 </td>
               </tr>
 
               <tr v-if="!records.data.length">
-                <td colspan="8" class="px-5 py-8 text-center text-sm text-slate-500">
-                  No submitted OFI records found for this status.
+                <td colspan="7" class="px-5 py-8 text-center text-sm text-slate-500">
+                  No OFI records found for this status.
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="flex flex-wrap items-center gap-2 border-t border-slate-200 bg-slate-50 px-6 py-4">
           <template v-for="(link, index) in records.links" :key="`${link.label}-${index}`">
             <Link
@@ -314,5 +192,5 @@ function resolutionBadgeClass(status) {
         </div>
       </div>
     </div>
-  </AdminLayoutWithHeader>
+  </AdminLayout>
 </template>

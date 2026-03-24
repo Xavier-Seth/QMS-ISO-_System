@@ -45,9 +45,13 @@ Route::middleware('auth')->group(function () {
     Route::post('/ofi/records/{ofiRecord}/publish', [OfiRecordController::class, 'publish'])
         ->name('ofi.records.publish');
 
-    // Submit OFI to admin for review
+    // Submit or resubmit OFI to admin for review
     Route::post('/ofi/records/{ofiRecord}/submit', [OfiRecordController::class, 'submitForApproval'])
         ->name('ofi.records.submit');
+
+    // User / Admin Officer OFI tracking page
+    Route::get('/ofi/my-records', [OfiRecordController::class, 'myRecords'])
+        ->name('ofi.records.mine');
 
     /*
     |--------------------------------------------------------------------------

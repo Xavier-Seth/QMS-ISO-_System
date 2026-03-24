@@ -229,16 +229,22 @@ class OfiRecordController extends Controller
 
     public function show(OfiRecord $ofiRecord)
     {
-        $ofiRecord->load('creator:id,name,department');
+        $ofiRecord->load([
+            'creator:id,name,department',
+            'rejectedBy:id,name',
+        ]);
 
         return response()->json([
             'id' => $ofiRecord->id,
             'status' => $ofiRecord->status,
             'workflow_status' => $ofiRecord->workflow_status,
             'resolution_status' => $ofiRecord->resolution_status,
-            'data' => $ofiRecord->data,
+            'rejection_reason' => $ofiRecord->rejection_reason,
+            'rejected_at' => $ofiRecord->rejected_at,
+            'rejected_by_name' => $ofiRecord->rejectedBy?->name ?? null,
             'created_by_name' => $ofiRecord->creator?->name ?? '—',
             'created_by_department' => $ofiRecord->creator?->department ?? '—',
+            'data' => $ofiRecord->data,
         ]);
     }
 
@@ -294,19 +300,25 @@ class OfiRecordController extends Controller
             ], 422);
         }
 
+        $isResubmission = $ofiRecord->workflow_status === 'rejected';
+
         $ofiRecord->update([
             'status' => 'submitted',
             'workflow_status' => 'pending',
+            'rejection_reason' => null,
+            'rejected_at' => null,
+            'rejected_by' => null,
             'updated_by' => auth()->id(),
         ]);
 
         return response()->json([
-            'message' => 'OFI submitted to admin for approval successfully.',
+            'message' => $isResubmission
+                ? 'OFI corrected and resubmitted to admin successfully.'
+                : 'OFI submitted to admin for approval successfully.',
             'status' => $ofiRecord->status,
             'workflow_status' => $ofiRecord->workflow_status,
         ]);
     }
-
     public function download(OfiRecord $ofiRecord)
     {
         $tmpDir = $this->ensureTmpDir();
@@ -399,7 +411,10 @@ class OfiRecordController extends Controller
         }
 
         $records = OfiRecord::query()
-            ->with(['creator:id,name,department,role'])
+            ->with([
+                'creator:id,name,department,role',
+                'rejectedBy:id,name',
+            ])
             ->where('status', 'submitted')
             ->where('workflow_status', $status)
             ->whereHas('creator', function ($query) {
@@ -416,6 +431,9 @@ class OfiRecordController extends Controller
                 'status' => $record->status,
                 'workflow_status' => $record->workflow_status,
                 'resolution_status' => $record->resolution_status,
+                'rejection_reason' => $record->rejection_reason,
+                'rejected_at' => $record->rejected_at,
+                'rejected_by_name' => $record->rejectedBy?->name ?? null,
                 'created_at' => $record->created_at,
                 'created_by_name' => $record->creator?->name ?? '—',
                 'created_by_department' => $record->creator?->department ?? '—',
@@ -488,18 +506,25 @@ class OfiRecordController extends Controller
         return back()->with('success', 'OFI approved and published successfully.');
     }
 
-    public function reject(OfiRecord $ofiRecord)
+    public function reject(Request $request, OfiRecord $ofiRecord)
     {
         if ($ofiRecord->status !== 'submitted' || $ofiRecord->workflow_status !== 'pending') {
             return back()->with('error', 'Only submitted pending OFI records can be rejected.');
         }
 
+        $validated = $request->validate([
+            'rejection_reason' => ['required', 'string', 'max:2000'],
+        ]);
+
         $ofiRecord->update([
             'workflow_status' => 'rejected',
+            'rejection_reason' => $validated['rejection_reason'],
+            'rejected_at' => now(),
+            'rejected_by' => auth()->id(),
             'updated_by' => auth()->id(),
         ]);
 
-        return back()->with('success', 'OFI rejected successfully.');
+        return back()->with('success', 'OFI rejected and returned for correction.');
     }
 
     public function updateResolutionStatus(Request $request, OfiRecord $ofiRecord)
@@ -537,6 +562,65 @@ class OfiRecordController extends Controller
         return response()->json([
             'message' => 'OFI resolution status updated successfully.',
             'resolution_status' => $ofiRecord->resolution_status,
+        ]);
+    }
+
+    public function myRecords(Request $request)
+    {
+        $status = $request->input('workflow_status', 'all');
+        $allowed = ['all', 'pending', 'approved', 'rejected'];
+
+        if (!in_array($status, $allowed, true)) {
+            $status = 'all';
+        }
+
+        $query = OfiRecord::query()
+            ->where('created_by', auth()->id());
+
+        if ($status !== 'all') {
+            $query->where('workflow_status', $status);
+        }
+
+        $records = $query
+            ->latest()
+            ->paginate(10)
+            ->withQueryString()
+            ->through(fn(OfiRecord $record) => [
+                'id' => $record->id,
+                'ofi_no' => $record->ofi_no,
+                'ref_no' => $record->ref_no,
+                'to' => $record->to,
+                'status' => $record->status,
+                'workflow_status' => $record->workflow_status,
+                'resolution_status' => $record->resolution_status,
+                'rejection_reason' => $record->rejection_reason,
+                'created_at' => $record->created_at,
+            ]);
+
+        $counts = [
+            'all' => OfiRecord::query()
+                ->where('created_by', auth()->id())
+                ->count(),
+            'pending' => OfiRecord::query()
+                ->where('created_by', auth()->id())
+                ->where('workflow_status', 'pending')
+                ->count(),
+            'approved' => OfiRecord::query()
+                ->where('created_by', auth()->id())
+                ->where('workflow_status', 'approved')
+                ->count(),
+            'rejected' => OfiRecord::query()
+                ->where('created_by', auth()->id())
+                ->where('workflow_status', 'rejected')
+                ->count(),
+        ];
+
+        return Inertia::render('Inbox/MyRecords', [
+            'records' => $records,
+            'filters' => [
+                'workflow_status' => $status,
+            ],
+            'counts' => $counts,
         ]);
     }
 }
