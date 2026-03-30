@@ -15,9 +15,6 @@ const props = defineProps({
 const loading = useLoadingOverlay()
 const toast = useToast()
 
-/* ===============================
-   Document rules (R-QMS vs F-QMS)
-================================ */
 const requiresRevision = computed(() => {
   if (props.documentType && typeof props.documentType.requires_revision === 'boolean') {
     return props.documentType.requires_revision
@@ -27,9 +24,22 @@ const requiresRevision = computed(() => {
   return code.startsWith('F-QMS')
 })
 
-/* ===============================
-   Search + Filters (server-side)
-================================ */
+const isObsoleteType = computed(() => {
+  if (typeof props.documentType?.is_obsolete === 'boolean') {
+    return props.documentType.is_obsolete
+  }
+
+  return (props.documentType?.status || '').toLowerCase() === 'obsolete'
+})
+
+const canUpload = computed(() => {
+  if (typeof props.documentType?.can_upload === 'boolean') {
+    return props.documentType.can_upload
+  }
+
+  return !isObsoleteType.value
+})
+
 const search = ref(props.filters?.q ?? '')
 const statusFilter = ref(props.filters?.status ?? 'All')
 const sort = ref(props.filters?.sort ?? 'latest')
@@ -86,9 +96,6 @@ watch(perPage, () => reloadDocuments({ page: 1 }))
 watch(dateFrom, () => reloadDocuments({ page: 1 }))
 watch(dateTo, () => reloadDocuments({ page: 1 }))
 
-/* ===============================
-   Upload Modal
-================================ */
 const showUploadModal = ref(false)
 const uploading = ref(false)
 const uploadError = ref('')
@@ -112,6 +119,11 @@ function resetUploadForm() {
 }
 
 function openUpload() {
+  if (!canUpload.value) {
+    toast.error('This document type is obsolete and is kept for reference only.')
+    return
+  }
+
   resetUploadForm()
   showUploadModal.value = true
 }
@@ -148,6 +160,12 @@ function removeFile(index) {
 }
 
 function submitUpload() {
+  if (!canUpload.value) {
+    uploadError.value = 'This document type is obsolete and is kept for reference only.'
+    toast.error(uploadError.value)
+    return
+  }
+
   uploadError.value = ''
 
   if (!uploadForm.value.files.length) {
@@ -186,6 +204,7 @@ function submitUpload() {
     preserveScroll: true,
     onError: (errors) => {
       uploadError.value =
+        errors.upload ||
         errors.files ||
         errors['files.0'] ||
         errors.revision ||
@@ -211,9 +230,6 @@ function submitUpload() {
   })
 }
 
-/* ===============================
-   Helpers
-================================ */
 function formatDate(date) {
   if (!date) return '—'
   return new Date(date).toLocaleString()
@@ -232,9 +248,6 @@ function formatFileSize(bytes) {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`
 }
 
-/* ===============================
-   File Type Indicator
-================================ */
 function getFileExtension(fileName) {
   if (!fileName) return ''
   const parts = fileName.split('.')
@@ -280,11 +293,9 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 <template>
   <AdminLayout>
     <div class="space-y-6 p-6">
-      <!-- HEADER -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-5 sm:px-6">
           <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <!-- LEFT -->
             <div class="min-w-0 flex-1 xl:max-w-[42%]">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-white">
@@ -305,6 +316,15 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 >
                   Record Type
                 </span>
+
+                <span
+                  class="rounded-full px-2.5 py-1 text-[11px] font-medium ring-1"
+                  :class="isObsoleteType
+                    ? 'bg-amber-500/15 text-amber-100 ring-amber-400/30'
+                    : 'bg-emerald-500/15 text-emerald-100 ring-emerald-400/30'"
+                >
+                  {{ documentType?.status || 'Active' }}
+                </span>
               </div>
 
               <h1 class="mt-3 text-xl font-semibold tracking-tight text-white sm:text-[22px]">
@@ -316,114 +336,33 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               </p>
             </div>
 
-            <!-- RIGHT -->
             <div class="w-full xl:max-w-[720px]">
-              <div class="space-y-3">
-                <!-- Main toolbar -->
-                <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
-                  <div :class="requiresRevision ? 'md:col-span-6' : 'md:col-span-7'">
-                    <div class="relative">
-                      <input
-                        v-model="search"
-                        type="text"
-                        :placeholder="searchPlaceholder"
-                        class="w-full rounded-lg border border-white/15 bg-white/10 px-3.5 py-2.5 pr-10 text-sm text-white placeholder:text-slate-300 transition focus:outline-none focus:ring-2 focus:ring-white/20"
-                      />
-                      <div class="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-slate-200">
-                        🔍
-                      </div>
-                    </div>
-                  </div>
-
-                  <div class="md:col-span-3">
-                    <select
-                      v-model="sort"
-                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white transition focus:outline-none focus:ring-2 focus:ring-white/20"
-                    >
-                      <option class="text-slate-900" value="latest">Newest First</option>
-                      <option class="text-slate-900" value="oldest">Oldest First</option>
-                      <option class="text-slate-900" value="name_asc">File Name (A-Z)</option>
-                      <option class="text-slate-900" value="name_desc">File Name (Z-A)</option>
-                      <option
-                        v-if="requiresRevision"
-                        class="text-slate-900"
-                        value="revision_asc"
-                      >
-                        Revision (A-Z)
-                      </option>
-                      <option
-                        v-if="requiresRevision"
-                        class="text-slate-900"
-                        value="revision_desc"
-                      >
-                        Revision (Z-A)
-                      </option>
-                    </select>
-                  </div>
-
-                  <div v-if="requiresRevision" class="md:col-span-3">
-                    <select
-                      v-model="statusFilter"
-                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white transition focus:outline-none focus:ring-2 focus:ring-white/20"
-                    >
-                      <option class="text-slate-900" value="All">All Status</option>
-                      <option class="text-slate-900" value="Active">Active</option>
-                      <option class="text-slate-900" value="Obsolete">Obsolete</option>
-                    </select>
-                  </div>
-
-                  <div v-else class="md:col-span-2">
-                    <div class="flex h-full items-center justify-center rounded-lg border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-slate-300">
-                      Records
-                    </div>
-                  </div>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div class="text-xs uppercase tracking-wide text-slate-400">Total Files</div>
+                  <div class="mt-1 text-2xl font-semibold text-white">{{ stats?.total ?? 0 }}</div>
                 </div>
 
-                <!-- Secondary filters -->
-                <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
-                  <div class="md:col-span-4">
-                    <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-300">
-                      From Date
-                    </label>
-                    <input
-                      v-model="dateFrom"
-                      type="date"
-                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white transition focus:outline-none focus:ring-2 focus:ring-white/20"
-                    />
-                  </div>
+                <div
+                  v-if="requiresRevision"
+                  class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                >
+                  <div class="text-xs uppercase tracking-wide text-slate-400">Active</div>
+                  <div class="mt-1 text-2xl font-semibold text-white">{{ stats?.active ?? 0 }}</div>
+                </div>
 
-                  <div class="md:col-span-4">
-                    <label class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-slate-300">
-                      To Date
-                    </label>
-                    <input
-                      v-model="dateTo"
-                      type="date"
-                      class="w-full rounded-lg border border-white/15 bg-white/10 px-3 py-2.5 text-sm text-white transition focus:outline-none focus:ring-2 focus:ring-white/20"
-                    />
-                  </div>
+                <div
+                  v-if="requiresRevision"
+                  class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
+                >
+                  <div class="text-xs uppercase tracking-wide text-slate-400">Obsolete</div>
+                  <div class="mt-1 text-2xl font-semibold text-white">{{ stats?.obsolete ?? 0 }}</div>
+                </div>
 
-                  <div class="md:col-span-4">
-                    <div class="mb-1 block text-[11px] font-medium uppercase tracking-wide text-transparent">
-                      Actions
-                    </div>
-
-                    <div class="flex flex-wrap items-center justify-end gap-2">
-                      <Link
-                        href="/documents"
-                        class="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white transition hover:bg-white/15"
-                      >
-                        Back
-                      </Link>
-
-                      <button
-                        type="button"
-                        @click="openUpload"
-                        class="inline-flex items-center justify-center rounded-lg bg-indigo-500 px-3.5 py-2.5 text-sm font-medium text-white transition-all duration-200 hover:-translate-y-[1px] hover:bg-indigo-400"
-                      >
-                        {{ requiresRevision ? 'Upload' : 'Upload Files' }}
-                      </button>
-                    </div>
+                <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                  <div class="text-xs uppercase tracking-wide text-slate-400">Upload Access</div>
+                  <div class="mt-1 text-sm font-semibold text-white">
+                    {{ canUpload ? 'Allowed' : 'Disabled' }}
                   </div>
                 </div>
               </div>
@@ -431,50 +370,112 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
           </div>
         </div>
 
-        <!-- Stats -->
-        <div class="flex flex-wrap items-center gap-x-5 gap-y-2 border-t border-slate-200 px-5 py-3 text-sm text-slate-600 sm:px-6">
-          <div>
-            Total:
-            <span class="font-semibold text-slate-900">
-              {{ stats?.total ?? 0 }}
-            </span>
+        <div v-if="isObsoleteType" class="border-t border-amber-200 bg-amber-50 px-5 py-4 sm:px-6">
+          <div class="rounded-xl border border-amber-200 bg-white/70 px-4 py-3 text-sm text-amber-800">
+            <div class="font-semibold">Obsolete Document Type</div>
+            <div class="mt-1">
+              This document type is obsolete and is kept for reference only.
+            </div>
+            <div v-if="documentType?.status_note" class="mt-2 text-amber-900">
+              Note: {{ documentType.status_note }}
+            </div>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-200 px-5 py-4 sm:px-6">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
+            <div class="md:col-span-4">
+              <label class="text-xs font-medium text-slate-600">Search</label>
+              <input
+                v-model="search"
+                type="text"
+                :placeholder="searchPlaceholder"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-4 py-2 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+            </div>
+
+            <div v-if="requiresRevision" class="md:col-span-2">
+              <label class="text-xs font-medium text-slate-600">Status</label>
+              <select
+                v-model="statusFilter"
+                class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="All">All</option>
+                <option value="Active">Active</option>
+                <option value="Obsolete">Obsolete</option>
+              </select>
+            </div>
+
+            <div :class="requiresRevision ? 'md:col-span-2' : 'md:col-span-3'">
+              <label class="text-xs font-medium text-slate-600">Sort</label>
+              <select
+                v-model="sort"
+                class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="latest">Latest</option>
+                <option value="oldest">Oldest</option>
+                <option value="name_asc">File Name (A–Z)</option>
+                <option value="name_desc">File Name (Z–A)</option>
+                <option v-if="requiresRevision" value="revision_asc">Revision (A–Z)</option>
+                <option v-if="requiresRevision" value="revision_desc">Revision (Z–A)</option>
+              </select>
+            </div>
+
+            <div :class="requiresRevision ? 'md:col-span-2' : 'md:col-span-2'">
+              <label class="text-xs font-medium text-slate-600">Date From</label>
+              <input
+                v-model="dateFrom"
+                type="date"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+            </div>
+
+            <div :class="requiresRevision ? 'md:col-span-2' : 'md:col-span-2'">
+              <label class="text-xs font-medium text-slate-600">Date To</label>
+              <input
+                v-model="dateTo"
+                type="date"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+            </div>
           </div>
 
-          <template v-if="requiresRevision">
-            <div>
-              Active:
-              <span class="font-semibold text-emerald-600">
-                {{ stats?.active ?? 0 }}
-              </span>
+          <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="text-sm text-slate-600">
+              {{ documents?.total ?? 0 }} file(s) found
             </div>
 
-            <div>
-              Obsolete:
-              <span class="font-semibold text-rose-600">
-                {{ stats?.obsolete ?? 0 }}
-              </span>
-            </div>
-          </template>
-
-          <template v-else>
-            <div class="text-xs text-slate-500">
-              Note: This type is treated as a record (no revision control).
-            </div>
-          </template>
+            <button
+              type="button"
+              @click="openUpload"
+              :disabled="!canUpload"
+              class="inline-flex items-center justify-center rounded-xl px-4 py-2 text-sm font-medium transition"
+              :class="canUpload
+                ? 'bg-slate-900 text-white hover:bg-slate-800'
+                : 'cursor-not-allowed bg-slate-200 text-slate-500'"
+            >
+              {{ requiresRevision ? 'Upload Revision' : 'Upload Files' }}
+            </button>
+          </div>
         </div>
       </div>
 
-      <!-- EMPTY -->
       <div
         v-if="!(documents?.data || []).length"
-        class="rounded-2xl border border-slate-200 bg-white p-10 text-center"
+        class="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm"
       >
         <div class="text-lg font-semibold text-slate-900">No uploads yet</div>
         <div class="mt-2 text-sm text-slate-600">
-          Start by uploading the first file for this document type.
+          <template v-if="canUpload">
+            Start by uploading the first file for this document type.
+          </template>
+          <template v-else>
+            This document type is obsolete and is kept for reference only.
+          </template>
         </div>
 
         <button
+          v-if="canUpload"
           type="button"
           @click="openUpload"
           class="mt-4 inline-block rounded-xl bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-800"
@@ -483,7 +484,6 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
         </button>
       </div>
 
-      <!-- TABLE -->
       <div
         v-if="(documents?.data || []).length"
         class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
@@ -518,8 +518,8 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                   Status
                 </th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Uploaded By</th>
-                <th class="px-5 py-3 font-semibold text-slate-700 whitespace-nowrap">Date</th>
-                <th class="px-5 py-3 text-right font-semibold text-slate-700 whitespace-nowrap">
+                <th class="px-5 py-3 whitespace-nowrap font-semibold text-slate-700">Date</th>
+                <th class="px-5 py-3 whitespace-nowrap text-right font-semibold text-slate-700">
                   Actions
                 </th>
               </tr>
@@ -533,12 +533,12 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               >
                 <td
                   v-if="requiresRevision"
-                  class="px-5 py-4 font-medium text-slate-900 whitespace-nowrap align-middle"
+                  class="whitespace-nowrap px-5 py-4 align-middle font-medium text-slate-900"
                 >
                   {{ doc.revision || '—' }}
                 </td>
 
-                <td class="px-5 py-4 text-slate-800 align-middle">
+                <td class="px-5 py-4 align-middle text-slate-800">
                   <div class="flex min-w-0 items-center gap-2">
                     <span
                       class="inline-flex shrink-0 items-center rounded-md px-1.5 py-[2px] text-[10px] font-bold tracking-wide ring-1"
@@ -556,7 +556,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                   </div>
                 </td>
 
-                <td v-if="requiresRevision" class="px-5 py-4 align-middle whitespace-nowrap">
+                <td v-if="requiresRevision" class="whitespace-nowrap px-5 py-4 align-middle">
                   <span
                     class="rounded-full px-2 py-1 text-xs ring-1 transition"
                     :class="statusClass(doc.status)"
@@ -565,13 +565,13 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                   </span>
                 </td>
 
-                <td class="px-5 py-4 text-slate-600 align-middle">
+                <td class="px-5 py-4 align-middle text-slate-600">
                   <div class="line-clamp-2">
                     {{ doc.uploaded_by_name }}
                   </div>
                 </td>
 
-                <td class="px-5 py-4 text-slate-600 align-middle whitespace-nowrap">
+                <td class="whitespace-nowrap px-5 py-4 align-middle text-slate-600">
                   {{ formatDate(doc.created_at) }}
                 </td>
 
@@ -623,7 +623,6 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
           </table>
         </div>
 
-        <!-- Pagination -->
         <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
             <div class="text-sm text-slate-600">
@@ -688,7 +687,6 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
         </div>
       </div>
 
-      <!-- UPLOAD MODAL -->
       <Transition
         enter-active-class="transition duration-200 ease-out"
         enter-from-class="opacity-0"
@@ -698,7 +696,6 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
         leave-to-class="opacity-0"
       >
         <div v-if="showUploadModal" class="fixed inset-0 z-[999]">
-          <!-- Backdrop -->
           <Transition
             appear
             enter-active-class="transition duration-200 ease-out"
@@ -715,7 +712,6 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
             ></div>
           </Transition>
 
-          <!-- Modal -->
           <div class="absolute inset-0 flex items-center justify-center p-4">
             <Transition
               appear
@@ -755,6 +751,10 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                     class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700"
                   >
                     {{ uploadError }}
+                  </div>
+
+                  <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    Upload is disabled if the document type is obsolete.
                   </div>
 
                   <div>
@@ -851,7 +851,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                   <button
                     type="button"
                     @click="submitUpload"
-                    :disabled="uploading"
+                    :disabled="uploading || !canUpload"
                     class="rounded-xl bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     <span v-if="!uploading">Upload</span>

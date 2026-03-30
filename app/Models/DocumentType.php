@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use App\Models\DocumentTypeRevision;
 
 class DocumentType extends Model
 {
@@ -50,6 +49,16 @@ class DocumentType extends Model
     {
         return $this->hasMany(DocumentTypeRevision::class, 'document_type_id')
             ->orderBy('revision_no');
+    }
+
+    public function ofiRecords(): HasMany
+    {
+        return $this->hasMany(OfiRecord::class, 'document_type_id');
+    }
+
+    public function dcrRecords(): HasMany
+    {
+        return $this->hasMany(DcrRecord::class, 'document_type_id');
     }
 
     public function scopeActive(Builder $query): Builder
@@ -97,5 +106,10 @@ class DocumentType extends Model
     public function isUncontrolledManual(): bool
     {
         return $this->isManual() && $this->manual_access === 'uncontrolled';
+    }
+
+    public function isObsolete(): bool
+    {
+        return strtolower((string) $this->status) === 'obsolete';
     }
 }
