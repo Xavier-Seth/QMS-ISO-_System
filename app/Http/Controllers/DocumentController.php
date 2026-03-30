@@ -15,6 +15,7 @@ use App\Services\OFIFormGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
@@ -31,10 +32,16 @@ class DocumentController extends Controller
 
     public function index(Request $request)
     {
-        $q = trim((string) $request->get('q', ''));
-        $seriesCode = $request->get('series', 'All');
-        $sort = $request->get('sort', 'code_asc');
-        $view = $request->get('view', 'group');
+        $q = trim((string) $request->input('q', ''));
+        $seriesCode = (string) $request->input('series', 'All');
+        $sort = (string) $request->input('sort', 'code_asc');
+        $view = (string) $request->input('view', 'group');
+        $status = (string) $request->input('status', 'All');
+
+        $allowedTypeStatuses = ['All', 'Active', 'Obsolete'];
+        if (!in_array($status, $allowedTypeStatuses, true)) {
+            $status = 'All';
+        }
 
         $seriesOptions = DocumentSeries::query()
             ->where('code_prefix', '!=', 'MANUAL')
@@ -52,8 +59,10 @@ class DocumentController extends Controller
             ->withCount('uploads')
             ->withMax('uploads', 'created_at');
 
-        if ($seriesCode !== 'All') {
-            $selected = DocumentSeries::where('code_prefix', $seriesCode)->first();
+        if ($seriesCode !== 'All' && $seriesCode !== '') {
+            $selected = DocumentSeries::query()
+                ->where('code_prefix', $seriesCode)
+                ->first();
 
             if ($selected) {
                 $query->where('series_id', $selected->id);
@@ -62,6 +71,15 @@ class DocumentController extends Controller
             }
         } else {
             $query->whereHas('series', fn($qq) => $qq->where('code_prefix', '!=', 'MANUAL'));
+        }
+
+        if ($status !== 'All') {
+            $normalizedStatus = strtolower($status);
+
+            $query->whereRaw(
+                "LOWER(COALESCE(status, 'active')) = ?",
+                [$normalizedStatus]
+            );
         }
 
         if ($q !== '') {
@@ -87,6 +105,8 @@ class DocumentController extends Controller
         $types = $query->get();
 
         $documentTypes = $types->map(function (DocumentType $t) {
+            $normalizedStatus = strtolower((string) ($t->status ?: 'active'));
+
             return [
                 'id' => $t->id,
                 'code' => $t->code,
@@ -95,7 +115,7 @@ class DocumentController extends Controller
                 'requires_revision' => $this->isRevisionControlled($t),
                 'documents_count' => (int) $t->uploads_count,
                 'latest_upload_at' => $t->uploads_max_created_at,
-                'status' => $t->status ?: 'Active',
+                'status' => $normalizedStatus === 'obsolete' ? 'Obsolete' : 'Active',
                 'status_note' => $t->status_note,
                 'can_upload' => !$t->isObsolete(),
                 'series' => [
@@ -113,6 +133,7 @@ class DocumentController extends Controller
                 'series' => $seriesCode,
                 'sort' => $sort,
                 'view' => $view,
+                'status' => $status,
             ],
         ]);
     }
@@ -121,20 +142,46 @@ class DocumentController extends Controller
     {
         $data = $request->validate([
             'series_id' => ['required', 'integer', 'exists:document_series,id'],
-            'code' => ['required', 'string', 'max:100', 'unique:document_types,code'],
+            'document_no' => ['required', 'integer', 'min:1', 'max:999'],
             'title' => ['required', 'string', 'max:255'],
             'storage' => ['required', 'string', 'max:255'],
             'status_note' => ['nullable', 'string', 'max:1000'],
             'requires_revision' => ['nullable', 'boolean'],
+        ], [
+            'series_id.required' => 'Please select a document series.',
+            'series_id.exists' => 'The selected document series is invalid.',
+            'document_no.required' => 'Document number is required.',
+            'document_no.integer' => 'Document number must be a whole number.',
+            'document_no.min' => 'Document number must be at least 1.',
+            'document_no.max' => 'Document number must not be greater than 999.',
+            'title.required' => 'Document title is required.',
+            'storage.required' => 'Storage / file type is required.',
         ]);
 
+        $series = DocumentSeries::query()->findOrFail($data['series_id']);
+
+        $documentNo = (int) $data['document_no'];
+        $generatedCode = strtoupper($series->code_prefix) . '-' . str_pad((string) $documentNo, 3, '0', STR_PAD_LEFT);
+
+        $existing = DocumentType::query()
+            ->whereRaw('LOWER(code) = ?', [strtolower($generatedCode)])
+            ->exists();
+
+        if ($existing) {
+            throw ValidationException::withMessages([
+                'document_no' => "The generated code {$generatedCode} already exists.",
+            ]);
+        }
+
         $documentType = DocumentType::create([
-            'series_id' => $data['series_id'],
-            'code' => strtoupper(trim($data['code'])),
+            'series_id' => $series->id,
+            'code' => $generatedCode,
             'title' => trim($data['title']),
             'storage' => trim($data['storage']),
             'status' => 'Active',
-            'status_note' => $data['status_note'] ?? null,
+            'status_note' => filled($data['status_note'] ?? null)
+                ? trim($data['status_note'])
+                : null,
             'requires_revision' => (bool) ($data['requires_revision'] ?? false),
         ]);
 
@@ -226,14 +273,14 @@ class DocumentController extends Controller
 
     public function show(Request $request, DocumentType $documentType)
     {
-        $q = trim((string) $request->get('q', ''));
-        $status = (string) $request->get('status', 'All');
-        $sort = (string) $request->get('sort', 'latest');
-        $dateFrom = trim((string) $request->get('date_from', ''));
-        $dateTo = trim((string) $request->get('date_to', ''));
+        $q = trim((string) $request->input('q', ''));
+        $status = (string) $request->input('status', 'All');
+        $sort = (string) $request->input('sort', 'latest');
+        $dateFrom = trim((string) $request->input('date_from', ''));
+        $dateTo = trim((string) $request->input('date_to', ''));
 
         $allowedPerPage = [10, 25, 50, 100];
-        $perPage = (int) $request->get('per_page', 10);
+        $perPage = (int) $request->input('per_page', 10);
         if (!in_array($perPage, $allowedPerPage, true)) {
             $perPage = 10;
         }
@@ -330,6 +377,8 @@ class DocumentController extends Controller
         $statsBase = DocumentUpload::query()
             ->where('document_type_id', $documentType->id);
 
+        $normalizedTypeStatus = strtolower((string) ($documentType->status ?: 'active'));
+
         $stats = [
             'total' => (clone $statsBase)->count(),
             'active' => $isRevisionControlled
@@ -347,8 +396,10 @@ class DocumentController extends Controller
                 'name' => $documentType->title,
                 'file_type' => $documentType->storage,
                 'requires_revision' => $isRevisionControlled,
-                'status' => $documentType->status ?: 'Active',
+                'status' => $normalizedTypeStatus === 'obsolete' ? 'Obsolete' : 'Active',
                 'status_note' => $documentType->status_note,
+                'is_obsolete' => $documentType->isObsolete(),
+                'can_upload' => !$documentType->isObsolete(),
             ],
             'documents' => $documents,
             'filters' => [
