@@ -339,8 +339,15 @@ function submitDelete() {
       deleteModalOpen.value = false
       selectedRow.value = null
     },
-    onError: () => {
-      toast.error('Failed to delete document type. Please try again.')
+    onError: (errors) => {
+      const firstError =
+        errors?.delete ||
+        errors?.document_type ||
+        errors?.message ||
+        Object.values(errors || {})[0] ||
+        'Failed to delete document type. Please try again.'
+
+      toast.error(Array.isArray(firstError) ? firstError[0] : firstError)
     },
     onFinish: () => {
       deletingType.value = false

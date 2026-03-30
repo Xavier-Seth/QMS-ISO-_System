@@ -160,6 +160,12 @@ class DocumentController extends Controller
 
         $series = DocumentSeries::query()->findOrFail($data['series_id']);
 
+        if (strtoupper((string) $series->code_prefix) === 'MANUAL') {
+            throw ValidationException::withMessages([
+                'series_id' => 'Manual series cannot be created from the Documents module.',
+            ]);
+        }
+
         $documentNo = (int) $data['document_no'];
         $generatedCode = strtoupper($series->code_prefix) . '-' . str_pad((string) $documentNo, 3, '0', STR_PAD_LEFT);
 
@@ -226,27 +232,65 @@ class DocumentController extends Controller
 
     public function destroyType(DocumentType $documentType)
     {
+        $documentType->load(['series']);
         $documentType->loadCount('uploads');
 
         $code = $documentType->code;
         $title = $documentType->title;
         $uploadCount = (int) $documentType->uploads_count;
 
-        DB::transaction(function () use ($documentType) {
-            $documentType->load(['uploads', 'revisions']);
+        $isManualSeries = strtoupper((string) $documentType->series?->code_prefix) === 'MANUAL';
+
+        if ($isManualSeries) {
+            return back()->withErrors([
+                'delete' => 'Manual document types cannot be deleted from the Documents module.',
+            ]);
+        }
+
+        $hasOfiReferences = DB::table('ofi_records')
+            ->where('document_type_id', $documentType->id)
+            ->exists();
+
+        if ($hasOfiReferences) {
+            return back()->withErrors([
+                'delete' => "Cannot delete {$code} because it is still referenced by OFI records.",
+            ]);
+        }
+
+        $hasDcrReferences = DB::table('dcr_records')
+            ->where('document_type_id', $documentType->id)
+            ->exists();
+
+        if ($hasDcrReferences) {
+            return back()->withErrors([
+                'delete' => "Cannot delete {$code} because it is still referenced by DCR records.",
+            ]);
+        }
+
+        $filesToDelete = [];
+        $previewFilesToDelete = [];
+
+        DB::transaction(function () use ($documentType, &$filesToDelete, &$previewFilesToDelete) {
+            $documentType->load(['uploads', 'series']);
 
             foreach ($documentType->uploads as $upload) {
                 $storageDisk = $upload->getStorageDiskName();
 
-                if ($upload->file_path && Storage::disk($storageDisk)->exists($upload->file_path)) {
-                    Storage::disk($storageDisk)->delete($upload->file_path);
+                if ($upload->file_path) {
+                    $filesToDelete[] = [
+                        'disk' => $storageDisk,
+                        'path' => $upload->file_path,
+                    ];
                 }
 
                 if ($upload->hasPreviewCache()) {
                     $previewDisk = $upload->getPreviewDiskName();
 
-                    if ($previewDisk && Storage::disk($previewDisk)->exists($upload->preview_path)) {
-                        Storage::disk($previewDisk)->delete($upload->preview_path);
+                    if ($previewDisk && $upload->preview_path) {
+                        $previewFilesToDelete[] = [
+                            'disk' => $previewDisk,
+                            'path' => $upload->preview_path,
+                        ];
                     }
                 }
 
@@ -256,6 +300,28 @@ class DocumentController extends Controller
             DocumentTypeRevision::where('document_type_id', $documentType->id)->delete();
 
             $documentType->delete();
+        });
+
+        DB::afterCommit(function () use ($filesToDelete, $previewFilesToDelete) {
+            foreach ($filesToDelete as $file) {
+                if (
+                    !empty($file['disk']) &&
+                    !empty($file['path']) &&
+                    Storage::disk($file['disk'])->exists($file['path'])
+                ) {
+                    Storage::disk($file['disk'])->delete($file['path']);
+                }
+            }
+
+            foreach ($previewFilesToDelete as $file) {
+                if (
+                    !empty($file['disk']) &&
+                    !empty($file['path']) &&
+                    Storage::disk($file['disk'])->exists($file['path'])
+                ) {
+                    Storage::disk($file['disk'])->delete($file['path']);
+                }
+            }
         });
 
         $this->activityLogService->log([
