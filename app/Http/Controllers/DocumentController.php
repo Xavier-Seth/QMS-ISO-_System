@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
+use App\Models\DocumentTypeRevision;
 use App\Models\DocumentUpload;
 use App\Services\ActivityLogService;
 use App\Services\DCRFormGenerator;
@@ -12,6 +13,7 @@ use App\Services\DocumentPreview\DocumentPreviewService;
 use App\Services\DocumentPreview\OfficeToPdfConverter;
 use App\Services\OFIFormGenerator;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use RuntimeException;
@@ -66,7 +68,9 @@ class DocumentController extends Controller
             $query->where(function ($qq) use ($q) {
                 $qq->where('code', 'like', "%{$q}%")
                     ->orWhere('title', 'like', "%{$q}%")
-                    ->orWhere('storage', 'like', "%{$q}%");
+                    ->orWhere('storage', 'like', "%{$q}%")
+                    ->orWhere('status', 'like', "%{$q}%")
+                    ->orWhere('status_note', 'like', "%{$q}%");
             });
         }
 
@@ -91,6 +95,9 @@ class DocumentController extends Controller
                 'requires_revision' => $this->isRevisionControlled($t),
                 'documents_count' => (int) $t->uploads_count,
                 'latest_upload_at' => $t->uploads_max_created_at,
+                'status' => $t->status ?: 'Active',
+                'status_note' => $t->status_note,
+                'can_upload' => !$t->isObsolete(),
                 'series' => [
                     'code_prefix' => $t->series?->code_prefix,
                     'name' => $t->series?->name,
@@ -108,6 +115,113 @@ class DocumentController extends Controller
                 'view' => $view,
             ],
         ]);
+    }
+
+    public function storeType(Request $request)
+    {
+        $data = $request->validate([
+            'series_id' => ['required', 'integer', 'exists:document_series,id'],
+            'code' => ['required', 'string', 'max:100', 'unique:document_types,code'],
+            'title' => ['required', 'string', 'max:255'],
+            'storage' => ['required', 'string', 'max:255'],
+            'status_note' => ['nullable', 'string', 'max:1000'],
+            'requires_revision' => ['nullable', 'boolean'],
+        ]);
+
+        $documentType = DocumentType::create([
+            'series_id' => $data['series_id'],
+            'code' => strtoupper(trim($data['code'])),
+            'title' => trim($data['title']),
+            'storage' => trim($data['storage']),
+            'status' => 'Active',
+            'status_note' => $data['status_note'] ?? null,
+            'requires_revision' => (bool) ($data['requires_revision'] ?? false),
+        ]);
+
+        $this->activityLogService->log([
+            'module' => 'documents',
+            'action' => 'created',
+            'entity_type' => DocumentType::class,
+            'entity_id' => $documentType->id,
+            'record_label' => $documentType->code,
+            'file_type' => null,
+            'description' => 'Created document type ' . $documentType->code . ' - ' . $documentType->title,
+        ]);
+
+        return back()->with('success', "Document type {$documentType->code} created.");
+    }
+
+    public function markObsolete(Request $request, DocumentType $documentType)
+    {
+        $data = $request->validate([
+            'status_note' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $documentType->update([
+            'status' => 'Obsolete',
+            'status_note' => filled($data['status_note'] ?? null)
+                ? trim($data['status_note'])
+                : 'Marked as obsolete by admin.',
+        ]);
+
+        $this->activityLogService->log([
+            'module' => 'documents',
+            'action' => 'updated',
+            'entity_type' => DocumentType::class,
+            'entity_id' => $documentType->id,
+            'record_label' => $documentType->code,
+            'file_type' => null,
+            'description' => 'Marked document type ' . $documentType->code . ' as obsolete.',
+        ]);
+
+        return back()->with('success', "{$documentType->code} marked as obsolete.");
+    }
+
+    public function destroyType(DocumentType $documentType)
+    {
+        $documentType->loadCount('uploads');
+
+        $code = $documentType->code;
+        $title = $documentType->title;
+        $uploadCount = (int) $documentType->uploads_count;
+
+        DB::transaction(function () use ($documentType) {
+            $documentType->load(['uploads', 'revisions']);
+
+            foreach ($documentType->uploads as $upload) {
+                $storageDisk = $upload->getStorageDiskName();
+
+                if ($upload->file_path && Storage::disk($storageDisk)->exists($upload->file_path)) {
+                    Storage::disk($storageDisk)->delete($upload->file_path);
+                }
+
+                if ($upload->hasPreviewCache()) {
+                    $previewDisk = $upload->getPreviewDiskName();
+
+                    if ($previewDisk && Storage::disk($previewDisk)->exists($upload->preview_path)) {
+                        Storage::disk($previewDisk)->delete($upload->preview_path);
+                    }
+                }
+
+                $upload->delete();
+            }
+
+            DocumentTypeRevision::where('document_type_id', $documentType->id)->delete();
+
+            $documentType->delete();
+        });
+
+        $this->activityLogService->log([
+            'module' => 'documents',
+            'action' => 'deleted',
+            'entity_type' => DocumentType::class,
+            'entity_id' => null,
+            'record_label' => $code,
+            'file_type' => null,
+            'description' => 'Deleted document type ' . $code . ' - ' . $title . ' and removed ' . $uploadCount . ' related upload(s).',
+        ]);
+
+        return back()->with('success', 'Document type permanently deleted.');
     }
 
     public function show(Request $request, DocumentType $documentType)
@@ -233,6 +347,8 @@ class DocumentController extends Controller
                 'name' => $documentType->title,
                 'file_type' => $documentType->storage,
                 'requires_revision' => $isRevisionControlled,
+                'status' => $documentType->status ?: 'Active',
+                'status_note' => $documentType->status_note,
             ],
             'documents' => $documents,
             'filters' => [
@@ -249,6 +365,12 @@ class DocumentController extends Controller
 
     public function upload(Request $request, DocumentType $documentType)
     {
+        if ($documentType->isObsolete()) {
+            return back()->withErrors([
+                'upload' => "This document type ({$documentType->code}) is obsolete and cannot accept new uploads.",
+            ]);
+        }
+
         $isRevisionControlled = $this->isRevisionControlled($documentType);
 
         $rules = [

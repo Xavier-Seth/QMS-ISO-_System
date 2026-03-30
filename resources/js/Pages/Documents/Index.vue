@@ -1,6 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
-import { computed, ref, watch } from 'vue'
+import { computed, ref, watch, onBeforeUnmount } from 'vue'
 import { router, Link, usePage } from '@inertiajs/vue3'
 
 const page = usePage()
@@ -31,6 +31,26 @@ const series = ref(props.filters.series ?? '')
 const sort = ref(props.filters.sort ?? 'code_asc')
 const view = ref(props.filters.view ?? 'group')
 const isFiltering = ref(false)
+
+const createModalOpen = ref(false)
+const obsoleteModalOpen = ref(false)
+const deleteModalOpen = ref(false)
+
+const selectedRow = ref(null)
+const openActionMenuId = ref(null)
+
+const createForm = ref({
+  series_id: '',
+  code: '',
+  title: '',
+  storage: '',
+  status_note: '',
+  requires_revision: false,
+})
+
+const obsoleteForm = ref({
+  status_note: '',
+})
 
 const mode = computed(() => {
   const url = page.url || ''
@@ -114,7 +134,9 @@ const normalized = computed(() => {
 
   const needle = (q.value || '').trim().toLowerCase()
   if (needle) {
-    rows = rows.filter((r) => `${r.code} ${r.name}`.toLowerCase().includes(needle))
+    rows = rows.filter((r) =>
+      `${r.code} ${r.name} ${r.status || ''} ${r.status_note || ''}`.toLowerCase().includes(needle)
+    )
   }
 
   const byCode = (a, b) => (a.code || '').localeCompare(b.code || '')
@@ -157,8 +179,16 @@ const grouped = computed(() => {
   return { 'All Items': normalized.value }
 })
 
-function statusClass(count) {
+function uploadCountClass(count) {
   if (!count) return 'bg-rose-50 text-rose-700 ring-rose-200'
+  return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+}
+
+function typeStatusClass(status) {
+  if ((status || '').toLowerCase() === 'obsolete') {
+    return 'bg-amber-50 text-amber-700 ring-amber-200'
+  }
+
   return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
 }
 
@@ -166,6 +196,103 @@ function formatDate(d) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString()
 }
+
+function resetCreateForm() {
+  createForm.value = {
+    series_id: '',
+    code: '',
+    title: '',
+    storage: '',
+    status_note: '',
+    requires_revision: false,
+  }
+}
+
+function openCreateModal() {
+  resetCreateForm()
+  createModalOpen.value = true
+}
+
+function submitCreate() {
+  router.post('/documents/types', createForm.value, {
+    preserveScroll: true,
+    onSuccess: () => {
+      createModalOpen.value = false
+      resetCreateForm()
+    },
+  })
+}
+
+function openObsoleteModal(row) {
+  closeActionMenu()
+  selectedRow.value = row
+  obsoleteForm.value.status_note = row.status_note || ''
+  obsoleteModalOpen.value = true
+}
+
+function submitObsolete() {
+  if (!selectedRow.value) return
+
+  router.patch(`/documents/types/${selectedRow.value.id}/obsolete`, obsoleteForm.value, {
+    preserveScroll: true,
+    onSuccess: () => {
+      obsoleteModalOpen.value = false
+      selectedRow.value = null
+      obsoleteForm.value.status_note = ''
+    },
+  })
+}
+
+function openDeleteModal(row) {
+  closeActionMenu()
+  selectedRow.value = row
+  deleteModalOpen.value = true
+}
+
+function submitDelete() {
+  if (!selectedRow.value) return
+
+  router.delete(`/documents/types/${selectedRow.value.id}`, {
+    preserveScroll: true,
+    onSuccess: () => {
+      deleteModalOpen.value = false
+      selectedRow.value = null
+    },
+  })
+}
+
+function toggleActionMenu(rowId) {
+  openActionMenuId.value = openActionMenuId.value === rowId ? null : rowId
+}
+
+function closeActionMenu() {
+  openActionMenuId.value = null
+}
+
+function handleGlobalClick(event) {
+  const target = event.target
+  if (!(target instanceof Element)) return
+
+  if (!target.closest('[data-action-menu-root]')) {
+    closeActionMenu()
+  }
+}
+
+watch([createModalOpen, obsoleteModalOpen, deleteModalOpen], () => {
+  if (createModalOpen.value || obsoleteModalOpen.value || deleteModalOpen.value) {
+    closeActionMenu()
+  }
+})
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('click', handleGlobalClick)
+}
+
+onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('click', handleGlobalClick)
+  }
+})
 </script>
 
 <template>
@@ -177,17 +304,22 @@ function formatDate(d) {
             <div>
               <h1 class="text-base font-semibold text-white sm:text-xl">Documents</h1>
               <p class="mt-1 text-sm text-slate-300">
-                Find documents by code (R-QMS-###) or name. Open a code to view all uploads under it.
+                Find documents by code or name. Admins can create, obsolete, and permanently delete document types here.
               </p>
             </div>
 
-            <div class="flex items-center gap-2"></div>
+            <button
+              type="button"
+              @click="openCreateModal"
+              class="inline-flex items-center justify-center rounded-xl bg-white px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-slate-100"
+            >
+              + New Document Type
+            </button>
           </div>
         </div>
 
         <div class="px-4 py-2">
           <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
-            <!-- Search -->
             <div :class="showPerformanceTypeDropdown ? 'md:col-span-6' : 'md:col-span-8'">
               <label class="text-xs font-medium text-slate-600">Search</label>
               <div class="relative mt-1">
@@ -235,7 +367,6 @@ function formatDate(d) {
 
             <div :class="showPerformanceTypeDropdown ? 'md:col-span-2' : 'md:col-span-2'"></div>
 
-            <!-- File Type only for performance -->
             <div v-if="showPerformanceTypeDropdown" class="md:col-span-2">
               <label class="text-xs font-medium text-slate-600">File Type</label>
               <select
@@ -253,7 +384,6 @@ function formatDate(d) {
               </select>
             </div>
 
-            <!-- Sort -->
             <div class="md:col-span-2">
               <label class="text-xs font-medium text-slate-600">Sort</label>
               <select
@@ -351,9 +481,16 @@ function formatDate(d) {
               >
                 <div class="flex items-start justify-between gap-3">
                   <div class="min-w-0">
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-2">
                       <span class="rounded-md bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-900">
                         {{ row.code }}
+                      </span>
+
+                      <span
+                        class="rounded-full px-2 py-1 text-xs ring-1"
+                        :class="typeStatusClass(row.status)"
+                      >
+                        {{ row.status || 'Active' }}
                       </span>
                     </div>
 
@@ -365,23 +502,70 @@ function formatDate(d) {
                       Latest:
                       <span class="text-slate-700">{{ formatDate(row.latest_upload_at) }}</span>
                     </div>
+
+                    <div v-if="row.status_note" class="mt-1 text-xs text-slate-500 line-clamp-2">
+                      Note: {{ row.status_note }}
+                    </div>
                   </div>
 
                   <span
                     class="whitespace-nowrap rounded-full px-2 py-1 text-xs ring-1 transition"
-                    :class="statusClass(row.documents_count)"
+                    :class="uploadCountClass(row.documents_count)"
                   >
                     {{ row.documents_count || 0 }} upload(s)
                   </span>
                 </div>
 
-                <div class="mt-4">
+                <div class="mt-4 flex items-center gap-2">
                   <Link
                     :href="`/documents/${row.id}`"
-                    class="block w-full rounded-xl bg-slate-900 px-3 py-2 text-center text-sm text-white transition hover:bg-slate-800"
+                    class="flex-1 rounded-xl bg-slate-900 px-3 py-2 text-center text-sm text-white transition hover:bg-slate-800"
                   >
                     Open
                   </Link>
+
+                  <div class="relative" data-action-menu-root>
+                    <button
+                      type="button"
+                      @click.stop="toggleActionMenu(row.id)"
+                      class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                      title="Actions"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path d="M10 3a1.75 1.75 0 110 3.5A1.75 1.75 0 0110 3zm0 5.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5zm0 5.25a1.75 1.75 0 110 3.5A1.75 1.75 0 0110 13.5z" />
+                      </svg>
+                    </button>
+
+                    <div
+                      v-if="openActionMenuId === row.id"
+                      class="absolute right-0 z-30 mt-2 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+                    >
+                      <Link
+                        :href="`/documents/${row.id}`"
+                        class="block px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                        @click="closeActionMenu"
+                      >
+                        Open
+                      </Link>
+
+                      <button
+                        v-if="(row.status || '').toLowerCase() !== 'obsolete'"
+                        type="button"
+                        class="block w-full px-4 py-2 text-left text-sm text-amber-700 transition hover:bg-amber-50"
+                        @click="openObsoleteModal(row)"
+                      >
+                        Mark as Obsolete
+                      </button>
+
+                      <button
+                        type="button"
+                        class="block w-full px-4 py-2 text-left text-sm text-rose-700 transition hover:bg-rose-50"
+                        @click="openDeleteModal(row)"
+                      >
+                        Delete Permanently
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -399,6 +583,7 @@ function formatDate(d) {
                 <tr class="text-left">
                   <th class="px-4 py-3 font-semibold text-slate-700">Code</th>
                   <th class="px-4 py-3 font-semibold text-slate-700">File Name</th>
+                  <th class="px-4 py-3 font-semibold text-slate-700">Status</th>
                   <th class="px-4 py-3 font-semibold text-slate-700">Uploads</th>
                   <th class="px-4 py-3 font-semibold text-slate-700">Latest</th>
                   <th class="px-4 py-3 text-right font-semibold text-slate-700">Action</th>
@@ -418,11 +603,20 @@ function formatDate(d) {
                   </td>
 
                   <td class="px-4 py-3 font-medium text-slate-900">
-                    {{ row.name }}
+                    <div>{{ row.name }}</div>
+                    <div v-if="row.status_note" class="mt-1 text-xs text-slate-500">
+                      {{ row.status_note }}
+                    </div>
                   </td>
 
                   <td class="px-4 py-3">
-                    <span class="rounded-full px-2 py-1 text-xs ring-1" :class="statusClass(row.documents_count)">
+                    <span class="rounded-full px-2 py-1 text-xs ring-1" :class="typeStatusClass(row.status)">
+                      {{ row.status || 'Active' }}
+                    </span>
+                  </td>
+
+                  <td class="px-4 py-3">
+                    <span class="rounded-full px-2 py-1 text-xs ring-1" :class="uploadCountClass(row.documents_count)">
                       {{ row.documents_count || 0 }}
                     </span>
                   </td>
@@ -432,12 +626,57 @@ function formatDate(d) {
                   </td>
 
                   <td class="px-4 py-3 text-right">
-                    <Link
-                      :href="`/documents/${row.id}`"
-                      class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-xs text-white transition hover:bg-slate-800"
-                    >
-                      Open
-                    </Link>
+                    <div class="inline-flex items-center gap-2">
+                      <Link
+                        :href="`/documents/${row.id}`"
+                        class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-3 py-2 text-xs text-white transition hover:bg-slate-800"
+                      >
+                        Open
+                      </Link>
+
+                      <div class="relative" data-action-menu-root>
+                        <button
+                          type="button"
+                          @click.stop="toggleActionMenu(row.id)"
+                          class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900"
+                          title="Actions"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10 3a1.75 1.75 0 110 3.5A1.75 1.75 0 0110 3zm0 5.25a1.75 1.75 0 110 3.5 1.75 1.75 0 010-3.5zm0 5.25a1.75 1.75 0 110 3.5A1.75 1.75 0 0110 13.5z" />
+                          </svg>
+                        </button>
+
+                        <div
+                          v-if="openActionMenuId === row.id"
+                          class="absolute right-0 z-30 mt-2 w-52 overflow-hidden rounded-xl border border-slate-200 bg-white py-1 text-left shadow-lg"
+                        >
+                          <Link
+                            :href="`/documents/${row.id}`"
+                            class="block px-4 py-2 text-sm text-slate-700 transition hover:bg-slate-50"
+                            @click="closeActionMenu"
+                          >
+                            Open
+                          </Link>
+
+                          <button
+                            v-if="(row.status || '').toLowerCase() !== 'obsolete'"
+                            type="button"
+                            class="block w-full px-4 py-2 text-left text-sm text-amber-700 transition hover:bg-amber-50"
+                            @click="openObsoleteModal(row)"
+                          >
+                            Mark as Obsolete
+                          </button>
+
+                          <button
+                            type="button"
+                            class="block w-full px-4 py-2 text-left text-sm text-rose-700 transition hover:bg-rose-50"
+                            @click="openDeleteModal(row)"
+                          >
+                            Delete Permanently
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                   </td>
                 </tr>
               </tbody>
@@ -449,6 +688,194 @@ function formatDate(d) {
           </div>
         </div>
       </Transition>
+
+      <div
+        v-if="createModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      >
+        <div class="w-full max-w-2xl rounded-2xl bg-white shadow-xl">
+          <div class="border-b border-slate-200 px-6 py-4">
+            <h2 class="text-lg font-semibold text-slate-900">Create Document Type</h2>
+            <p class="mt-1 text-sm text-slate-500">Add a new document type to the QMS documents list.</p>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 px-6 py-5 md:grid-cols-2">
+            <div>
+              <label class="text-sm font-medium text-slate-700">Series</label>
+              <select
+                v-model="createForm.series_id"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="">Select series</option>
+                <option
+                  v-for="option in seriesOptions"
+                  :key="option.id"
+                  :value="option.id"
+                >
+                  {{ option.code_prefix }} — {{ option.name }}
+                </option>
+              </select>
+            </div>
+
+            <div>
+              <label class="text-sm font-medium text-slate-700">Code</label>
+              <input
+                v-model="createForm.code"
+                type="text"
+                placeholder="e.g. R-QMS-113"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="text-sm font-medium text-slate-700">Title</label>
+              <input
+                v-model="createForm.title"
+                type="text"
+                placeholder="Document title"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="text-sm font-medium text-slate-700">Storage / File Type</label>
+              <input
+                v-model="createForm.storage"
+                type="text"
+                placeholder="e.g. PDF / DOCX / Folder / Mixed"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
+                <input
+                  v-model="createForm.requires_revision"
+                  type="checkbox"
+                  class="rounded border-slate-300 text-slate-900 focus:ring-slate-400"
+                />
+                Requires revision control
+              </label>
+            </div>
+
+            <div class="md:col-span-2">
+              <label class="text-sm font-medium text-slate-700">Status Note (optional)</label>
+              <textarea
+                v-model="createForm.status_note"
+                rows="3"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                placeholder="Optional note"
+              />
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+            <button
+              type="button"
+              @click="createModalOpen = false"
+              class="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              @click="submitCreate"
+              class="rounded-xl bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-800"
+            >
+              Create
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="obsoleteModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      >
+        <div class="w-full max-w-xl rounded-2xl bg-white shadow-xl">
+          <div class="border-b border-slate-200 px-6 py-4">
+            <h2 class="text-lg font-semibold text-slate-900">Mark as Obsolete</h2>
+            <p class="mt-1 text-sm text-slate-500">
+              This document type stays in the system for history, but it can no longer receive new uploads.
+            </p>
+          </div>
+
+          <div class="px-6 py-5">
+            <div class="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <div class="font-semibold">{{ selectedRow?.code }} — {{ selectedRow?.name }}</div>
+              <div class="mt-1">Current uploads: {{ selectedRow?.documents_count || 0 }}</div>
+            </div>
+
+            <div class="mt-4">
+              <label class="text-sm font-medium text-slate-700">Reason / Note</label>
+              <textarea
+                v-model="obsoleteForm.status_note"
+                rows="4"
+                class="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                placeholder="Why is this document type now obsolete?"
+              />
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+            <button
+              type="button"
+              @click="obsoleteModalOpen = false"
+              class="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              @click="submitObsolete"
+              class="rounded-xl bg-amber-600 px-4 py-2 text-sm text-white hover:bg-amber-700"
+            >
+              Confirm Obsolete
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="deleteModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      >
+        <div class="w-full max-w-xl rounded-2xl bg-white shadow-xl">
+          <div class="border-b border-slate-200 px-6 py-4">
+            <h2 class="text-lg font-semibold text-rose-700">Delete Permanently</h2>
+            <p class="mt-1 text-sm text-slate-500">This action cannot be undone.</p>
+          </div>
+
+          <div class="px-6 py-5">
+            <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+              <div class="font-semibold">{{ selectedRow?.code }} — {{ selectedRow?.name }}</div>
+              <div class="mt-2">
+                This will permanently remove the document type and related stored content.
+              </div>
+              <div v-if="(selectedRow?.documents_count || 0) > 0" class="mt-3 font-semibold">
+                Warning: this document type has {{ selectedRow?.documents_count }} upload(s). Their stored files will also be deleted.
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+            <button
+              type="button"
+              @click="deleteModalOpen = false"
+              class="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              @click="submitDelete"
+              class="rounded-xl bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700"
+            >
+              Delete Permanently
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </AdminLayout>
 </template>

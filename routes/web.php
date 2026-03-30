@@ -45,11 +45,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/ofi/records/{ofiRecord}/publish', [OfiRecordController::class, 'publish'])
         ->name('ofi.records.publish');
 
-    // Submit or resubmit OFI to admin for review
     Route::post('/ofi/records/{ofiRecord}/submit', [OfiRecordController::class, 'submitForApproval'])
         ->name('ofi.records.submit');
 
-    // User / Admin Officer OFI tracking page
     Route::get('/ofi/my-records', [OfiRecordController::class, 'myRecords'])
         ->name('ofi.records.mine');
 
@@ -105,6 +103,16 @@ Route::middleware('auth')->group(function () {
         Route::get('/documents/{documentType}', [DocumentController::class, 'show'])->name('documents.show');
         Route::post('/documents/{documentType}/upload', [DocumentController::class, 'upload'])->name('documents.upload');
 
+        // Document Type Management
+        Route::post('/documents/types', [DocumentController::class, 'storeType'])
+            ->name('documents.types.store');
+
+        Route::patch('/documents/types/{documentType}/obsolete', [DocumentController::class, 'markObsolete'])
+            ->name('documents.types.obsolete');
+
+        Route::delete('/documents/types/{documentType}', [DocumentController::class, 'destroyType'])
+            ->name('documents.types.destroy');
+
         Route::get('/documents/uploads/{upload}/preview', [DocumentController::class, 'preview'])
             ->name('documents.uploads.preview');
 
@@ -122,7 +130,6 @@ Route::middleware('auth')->group(function () {
         Route::post('/inbox/ofi/{ofiRecord}/approve', [OfiRecordController::class, 'approve'])->name('ofi.inbox.approve');
         Route::post('/inbox/ofi/{ofiRecord}/reject', [OfiRecordController::class, 'reject'])->name('ofi.inbox.reject');
 
-        // Admin-only resolution management
         Route::patch('/ofi/records/{ofiRecord}/resolution-status', [OfiRecordController::class, 'updateResolutionStatus'])
             ->name('ofi.records.resolution-status');
     });
