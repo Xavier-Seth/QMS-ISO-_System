@@ -10,6 +10,17 @@ const props = defineProps({
   documents: Object,
   filters: Object,
   stats: Object,
+  performanceView: {
+    type: Object,
+    default: () => ({
+      enabled: false,
+      year_groups: [],
+      selected_year: null,
+      selected_period: null,
+      selected_period_name: null,
+      selected_files: [],
+    }),
+  },
 })
 
 const loading = useLoadingOverlay()
@@ -22,6 +33,15 @@ const requiresRevision = computed(() => {
 
   const code = (props.documentType?.code || '').toUpperCase()
   return code.startsWith('F-QMS')
+})
+
+const isPerformanceForm = computed(() => {
+  if (typeof props.documentType?.is_performance_form === 'boolean') {
+    return props.documentType.is_performance_form
+  }
+
+  const seriesCode = (props.documentType?.series?.code_prefix || '').toUpperCase()
+  return ['IPCR', 'DPCR', 'UPCR'].includes(seriesCode)
 })
 
 const isObsoleteType = computed(() => {
@@ -46,11 +66,25 @@ const sort = ref(props.filters?.sort ?? 'latest')
 const perPage = ref(String(props.filters?.per_page ?? 10))
 const dateFrom = ref(props.filters?.date_from ?? '')
 const dateTo = ref(props.filters?.date_to ?? '')
+const selectedYear = ref(props.filters?.year ?? props.performanceView?.selected_year ?? null)
+const selectedPeriod = ref(props.filters?.period ?? props.performanceView?.selected_period ?? null)
 
 const searchPlaceholder = computed(() => {
+  if (isPerformanceForm.value) {
+    return 'Search file, remarks, uploader...'
+  }
+
   return requiresRevision.value
     ? 'Search file, revision, remarks, uploader...'
     : 'Search file, remarks, uploader...'
+})
+
+const performanceYearGroups = computed(() => props.performanceView?.year_groups ?? [])
+const performanceSelectedFiles = computed(() => props.performanceView?.selected_files ?? [])
+const performanceSelectedPeriodName = computed(() => props.performanceView?.selected_period_name ?? '')
+const hasPerformanceUploads = computed(() => performanceYearGroups.value.length > 0)
+const shouldShowPerformanceFirstUpload = computed(() => {
+  return isPerformanceForm.value && !hasPerformanceUploads.value && canUpload.value
 })
 
 watch(requiresRevision, (val) => {
@@ -62,11 +96,13 @@ function reloadDocuments(extra = {}) {
     `/documents/${props.documentType.id}`,
     {
       q: search.value || undefined,
-      status: requiresRevision.value ? statusFilter.value : undefined,
+      status: !isPerformanceForm.value && requiresRevision.value ? statusFilter.value : undefined,
       sort: sort.value || 'latest',
-      per_page: perPage.value || 10,
+      per_page: !isPerformanceForm.value ? perPage.value || 10 : undefined,
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
+      year: isPerformanceForm.value ? selectedYear.value || undefined : undefined,
+      period: isPerformanceForm.value ? selectedPeriod.value || undefined : undefined,
       ...extra,
     },
     {
@@ -87,12 +123,18 @@ watch(search, () => {
 })
 
 watch(statusFilter, () => {
-  if (!requiresRevision.value) return
+  if (!requiresRevision.value || isPerformanceForm.value) return
   reloadDocuments({ page: 1 })
 })
 
 watch(sort, () => reloadDocuments({ page: 1 }))
-watch(perPage, () => reloadDocuments({ page: 1 }))
+
+watch(perPage, () => {
+  if (!isPerformanceForm.value) {
+    reloadDocuments({ page: 1 })
+  }
+})
+
 watch(dateFrom, () => reloadDocuments({ page: 1 }))
 watch(dateTo, () => reloadDocuments({ page: 1 }))
 
@@ -101,9 +143,32 @@ const uploading = ref(false)
 const uploadError = ref('')
 const fileInput = ref(null)
 
+const currentYear = new Date().getFullYear()
+
+const yearOptions = computed(() => {
+  const years = []
+  for (let year = currentYear + 1; year >= 2020; year -= 1) {
+    years.push(year)
+  }
+  return years
+})
+
+const periodOptions = [
+  { value: 'JAN_JUN', label: 'January – June' },
+  { value: 'JUL_DEC', label: 'July – December' },
+]
+
+const performanceRecordTypeOptions = [
+  { value: 'TARGET', label: 'Target' },
+  { value: 'ACCOMPLISHMENT', label: 'Accomplishment' },
+]
+
 const uploadForm = ref({
   files: [],
   revision: '',
+  performance_record_type: 'TARGET',
+  year: props.filters?.year ?? props.performanceView?.selected_year ?? currentYear,
+  period: props.filters?.period ?? props.performanceView?.selected_period ?? 'JAN_JUN',
 })
 
 function resetUploadForm() {
@@ -111,6 +176,9 @@ function resetUploadForm() {
   uploadForm.value = {
     files: [],
     revision: '',
+    performance_record_type: 'TARGET',
+    year: props.filters?.year ?? props.performanceView?.selected_year ?? currentYear,
+    period: props.filters?.period ?? props.performanceView?.selected_period ?? 'JAN_JUN',
   }
 
   if (fileInput.value) {
@@ -174,16 +242,36 @@ function submitUpload() {
     return
   }
 
-  if (requiresRevision.value && uploadForm.value.files.length > 1) {
+  if (requiresRevision.value && !isPerformanceForm.value && uploadForm.value.files.length > 1) {
     uploadError.value = 'Multiple upload is not allowed for revision-controlled documents.'
     toast.error(uploadError.value)
     return
   }
 
-  if (requiresRevision.value && !uploadForm.value.revision.trim()) {
+  if (requiresRevision.value && !isPerformanceForm.value && !uploadForm.value.revision.trim()) {
     uploadError.value = 'Revision is required for this document type.'
     toast.error(uploadError.value)
     return
+  }
+
+  if (isPerformanceForm.value) {
+    if (!uploadForm.value.performance_record_type) {
+      uploadError.value = 'Record type is required for performance forms.'
+      toast.error(uploadError.value)
+      return
+    }
+
+    if (!uploadForm.value.year) {
+      uploadError.value = 'Year is required for performance forms.'
+      toast.error(uploadError.value)
+      return
+    }
+
+    if (!uploadForm.value.period) {
+      uploadError.value = 'Period is required for performance forms.'
+      toast.error(uploadError.value)
+      return
+    }
   }
 
   const data = new FormData()
@@ -192,8 +280,14 @@ function submitUpload() {
     data.append('files[]', file)
   })
 
-  if (requiresRevision.value) {
+  if (requiresRevision.value && !isPerformanceForm.value) {
     data.append('revision', uploadForm.value.revision.trim())
+  }
+
+  if (isPerformanceForm.value) {
+    data.append('performance_record_type', String(uploadForm.value.performance_record_type))
+    data.append('year', String(uploadForm.value.year))
+    data.append('period', String(uploadForm.value.period))
   }
 
   uploading.value = true
@@ -208,13 +302,15 @@ function submitUpload() {
         errors.files ||
         errors['files.0'] ||
         errors.revision ||
+        errors.performance_record_type ||
+        errors.year ||
+        errors.period ||
         'Upload failed. Please try again.'
 
       toast.error(uploadError.value)
     },
     onSuccess: () => {
       const uploadedCount = uploadForm.value.files.length
-
       closeUpload(true)
 
       toast.success(
@@ -230,9 +326,37 @@ function submitUpload() {
   })
 }
 
+function selectPerformanceYear(year) {
+  selectedYear.value = year
+  selectedPeriod.value = null
+  reloadDocuments({ year, period: undefined, page: 1 })
+}
+
+function selectPerformancePeriod(year, period) {
+  selectedYear.value = year
+  selectedPeriod.value = period
+  reloadDocuments({ year, period, page: 1 })
+}
+
 function formatDate(date) {
   if (!date) return '—'
   return new Date(date).toLocaleString()
+}
+
+function formatPeriod(period) {
+  return period === 'JAN_JUN'
+    ? 'January – June'
+    : period === 'JUL_DEC'
+      ? 'July – December'
+      : 'Unknown Period'
+}
+
+function formatPerformanceRecordType(type) {
+  return type === 'TARGET'
+    ? 'Target'
+    : type === 'ACCOMPLISHMENT'
+      ? 'Accomplishment'
+      : 'Record Type'
 }
 
 function statusClass(status) {
@@ -294,16 +418,23 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
   <AdminLayout>
     <div class="space-y-6 p-6">
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-5 sm:px-6">
-          <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
-            <div class="min-w-0 flex-1 xl:max-w-[42%]">
+        <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-5 py-4 sm:px-6">
+          <div class="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+            <div class="min-w-0 flex-1 xl:max-w-[54%]">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="rounded-md bg-white/10 px-2.5 py-1 text-[11px] font-semibold tracking-wide text-white">
                   {{ documentType?.code }}
                 </span>
 
                 <span
-                  v-if="requiresRevision"
+                  v-if="isPerformanceForm"
+                  class="rounded-full bg-sky-500/15 px-2.5 py-1 text-[11px] font-medium text-sky-100 ring-1 ring-sky-400/30"
+                >
+                  Semestral Filing
+                </span>
+
+                <span
+                  v-else-if="requiresRevision"
                   class="rounded-full bg-emerald-500/15 px-2.5 py-1 text-[11px] font-medium text-emerald-100 ring-1 ring-emerald-400/30"
                   title="This document type uses revision control"
                 >
@@ -327,24 +458,32 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 </span>
               </div>
 
-              <h1 class="mt-3 text-xl font-semibold tracking-tight text-white sm:text-[22px]">
+              <h1 class="mt-2 text-lg font-semibold tracking-tight text-white sm:text-[21px]">
                 {{ documentType?.name }}
               </h1>
 
-              <p class="mt-1 max-w-xl text-sm leading-6 text-slate-300">
-                View all uploaded files under this document code.
+              <p class="mt-1 max-w-xl text-sm leading-5 text-slate-300">
+                <template v-if="isPerformanceForm">
+                  Browse uploads by year and semestral period, then open the files stored inside each folder.
+                </template>
+                <template v-else>
+                  View all uploaded files under this document code.
+                </template>
               </p>
             </div>
 
-            <div class="w-full xl:max-w-[720px]">
-              <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div class="w-full xl:max-w-[520px]">
+              <div
+                class="grid grid-cols-1 gap-3"
+                :class="requiresRevision && !isPerformanceForm ? 'sm:grid-cols-3' : 'sm:grid-cols-1'"
+              >
                 <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                   <div class="text-xs uppercase tracking-wide text-slate-400">Total Files</div>
                   <div class="mt-1 text-2xl font-semibold text-white">{{ stats?.total ?? 0 }}</div>
                 </div>
 
                 <div
-                  v-if="requiresRevision"
+                  v-if="requiresRevision && !isPerformanceForm"
                   class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
                 >
                   <div class="text-xs uppercase tracking-wide text-slate-400">Active</div>
@@ -352,18 +491,11 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 </div>
 
                 <div
-                  v-if="requiresRevision"
+                  v-if="requiresRevision && !isPerformanceForm"
                   class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3"
                 >
                   <div class="text-xs uppercase tracking-wide text-slate-400">Obsolete</div>
                   <div class="mt-1 text-2xl font-semibold text-white">{{ stats?.obsolete ?? 0 }}</div>
-                </div>
-
-                <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
-                  <div class="text-xs uppercase tracking-wide text-slate-400">Upload Access</div>
-                  <div class="mt-1 text-sm font-semibold text-white">
-                    {{ canUpload ? 'Allowed' : 'Disabled' }}
-                  </div>
                 </div>
               </div>
             </div>
@@ -394,7 +526,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               />
             </div>
 
-            <div v-if="requiresRevision" class="md:col-span-2">
+            <div v-if="requiresRevision && !isPerformanceForm" class="md:col-span-2">
               <label class="text-xs font-medium text-slate-600">Status</label>
               <select
                 v-model="statusFilter"
@@ -406,7 +538,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               </select>
             </div>
 
-            <div :class="requiresRevision ? 'md:col-span-2' : 'md:col-span-3'">
+            <div :class="requiresRevision && !isPerformanceForm ? 'md:col-span-2' : 'md:col-span-3'">
               <label class="text-xs font-medium text-slate-600">Sort</label>
               <select
                 v-model="sort"
@@ -416,12 +548,12 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 <option value="oldest">Oldest</option>
                 <option value="name_asc">File Name (A–Z)</option>
                 <option value="name_desc">File Name (Z–A)</option>
-                <option v-if="requiresRevision" value="revision_asc">Revision (A–Z)</option>
-                <option v-if="requiresRevision" value="revision_desc">Revision (Z–A)</option>
+                <option v-if="requiresRevision && !isPerformanceForm" value="revision_asc">Revision (A–Z)</option>
+                <option v-if="requiresRevision && !isPerformanceForm" value="revision_desc">Revision (Z–A)</option>
               </select>
             </div>
 
-            <div :class="requiresRevision ? 'md:col-span-2' : 'md:col-span-2'">
+            <div class="md:col-span-2">
               <label class="text-xs font-medium text-slate-600">Date From</label>
               <input
                 v-model="dateFrom"
@@ -430,7 +562,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               />
             </div>
 
-            <div :class="requiresRevision ? 'md:col-span-2' : 'md:col-span-2'">
+            <div class="md:col-span-2">
               <label class="text-xs font-medium text-slate-600">Date To</label>
               <input
                 v-model="dateTo"
@@ -442,7 +574,12 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 
           <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div class="text-sm text-slate-600">
-              {{ documents?.total ?? 0 }} file(s) found
+              <template v-if="isPerformanceForm">
+                {{ performanceSelectedFiles.length }} file(s) in selected period
+              </template>
+              <template v-else>
+                {{ documents?.total ?? 0 }} file(s) found
+              </template>
             </div>
 
             <button
@@ -454,238 +591,488 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 ? 'bg-slate-900 text-white hover:bg-slate-800'
                 : 'cursor-not-allowed bg-slate-200 text-slate-500'"
             >
-              {{ requiresRevision ? 'Upload Revision' : 'Upload Files' }}
+              {{ requiresRevision && !isPerformanceForm ? 'Upload Revision' : 'Upload Files' }}
             </button>
           </div>
         </div>
       </div>
 
-      <div
-        v-if="!(documents?.data || []).length"
-        class="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm"
-      >
-        <div class="text-lg font-semibold text-slate-900">No uploads yet</div>
-        <div class="mt-2 text-sm text-slate-600">
-          <template v-if="canUpload">
-            Start by uploading the first file for this document type.
-          </template>
-          <template v-else>
-            This document type is obsolete and is kept for reference only.
-          </template>
-        </div>
-
-        <button
-          v-if="canUpload"
-          type="button"
-          @click="openUpload"
-          class="mt-4 inline-block rounded-xl bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-800"
+      <template v-if="isPerformanceForm">
+        <div
+          v-if="shouldShowPerformanceFirstUpload"
+          class="rounded-2xl border border-dashed border-sky-300 bg-sky-50 px-5 py-6 shadow-sm"
         >
-          {{ requiresRevision ? 'Upload First Revision' : 'Upload Files' }}
-        </button>
-      </div>
-
-      <div
-        v-if="(documents?.data || []).length"
-        class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
-      >
-        <div class="overflow-x-auto">
-          <table class="min-w-full table-fixed text-sm">
-            <colgroup>
-              <template v-if="requiresRevision">
-                <col class="w-[90px]" />
-                <col />
-                <col class="w-[120px]" />
-                <col class="w-[170px]" />
-                <col class="w-[190px]" />
-                <col class="w-[170px]" />
-              </template>
-
-              <template v-else>
-                <col />
-                <col class="w-[170px]" />
-                <col class="w-[190px]" />
-                <col class="w-[170px]" />
-              </template>
-            </colgroup>
-
-            <thead class="border-b border-slate-200 bg-slate-50">
-              <tr class="text-left">
-                <th v-if="requiresRevision" class="px-5 py-3 font-semibold text-slate-700">
-                  Revision
-                </th>
-                <th class="px-5 py-3 font-semibold text-slate-700">File Name</th>
-                <th v-if="requiresRevision" class="px-5 py-3 font-semibold text-slate-700">
-                  Status
-                </th>
-                <th class="px-5 py-3 font-semibold text-slate-700">Uploaded By</th>
-                <th class="px-5 py-3 whitespace-nowrap font-semibold text-slate-700">Date</th>
-                <th class="px-5 py-3 whitespace-nowrap text-right font-semibold text-slate-700">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-
-            <tbody>
-              <tr
-                v-for="doc in documents.data"
-                :key="doc.id"
-                class="border-b border-slate-100 transition-colors duration-200 hover:bg-slate-50"
-              >
-                <td
-                  v-if="requiresRevision"
-                  class="whitespace-nowrap px-5 py-4 align-middle font-medium text-slate-900"
-                >
-                  {{ doc.revision || '—' }}
-                </td>
-
-                <td class="px-5 py-4 align-middle text-slate-800">
-                  <div class="flex min-w-0 items-center gap-2">
-                    <span
-                      class="inline-flex shrink-0 items-center rounded-md px-1.5 py-[2px] text-[10px] font-bold tracking-wide ring-1"
-                      :class="getFileTypeClass(doc.file_name)"
-                    >
-                      {{ getFileTypeLabel(doc.file_name) }}
-                    </span>
-
-                    <div
-                      class="min-w-0 max-w-[250px] truncate overflow-hidden whitespace-nowrap"
-                      :title="doc.file_name"
-                    >
-                      {{ doc.file_name }}
-                    </div>
-                  </div>
-                </td>
-
-                <td v-if="requiresRevision" class="whitespace-nowrap px-5 py-4 align-middle">
-                  <span
-                    class="rounded-full px-2 py-1 text-xs ring-1 transition"
-                    :class="statusClass(doc.status)"
-                  >
-                    {{ doc.status }}
-                  </span>
-                </td>
-
-                <td class="px-5 py-4 align-middle text-slate-600">
-                  <div class="line-clamp-2">
-                    {{ doc.uploaded_by_name }}
-                  </div>
-                </td>
-
-                <td class="whitespace-nowrap px-5 py-4 align-middle text-slate-600">
-                  {{ formatDate(doc.created_at) }}
-                </td>
-
-                <td class="px-5 py-4 align-middle">
-                  <div class="flex items-center justify-end gap-2 whitespace-nowrap">
-                    <Link
-                      v-if="!requiresRevision && doc.ofi_record_id"
-                      :href="`/ofi-form?record=${doc.ofi_record_id}`"
-                      class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
-                      title="Edit this OFI record"
-                    >
-                      Edit
-                    </Link>
-
-                    <Link
-                      v-else-if="!requiresRevision && doc.dcr_record_id"
-                      :href="`/dcr?record=${doc.dcr_record_id}`"
-                      class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
-                      title="Edit this DCR record"
-                    >
-                      Edit
-                    </Link>
-
-                    <a
-                      :href="doc.preview_url"
-                      target="_blank"
-                      rel="noopener"
-                      class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white transition hover:bg-slate-800"
-                    >
-                      Preview
-                    </a>
-
-                    <a
-                      :href="doc.download_url"
-                      class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
-                    >
-                      Download
-                    </a>
-                  </div>
-                </td>
-              </tr>
-
-              <tr v-if="!documents.data.length">
-                <td :colspan="tableColspan" class="px-5 py-6 text-center text-sm text-slate-500">
-                  No matching files found.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-        <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
-            <div class="text-sm text-slate-600">
-              Showing
-              <span class="font-medium text-slate-900">{{ documents.from ?? 0 }}</span>
-              to
-              <span class="font-medium text-slate-900">{{ documents.to ?? 0 }}</span>
-              of
-              <span class="font-medium text-slate-900">{{ documents.total ?? 0 }}</span>
-              files
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div>
+              <h2 class="text-base font-semibold text-slate-900">
+                No uploads yet
+              </h2>
+              <p class="mt-1 text-sm text-slate-600">
+                Upload the first {{ documentType?.name }} file by selecting record type, year, and semestral period.
+                After upload, the folder structure will appear automatically.
+              </p>
             </div>
 
-            <div class="flex items-center gap-2">
-              <label class="text-sm text-slate-600">Per page</label>
-              <select
-                v-model="perPage"
-                class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
-              >
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="100">100</option>
-              </select>
+            <button
+              type="button"
+              @click="openUpload"
+              class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              Upload First File
+            </button>
+          </div>
+
+          <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <div class="rounded-xl border border-sky-200 bg-white px-4 py-3">
+              <div class="text-xs font-medium uppercase tracking-wide text-sky-700">Structure</div>
+              <div class="mt-2 text-sm text-slate-700">
+                {{ documentType?.name }} → Record Type → Year → Period → Files
+              </div>
+            </div>
+
+            <div class="rounded-xl border border-sky-200 bg-white px-4 py-3">
+              <div class="text-xs font-medium uppercase tracking-wide text-sky-700">Periods</div>
+              <div class="mt-2 text-sm text-slate-700">
+                January–June and July–December only
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          v-else-if="!performanceYearGroups.length"
+          class="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm"
+        >
+          <div class="text-lg font-semibold text-slate-900">No uploads yet</div>
+          <div class="mt-2 text-sm text-slate-600">
+            This document type is obsolete and is kept for reference only.
+          </div>
+        </div>
+
+        <div v-else class="grid grid-cols-1 gap-6 xl:grid-cols-12">
+          <div class="xl:col-span-4">
+            <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div class="border-b border-slate-200 px-5 py-4">
+                <h2 class="text-base font-semibold text-slate-900">Years and Periods</h2>
+                <p class="mt-1 text-sm text-slate-600">
+                  Select a year, then open the semestral folder inside it.
+                </p>
+              </div>
+
+              <div class="max-h-[720px] space-y-4 overflow-y-auto px-4 py-4">
+                <div
+                  v-for="yearGroup in performanceYearGroups"
+                  :key="yearGroup.year"
+                  class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                >
+                  <div class="mb-3 flex items-start justify-between gap-3">
+                    <button
+                      type="button"
+                      @click="selectPerformanceYear(yearGroup.year)"
+                      class="text-left"
+                    >
+                      <div class="text-lg font-semibold text-slate-900 hover:text-slate-700">
+                        {{ yearGroup.year }}
+                      </div>
+                      <div class="text-xs text-slate-500">
+                        {{ yearGroup.total_files }} file(s) • {{ yearGroup.periods_count }} period(s)
+                      </div>
+                    </button>
+
+                    <div class="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700">
+                      {{ yearGroup.periods_count }}
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 gap-2">
+                    <button
+                      v-for="periodItem in yearGroup.periods"
+                      :key="`${yearGroup.year}-${periodItem.period}`"
+                      type="button"
+                      @click="selectPerformancePeriod(yearGroup.year, periodItem.period)"
+                      class="rounded-xl border px-3 py-3 text-left transition"
+                      :class="
+                        Number(selectedYear) === Number(yearGroup.year) && selectedPeriod === periodItem.period
+                          ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                          : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
+                      "
+                    >
+                      <div class="font-medium">
+                        {{ periodItem.period_name }}
+                      </div>
+                      <div
+                        class="mt-1 text-xs"
+                        :class="
+                          Number(selectedYear) === Number(yearGroup.year) && selectedPeriod === periodItem.period
+                            ? 'text-slate-300'
+                            : 'text-slate-500'
+                        "
+                      >
+                        {{ periodItem.files_count }} file(s)
+                      </div>
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
 
-          <div class="flex flex-wrap items-center gap-2">
-            <template v-for="(link, index) in documents.links" :key="`${link.label}-${index}`">
-              <Link
-                v-if="link.url"
-                :href="link.url"
-                preserve-scroll
-                preserve-state
-                class="inline-flex items-center rounded-lg border px-3 py-1.5 text-sm transition"
-                :class="
-                  link.active
-                    ? 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                "
-              >
-                <span v-html="link.label" />
-              </Link>
+          <div class="xl:col-span-8">
+            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div class="border-b border-slate-200 px-5 py-4">
+                <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 class="text-base font-semibold text-slate-900">
+                      <template v-if="selectedYear && selectedPeriod">
+                        {{ documentType?.name }} — {{ selectedYear }} / {{ performanceSelectedPeriodName }}
+                      </template>
+                      <template v-else>
+                        Select a year and period
+                      </template>
+                    </h2>
+                    <p class="mt-1 text-sm text-slate-600">
+                      <template v-if="selectedYear && selectedPeriod">
+                        All files uploaded under this semestral folder are shown below.
+                      </template>
+                      <template v-else>
+                        Choose a year and period from the left panel.
+                      </template>
+                    </p>
+                  </div>
 
-              <span
-                v-else
-                class="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-400"
-              >
-                <span v-html="link.label" />
-              </span>
+                  <div
+                    v-if="selectedYear && selectedPeriod"
+                    class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
+                  >
+                    {{ performanceSelectedFiles.length }} file(s)
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="!selectedYear || !selectedPeriod" class="p-10 text-center">
+                <div class="text-lg font-semibold text-slate-900">No folder selected</div>
+                <div class="mt-2 text-sm text-slate-600">
+                  Select a year and semestral period to view the files.
+                </div>
+              </div>
+
+              <div v-else-if="!performanceSelectedFiles.length" class="p-10 text-center">
+                <div class="text-lg font-semibold text-slate-900">No files found</div>
+                <div class="mt-2 text-sm text-slate-600">
+                  There are no files for the selected period based on the current filters.
+                </div>
+              </div>
+
+              <div v-else class="space-y-4 p-5">
+                <div
+                  v-for="doc in performanceSelectedFiles"
+                  :key="doc.id"
+                  class="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300 hover:bg-white"
+                >
+                  <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="min-w-0 flex-1">
+                      <div class="flex min-w-0 items-center gap-2">
+                        <span
+                          class="inline-flex shrink-0 items-center rounded-md px-1.5 py-[2px] text-[10px] font-bold tracking-wide ring-1"
+                          :class="getFileTypeClass(doc.file_name)"
+                        >
+                          {{ getFileTypeLabel(doc.file_name) }}
+                        </span>
+
+                        <div class="truncate text-sm font-semibold text-slate-900" :title="doc.file_name">
+                          {{ doc.file_name }}
+                        </div>
+                      </div>
+
+                      <div class="mt-3 grid grid-cols-1 gap-2 text-sm text-slate-600 sm:grid-cols-2">
+                        <div>
+                          <span class="font-medium text-slate-700">Uploaded by:</span>
+                          {{ doc.uploaded_by_name }}
+                        </div>
+                        <div>
+                          <span class="font-medium text-slate-700">Date:</span>
+                          {{ formatDate(doc.created_at) }}
+                        </div>
+                        <div v-if="doc.performance_record_type">
+                          <span class="font-medium text-slate-700">Record Type:</span>
+                          {{ formatPerformanceRecordType(doc.performance_record_type) }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex flex-wrap items-center gap-2 lg:justify-end">
+                      <Link
+                        v-if="doc.ofi_record_id"
+                        :href="`/ofi-form?record=${doc.ofi_record_id}`"
+                        class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
+                      >
+                        Edit
+                      </Link>
+
+                      <Link
+                        v-else-if="doc.dcr_record_id"
+                        :href="`/dcr?record=${doc.dcr_record_id}`"
+                        class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
+                      >
+                        Edit
+                      </Link>
+
+                      <a
+                        :href="doc.preview_url"
+                        target="_blank"
+                        rel="noopener"
+                        class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white transition hover:bg-slate-800"
+                      >
+                        Preview
+                      </a>
+
+                      <a
+                        :href="doc.download_url"
+                        class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
+                      >
+                        Download
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="border-t border-slate-200 bg-slate-50 px-6 py-3 text-xs text-slate-500">
+                Performance forms are organized by record type, year, and semestral period.
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <template v-else>
+        <div
+          v-if="!(documents?.data || []).length"
+          class="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm"
+        >
+          <div class="text-lg font-semibold text-slate-900">No uploads yet</div>
+          <div class="mt-2 text-sm text-slate-600">
+            <template v-if="canUpload">
+              Start by uploading the first file for this document type.
+            </template>
+            <template v-else>
+              This document type is obsolete and is kept for reference only.
+            </template>
+          </div>
+
+          <button
+            v-if="canUpload"
+            type="button"
+            @click="openUpload"
+            class="mt-4 inline-block rounded-xl bg-slate-900 px-4 py-2 text-sm text-white transition hover:bg-slate-800"
+          >
+            {{ requiresRevision ? 'Upload First Revision' : 'Upload Files' }}
+          </button>
+        </div>
+
+        <div
+          v-if="(documents?.data || []).length"
+          class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
+        >
+          <div class="overflow-x-auto">
+            <table class="min-w-full table-fixed text-sm">
+              <colgroup>
+                <template v-if="requiresRevision">
+                  <col class="w-[90px]" />
+                  <col />
+                  <col class="w-[120px]" />
+                  <col class="w-[170px]" />
+                  <col class="w-[190px]" />
+                  <col class="w-[170px]" />
+                </template>
+
+                <template v-else>
+                  <col />
+                  <col class="w-[170px]" />
+                  <col class="w-[190px]" />
+                  <col class="w-[170px]" />
+                </template>
+              </colgroup>
+
+              <thead class="border-b border-slate-200 bg-slate-50">
+                <tr class="text-left">
+                  <th v-if="requiresRevision" class="px-5 py-3 font-semibold text-slate-700">
+                    Revision
+                  </th>
+                  <th class="px-5 py-3 font-semibold text-slate-700">File Name</th>
+                  <th v-if="requiresRevision" class="px-5 py-3 font-semibold text-slate-700">
+                    Status
+                  </th>
+                  <th class="px-5 py-3 font-semibold text-slate-700">Uploaded By</th>
+                  <th class="px-5 py-3 whitespace-nowrap font-semibold text-slate-700">Date</th>
+                  <th class="px-5 py-3 whitespace-nowrap text-right font-semibold text-slate-700">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <tr
+                  v-for="doc in documents.data"
+                  :key="doc.id"
+                  class="border-b border-slate-100 transition-colors duration-200 hover:bg-slate-50"
+                >
+                  <td
+                    v-if="requiresRevision"
+                    class="whitespace-nowrap px-5 py-4 align-middle font-medium text-slate-900"
+                  >
+                    {{ doc.revision || '—' }}
+                  </td>
+
+                  <td class="px-5 py-4 align-middle text-slate-800">
+                    <div class="flex min-w-0 items-center gap-2">
+                      <span
+                        class="inline-flex shrink-0 items-center rounded-md px-1.5 py-[2px] text-[10px] font-bold tracking-wide ring-1"
+                        :class="getFileTypeClass(doc.file_name)"
+                      >
+                        {{ getFileTypeLabel(doc.file_name) }}
+                      </span>
+
+                      <div
+                        class="min-w-0 max-w-[250px] truncate overflow-hidden whitespace-nowrap"
+                        :title="doc.file_name"
+                      >
+                        {{ doc.file_name }}
+                      </div>
+                    </div>
+                  </td>
+
+                  <td v-if="requiresRevision" class="whitespace-nowrap px-5 py-4 align-middle">
+                    <span
+                      class="rounded-full px-2 py-1 text-xs ring-1 transition"
+                      :class="statusClass(doc.status)"
+                    >
+                      {{ doc.status }}
+                    </span>
+                  </td>
+
+                  <td class="px-5 py-4 align-middle text-slate-600">
+                    <div class="line-clamp-2">
+                      {{ doc.uploaded_by_name }}
+                    </div>
+                  </td>
+
+                  <td class="whitespace-nowrap px-5 py-4 align-middle text-slate-600">
+                    {{ formatDate(doc.created_at) }}
+                  </td>
+
+                  <td class="px-5 py-4 align-middle">
+                    <div class="flex items-center justify-end gap-2 whitespace-nowrap">
+                      <Link
+                        v-if="!requiresRevision && doc.ofi_record_id"
+                        :href="`/ofi-form?record=${doc.ofi_record_id}`"
+                        class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
+                        title="Edit this OFI record"
+                      >
+                        Edit
+                      </Link>
+
+                      <Link
+                        v-else-if="!requiresRevision && doc.dcr_record_id"
+                        :href="`/dcr?record=${doc.dcr_record_id}`"
+                        class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
+                        title="Edit this DCR record"
+                      >
+                        Edit
+                      </Link>
+
+                      <a
+                        :href="doc.preview_url"
+                        target="_blank"
+                        rel="noopener"
+                        class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white transition hover:bg-slate-800"
+                      >
+                        Preview
+                      </a>
+
+                      <a
+                        :href="doc.download_url"
+                        class="inline-flex items-center justify-center rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 transition hover:bg-slate-50"
+                      >
+                        Download
+                      </a>
+                    </div>
+                  </td>
+                </tr>
+
+                <tr v-if="!documents.data.length">
+                  <td :colspan="tableColspan" class="px-5 py-6 text-center text-sm text-slate-500">
+                    No matching files found.
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="flex flex-col gap-3 border-t border-slate-200 bg-slate-50 px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              <div class="text-sm text-slate-600">
+                Showing
+                <span class="font-medium text-slate-900">{{ documents.from ?? 0 }}</span>
+                to
+                <span class="font-medium text-slate-900">{{ documents.to ?? 0 }}</span>
+                of
+                <span class="font-medium text-slate-900">{{ documents.total ?? 0 }}</span>
+                files
+              </div>
+
+              <div class="flex items-center gap-2">
+                <label class="text-sm text-slate-600">Per page</label>
+                <select
+                  v-model="perPage"
+                  class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm text-slate-700 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+                >
+                  <option value="10">10</option>
+                  <option value="25">25</option>
+                  <option value="50">50</option>
+                  <option value="100">100</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-2">
+              <template v-for="(link, index) in documents.links" :key="`${link.label}-${index}`">
+                <Link
+                  v-if="link.url"
+                  :href="link.url"
+                  preserve-scroll
+                  preserve-state
+                  class="inline-flex items-center rounded-lg border px-3 py-1.5 text-sm transition"
+                  :class="
+                    link.active
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+                  "
+                >
+                  <span v-html="link.label" />
+                </Link>
+
+                <span
+                  v-else
+                  class="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-400"
+                >
+                  <span v-html="link.label" />
+                </span>
+              </template>
+            </div>
+          </div>
+
+          <div class="bg-slate-50 px-6 py-3 text-xs text-slate-500">
+            <template v-if="requiresRevision">
+              ISO Document Control: Only one version should remain Active.
+              Uploading a new revision should mark previous versions as Obsolete.
+            </template>
+            <template v-else>
+              Record storage: uploads are treated as records (no revision control).
             </template>
           </div>
         </div>
-
-        <div class="bg-slate-50 px-6 py-3 text-xs text-slate-500">
-          <template v-if="requiresRevision">
-            ISO Document Control: Only one version should remain Active.
-            Uploading a new revision should mark previous versions as Obsolete.
-          </template>
-          <template v-else>
-            Record storage: uploads are treated as records (no revision control).
-          </template>
-        </div>
-      </div>
+      </template>
 
       <Transition
         enter-active-class="transition duration-200 ease-out"
@@ -757,19 +1144,64 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                     Upload is disabled if the document type is obsolete.
                   </div>
 
+                  <div v-if="isPerformanceForm" class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                    <div>
+                      <label class="text-xs font-medium text-slate-600">Record Type</label>
+                      <select
+                        v-model="uploadForm.performance_record_type"
+                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      >
+                        <option
+                          v-for="recordType in performanceRecordTypeOptions"
+                          :key="recordType.value"
+                          :value="recordType.value"
+                        >
+                          {{ recordType.label }}
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label class="text-xs font-medium text-slate-600">Year</label>
+                      <select
+                        v-model="uploadForm.year"
+                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      >
+                        <option v-for="year in yearOptions" :key="year" :value="year">
+                          {{ year }}
+                        </option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label class="text-xs font-medium text-slate-600">Period</label>
+                      <select
+                        v-model="uploadForm.period"
+                        class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      >
+                        <option v-for="period in periodOptions" :key="period.value" :value="period.value">
+                          {{ period.label }}
+                        </option>
+                      </select>
+                    </div>
+                  </div>
+
                   <div>
                     <label class="text-xs font-medium text-slate-600">Select File</label>
                     <input
                       ref="fileInput"
                       type="file"
                       @change="onPickFile"
-                      :multiple="!requiresRevision"
+                      :multiple="!requiresRevision || isPerformanceForm"
                       class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
                       accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg"
                     />
 
                     <p class="mt-2 text-xs text-slate-500">
-                      <template v-if="requiresRevision">
+                      <template v-if="isPerformanceForm">
+                        Allowed: PDF, Word, Excel, images. Multiple files are allowed in the same semestral folder.
+                      </template>
+                      <template v-else-if="requiresRevision">
                         Allowed: PDF, Word, Excel, images. One file only for revision-controlled documents.
                       </template>
                       <template v-else>
@@ -827,7 +1259,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                     </div>
                   </div>
 
-                  <div v-if="requiresRevision">
+                  <div v-if="requiresRevision && !isPerformanceForm">
                     <label class="text-xs font-medium text-slate-600">Revision</label>
                     <input
                       v-model="uploadForm.revision"

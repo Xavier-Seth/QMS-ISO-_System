@@ -35,6 +35,7 @@ const sort = ref(props.filters.sort ?? 'code_asc')
 const view = ref(props.filters.view ?? 'group')
 const status = ref(props.filters.status ?? 'All')
 const isFiltering = ref(false)
+const isRedirectingPerformance = ref(false)
 
 const createModalOpen = ref(false)
 const obsoleteModalOpen = ref(false)
@@ -101,7 +102,54 @@ const deleteButtonText = computed(() => {
   return 'Deleting...'
 })
 
+const performanceDocumentMap = computed(() => {
+  const map = {}
+
+  for (const row of props.documentTypes || []) {
+    const seriesCode = (row?.series?.code_prefix || '').toUpperCase()
+    if (['IPCR', 'DPCR', 'UPCR'].includes(seriesCode) && !map[seriesCode]) {
+      map[seriesCode] = row
+      continue
+    }
+
+    const code = (row?.code || '').toUpperCase()
+    if (!map.IPCR && code.startsWith('IPCR')) map.IPCR = row
+    if (!map.DPCR && code.startsWith('DPCR')) map.DPCR = row
+    if (!map.UPCR && code.startsWith('UPCR')) map.UPCR = row
+  }
+
+  return map
+})
+
+function redirectToPerformanceDocument(selectedCode) {
+  const code = String(selectedCode || '').toUpperCase()
+  if (!code) return
+
+  const row = performanceDocumentMap.value[code]
+
+  if (!row?.id) {
+    toast.error(`No ${code} document type was found. Create the ${code} document type first.`)
+    return
+  }
+
+  isRedirectingPerformance.value = true
+
+  router.get(`/documents/${row.id}`, {}, {
+    preserveScroll: true,
+    onFinish: () => {
+      isRedirectingPerformance.value = false
+    },
+  })
+}
+
 function applyFilters() {
+  if (showPerformanceTypeDropdown.value) {
+    if (series.value) {
+      redirectToPerformanceDocument(series.value)
+      return
+    }
+  }
+
   isFiltering.value = true
 
   const params = {
@@ -113,7 +161,7 @@ function applyFilters() {
 
   if (showPerformanceTypeDropdown.value) {
     params.mode = 'performance'
-    params.series = series.value || undefined
+    params.series = undefined
   } else {
     params.series = series.value || undefined
   }
@@ -122,24 +170,37 @@ function applyFilters() {
     preserveState: true,
     replace: true,
     preserveScroll: true,
-    onFinish: () => (isFiltering.value = false),
+    onFinish: () => {
+      isFiltering.value = false
+    },
   })
 }
 
 watch(q, () => {
+  if (showPerformanceTypeDropdown.value) return
+
   clearTimeout(debounceTimer)
   debounceTimer = setTimeout(applyFilters, 220)
 })
 
 watch([sort, view], () => {
+  if (showPerformanceTypeDropdown.value) return
   applyFilters()
 })
 
-watch(series, () => {
+watch(series, (newValue, oldValue) => {
+  if (showPerformanceTypeDropdown.value) {
+    if (!newValue) return
+    if (newValue === oldValue) return
+    redirectToPerformanceDocument(newValue)
+    return
+  }
+
   applyFilters()
 })
 
 watch(status, () => {
+  if (showPerformanceTypeDropdown.value) return
   applyFilters()
 })
 
@@ -421,11 +482,12 @@ onBeforeUnmount(() => {
                   v-model="q"
                   type="text"
                   placeholder="Search: R-QMS-001, Filing Chart, OFI, DCR..."
-                  class="w-full rounded-xl border border-slate-200 px-4 py-1.5 pr-10 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+                  :disabled="showPerformanceTypeDropdown"
+                  class="w-full rounded-xl border border-slate-200 px-4 py-1.5 pr-10 transition focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
                 />
                 <div class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
                   <svg
-                    v-if="!isFiltering"
+                    v-if="!isFiltering && !isRedirectingPerformance"
                     xmlns="http://www.w3.org/2000/svg"
                     class="h-5 w-5 transition"
                     fill="none"
@@ -484,7 +546,8 @@ onBeforeUnmount(() => {
                   :key="option"
                   type="button"
                   @click="status = option"
-                  class="flex-1 rounded-lg px-3 py-1.5 text-sm transition"
+                  :disabled="showPerformanceTypeDropdown"
+                  class="flex-1 rounded-lg px-3 py-1.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-50"
                   :class="
                     status === option
                       ? 'bg-white text-slate-900 shadow-sm'
@@ -500,7 +563,8 @@ onBeforeUnmount(() => {
               <label class="text-xs font-medium text-slate-600">Sort</label>
               <select
                 v-model="sort"
-                class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+                :disabled="showPerformanceTypeDropdown"
+                class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-1.5 transition focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
               >
                 <option value="code_asc">Code (A–Z)</option>
                 <option value="name_asc">Name (A–Z)</option>
@@ -512,9 +576,14 @@ onBeforeUnmount(() => {
 
           <div class="mt-4 flex items-center justify-between">
             <div class="text-xs text-slate-500">
-              Showing
-              <span class="font-semibold text-slate-700">{{ normalized.length }}</span>
-              document type(s)
+              <template v-if="showPerformanceTypeDropdown">
+                Select IPCR, DPCR, or UPCR to open it directly.
+              </template>
+              <template v-else>
+                Showing
+                <span class="font-semibold text-slate-700">{{ normalized.length }}</span>
+                document type(s)
+              </template>
             </div>
 
             <div class="inline-flex rounded-xl border border-slate-200 bg-slate-50 p-1">
@@ -553,7 +622,30 @@ onBeforeUnmount(() => {
         leave-to-class="opacity-0 -translate-y-1"
       >
         <div
-          v-if="!normalized.length"
+          v-if="showPerformanceTypeDropdown"
+          class="rounded-2xl border border-slate-200 bg-white p-10 text-center"
+        >
+          <div class="font-semibold text-slate-900">
+            <template v-if="isRedirectingPerformance">
+              Opening selected performance form...
+            </template>
+            <template v-else>
+              Select a performance form
+            </template>
+          </div>
+
+          <div class="mt-1 text-sm text-slate-600">
+            <template v-if="isRedirectingPerformance">
+              Redirecting to the upload page.
+            </template>
+            <template v-else>
+              Choose IPCR, DPCR, or UPCR from the dropdown above.
+            </template>
+          </div>
+        </div>
+
+        <div
+          v-else-if="!normalized.length"
           class="rounded-2xl border border-slate-200 bg-white p-10 text-center"
         >
           <div class="font-semibold text-slate-900">No results</div>
@@ -571,7 +663,7 @@ onBeforeUnmount(() => {
         leave-to-class="opacity-0 -translate-y-1"
       >
         <div
-          v-if="view === 'group' && normalized.length"
+          v-if="!showPerformanceTypeDropdown && view === 'group' && normalized.length"
           key="group-view"
           class="space-y-6"
         >
@@ -685,7 +777,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div
-          v-else-if="view === 'table' && normalized.length"
+          v-else-if="!showPerformanceTypeDropdown && view === 'table' && normalized.length"
           key="table-view"
           class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
         >
