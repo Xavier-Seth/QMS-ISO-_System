@@ -62,11 +62,19 @@ const recordTypeOptions = [
 const currentYear = new Date().getFullYear()
 
 const yearOptions = computed(() => {
-  const years = []
-  for (let year = currentYear + 1; year >= 2020; year -= 1) {
-    years.push(year)
+  const startYear = currentYear + 1
+  const endYear = 2020
+
+  const generatedYears = []
+  for (let year = startYear; year >= endYear; year -= 1) {
+    generatedYears.push(year)
   }
-  return years
+
+  const existingYears = props.years
+    .map((year) => Number(year.value))
+    .filter(Boolean)
+
+  return [...new Set([...generatedYears, ...existingYears])].sort((a, b) => b - a)
 })
 
 const fileItems = computed(() => {
@@ -259,13 +267,13 @@ const uploadError = ref('')
 const fileInput = ref(null)
 
 const uploadForm = ref({
-  performance_record_type: props.filters?.record_type || 'TARGET',
+  performance_record_type: props.filters?.record_type || '',
   year: props.filters?.year ?? currentYear,
   period: props.filters?.period || 'JAN_JUN',
   files: [],
 })
 
-const canOpenUpload = computed(() => !!selectedCategory.value && !!selectedRecordType.value)
+const canOpenUpload = computed(() => !!selectedCategory.value && !!selectedRecordType.value && !props.meta?.missing_types)
 
 const selectedCategoryLabel = computed(() => selectedCategory.value || 'IPCR')
 const selectedRecordTypeLabel = computed(() => props.meta?.record_type_label || 'Record Type')
@@ -278,7 +286,7 @@ const showFilesSection = computed(() => !!selectedRecordType.value && !!selected
 function resetUploadForm() {
   uploadError.value = ''
   uploadForm.value = {
-    performance_record_type: selectedRecordType.value || 'TARGET',
+    performance_record_type: selectedRecordType.value || '',
     year: selectedYear.value ?? currentYear,
     period: selectedPeriod.value || 'JAN_JUN',
     files: [],
@@ -290,6 +298,11 @@ function resetUploadForm() {
 }
 
 function openUpload() {
+  if (props.meta?.missing_types) {
+    uploadError.value = props.meta?.missing_types_message || 'Performance document types are missing.'
+    return
+  }
+
   if (!selectedCategory.value || !selectedRecordType.value) {
     uploadError.value = 'Please select a record type first.'
     return
@@ -363,6 +376,10 @@ function submitUpload() {
     form.append('files[]', file)
   })
 
+  const selectedUploadRecordType = uploadForm.value.performance_record_type
+  const selectedUploadYear = uploadForm.value.year
+  const selectedUploadPeriod = uploadForm.value.period
+
   uploading.value = true
 
   router.post('/performance/upload', form, {
@@ -380,6 +397,13 @@ function submitUpload() {
     },
     onSuccess: () => {
       closeUpload(true)
+
+      visitPerformance({
+        category: selectedCategory.value,
+        record_type: selectedUploadRecordType,
+        year: selectedUploadYear,
+        period: selectedUploadPeriod,
+      })
     },
     onFinish: () => {
       uploading.value = false
@@ -391,6 +415,10 @@ function submitUpload() {
 <template>
   <AdminLayout>
     <div class="space-y-6 p-6">
+      <div v-if="meta?.missing_types" class="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-800">
+        {{ meta?.missing_types_message }}
+      </div>
+
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5">
           <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
@@ -790,13 +818,14 @@ function submitUpload() {
 
                   <div class="flex flex-wrap items-center gap-2 lg:justify-end">
                     <a
-                      :href="file.preview_url"
-                      target="_blank"
-                      rel="noopener"
-                      class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white transition hover:bg-slate-800"
-                    >
-                      Preview
-                    </a>
+  v-if="file.can_preview && file.preview_url"
+  :href="file.preview_url"
+  target="_blank"
+  rel="noopener"
+  class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs text-white transition hover:bg-slate-800"
+>
+  Preview
+</a>
 
                     <a
                       :href="file.download_url"
@@ -893,7 +922,8 @@ function submitUpload() {
                     <label class="text-xs font-medium text-slate-600">Record Type</label>
                     <select
                       v-model="uploadForm.performance_record_type"
-                      class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
+                      :disabled="!!selectedRecordType"
+                      class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 transition focus:outline-none focus:ring-2 focus:ring-slate-300 disabled:cursor-not-allowed disabled:bg-slate-100"
                     >
                       <option
                         v-for="recordType in recordTypeOptions"
@@ -946,11 +976,11 @@ function submitUpload() {
                     multiple
                     @change="onPickFile"
                     class="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 transition focus:outline-none focus:ring-2 focus:ring-slate-300"
-                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.png,.jpg,.jpeg,.gif,.webp"
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.webp"
                   />
 
                   <p class="mt-2 text-xs text-slate-500">
-                    Allowed: PDF, Word, Excel, images. Multiple files are allowed in the same semestral folder.
+                    Allowed: PDF, Word, Excel, PowerPoint, images. Multiple files are allowed in the same semestral folder.
                   </p>
 
                   <div v-if="uploadForm.files.length" class="mt-4">

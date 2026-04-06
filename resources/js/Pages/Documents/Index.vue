@@ -218,11 +218,18 @@ watch(
 
 watch(
   () => page.url,
-  (url) => {
+  (url, oldUrl) => {
     const isPerformance = (url || '').includes('mode=performance')
+    const wasPerformance = (oldUrl || '').includes('mode=performance')
 
-    if (isPerformance && !['IPCR', 'DPCR', 'UPCR'].includes(series.value)) {
-      series.value = ''
+    if (isPerformance && !wasPerformance) {
+      q.value = ''
+      status.value = 'All'
+      sort.value = 'code_asc'
+
+      if (!['IPCR', 'DPCR', 'UPCR'].includes(series.value)) {
+        series.value = ''
+      }
     }
   },
   { immediate: true }

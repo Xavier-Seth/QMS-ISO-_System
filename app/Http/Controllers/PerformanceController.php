@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DocumentType;
 use App\Models\DocumentUpload;
 use App\Services\ActivityLogService;
 use App\Services\DocumentPreview\DocumentDownloadService;
@@ -55,21 +56,24 @@ class PerformanceController extends Controller
             $sort = 'latest';
         }
 
-        $baseQuery = DocumentUpload::query()
-            ->whereNull('document_type_id')
-            ->whereNotNull('performance_category')
-            ->whereNotNull('performance_record_type')
-            ->whereNotNull('year')
-            ->whereNotNull('period');
+        $categoryTypeIds = $this->performanceTypeIds();
 
         $categories = collect($allowedCategories)
-            ->map(function (string $category) use ($baseQuery) {
+            ->map(function (string $category) use ($categoryTypeIds) {
+                $typeId = $categoryTypeIds[$category] ?? null;
+
                 return [
                     'value' => $category,
                     'label' => $category,
-                    'files_count' => (clone $baseQuery)
-                        ->where('performance_category', $category)
-                        ->count(),
+                    'files_count' => $typeId
+                        ? DocumentUpload::query()
+                            ->where('document_type_id', $typeId)
+                            ->where('performance_category', $category)
+                            ->whereNotNull('performance_record_type')
+                            ->whereNotNull('year')
+                            ->whereNotNull('period')
+                            ->count()
+                        : 0,
                 ];
             })
             ->values();
@@ -89,25 +93,41 @@ class PerformanceController extends Controller
             'per_page' => 10,
         ];
 
-        if ($selectedCategory !== '') {
+        $missingTypes = count($categoryTypeIds) < count($allowedCategories);
+
+        if (!$missingTypes && $selectedCategory !== '' && isset($categoryTypeIds[$selectedCategory])) {
+            $selectedTypeId = $categoryTypeIds[$selectedCategory];
+
             $recordTypes = collect($allowedRecordTypes)
-                ->map(function (string $recordType) use ($baseQuery, $selectedCategory) {
+                ->map(function (string $recordType) use ($selectedCategory, $selectedTypeId) {
                     return [
                         'value' => $recordType,
                         'label' => $this->recordTypeLabel($recordType),
-                        'files_count' => (clone $baseQuery)
+                        'files_count' => DocumentUpload::query()
+                            ->where('document_type_id', $selectedTypeId)
                             ->where('performance_category', $selectedCategory)
                             ->where('performance_record_type', $recordType)
+                            ->whereNotNull('year')
+                            ->whereNotNull('period')
                             ->count(),
                     ];
                 })
                 ->values();
         }
 
-        if ($selectedCategory !== '' && $selectedRecordType !== '') {
-            $years = (clone $baseQuery)
+        if (
+            !$missingTypes
+            && $selectedCategory !== ''
+            && $selectedRecordType !== ''
+            && isset($categoryTypeIds[$selectedCategory])
+        ) {
+            $selectedTypeId = $categoryTypeIds[$selectedCategory];
+
+            $years = DocumentUpload::query()
+                ->where('document_type_id', $selectedTypeId)
                 ->where('performance_category', $selectedCategory)
                 ->where('performance_record_type', $selectedRecordType)
+                ->whereNotNull('year')
                 ->select('year')
                 ->distinct()
                 ->orderByDesc('year')
@@ -119,11 +139,21 @@ class PerformanceController extends Controller
                 ->values();
         }
 
-        if ($selectedCategory !== '' && $selectedRecordType !== '' && $selectedYear !== null) {
-            $existingPeriods = (clone $baseQuery)
+        if (
+            !$missingTypes
+            && $selectedCategory !== ''
+            && $selectedRecordType !== ''
+            && $selectedYear !== null
+            && isset($categoryTypeIds[$selectedCategory])
+        ) {
+            $selectedTypeId = $categoryTypeIds[$selectedCategory];
+
+            $existingPeriods = DocumentUpload::query()
+                ->where('document_type_id', $selectedTypeId)
                 ->where('performance_category', $selectedCategory)
                 ->where('performance_record_type', $selectedRecordType)
                 ->where('year', $selectedYear)
+                ->whereNotNull('period')
                 ->select('period')
                 ->distinct()
                 ->pluck('period')
@@ -141,14 +171,18 @@ class PerformanceController extends Controller
         }
 
         if (
-            $selectedCategory !== ''
+            !$missingTypes
+            && $selectedCategory !== ''
             && $selectedRecordType !== ''
             && $selectedYear !== null
             && $selectedPeriod !== ''
+            && isset($categoryTypeIds[$selectedCategory])
         ) {
+            $selectedTypeId = $categoryTypeIds[$selectedCategory];
+
             $filesQuery = DocumentUpload::query()
                 ->with('uploader:id,name,email')
-                ->whereNull('document_type_id')
+                ->where('document_type_id', $selectedTypeId)
                 ->where('performance_category', $selectedCategory)
                 ->where('performance_record_type', $selectedRecordType)
                 ->where('year', $selectedYear)
@@ -198,7 +232,10 @@ class PerformanceController extends Controller
                         'performance_record_type' => $upload->performance_record_type,
                         'year' => $upload->year,
                         'period' => $upload->period,
-                        'preview_url' => route('performance.uploads.preview', $upload->id),
+                        'can_preview' => $this->documentPreviewService->canPreview($upload),
+                        'preview_url' => $this->documentPreviewService->canPreview($upload)
+                            ? route('performance.uploads.preview', $upload->id)
+                            : null,
                         'download_url' => route('performance.uploads.download', $upload->id),
                     ];
                 })
@@ -227,10 +264,13 @@ class PerformanceController extends Controller
                 'period_label' => $selectedPeriod !== ''
                     ? $this->periodLabel($selectedPeriod)
                     : null,
-                'can_upload' => $selectedCategory !== ''
-                    && $selectedRecordType !== ''
-                    && $selectedYear !== null
-                    && $selectedPeriod !== '',
+                'can_upload' => !$missingTypes
+                    && $selectedCategory !== ''
+                    && $selectedRecordType !== '',
+                'missing_types' => $missingTypes,
+                'missing_types_message' => $missingTypes
+                    ? 'Performance document types are missing or codes do not match the controller mapping.'
+                    : null,
             ],
         ]);
     }
@@ -243,7 +283,12 @@ class PerformanceController extends Controller
             'year' => ['required', 'integer', 'min:2000', 'max:2100'],
             'period' => ['required', 'string', 'in:JAN_JUN,JUL_DEC'],
             'files' => ['required', 'array', 'min:1'],
-            'files.*' => ['required', 'file', 'max:20480'],
+            'files.*' => [
+                'required',
+                'file',
+                'max:20480',
+                'mimes:pdf,doc,docx,xls,xlsx,csv,ppt,pptx,jpg,jpeg,png,gif,webp',
+            ],
             'remarks' => ['nullable', 'string', 'max:1000'],
         ], [
             'performance_category.required' => 'Performance category is required.',
@@ -257,12 +302,22 @@ class PerformanceController extends Controller
             'files.required' => 'Please choose at least one file.',
             'files.array' => 'Files must be uploaded as a list.',
             'files.min' => 'Please choose at least one file.',
+            'files.*.mimes' => 'Only PDF, Word, Excel, PowerPoint, JPG, JPEG, PNG, GIF, and WEBP files are allowed.',
+            'files.*.max' => 'Each file must not be greater than 20 MB.',
         ]);
 
         $category = strtoupper((string) $data['performance_category']);
         $recordType = strtoupper((string) $data['performance_record_type']);
         $year = (int) $data['year'];
         $period = strtoupper((string) $data['period']);
+
+        $typeId = $this->performanceTypeId($category);
+
+        if (!$typeId) {
+            return back()->withErrors([
+                'performance_category' => 'The performance document type for this category is missing.',
+            ]);
+        }
 
         $created = 0;
 
@@ -273,7 +328,7 @@ class PerformanceController extends Controller
             );
 
             $upload = DocumentUpload::create([
-                'document_type_id' => null,
+                'document_type_id' => $typeId,
                 'uploaded_by' => $request->user()->id,
                 'revision' => null,
                 'year' => $year,
@@ -365,6 +420,38 @@ class PerformanceController extends Controller
         return ['JAN_JUN', 'JUL_DEC'];
     }
 
+    private function performanceTypeIds(): array
+    {
+        $codes = [
+            'IPCR' => 'PERF-IPCR',
+            'DPCR' => 'PERF-DPCR',
+            'UPCR' => 'PERF-UPCR',
+        ];
+
+        $types = DocumentType::query()
+            ->whereIn('code', array_values($codes))
+            ->pluck('id', 'code');
+
+        $resolved = [];
+
+        foreach ($codes as $category => $code) {
+            $id = $types->get($code);
+
+            if ($id) {
+                $resolved[$category] = (int) $id;
+            }
+        }
+
+        return $resolved;
+    }
+
+    private function performanceTypeId(string $category): ?int
+    {
+        $ids = $this->performanceTypeIds();
+
+        return $ids[$category] ?? null;
+    }
+
     private function recordTypeLabel(string $value): string
     {
         return match (strtoupper($value)) {
@@ -385,11 +472,13 @@ class PerformanceController extends Controller
 
     private function isPerformanceUpload(DocumentUpload $upload): bool
     {
-        return $upload->document_type_id === null
-            && filled($upload->performance_category)
-            && filled($upload->performance_record_type)
+        $validTypeIds = array_values($this->performanceTypeIds());
+
+        return in_array((int) $upload->document_type_id, $validTypeIds, true)
+            && in_array(strtoupper((string) $upload->performance_category), $this->allowedCategories(), true)
+            && in_array(strtoupper((string) $upload->performance_record_type), $this->allowedRecordTypes(), true)
             && filled($upload->year)
-            && filled($upload->period);
+            && in_array(strtoupper((string) $upload->period), $this->allowedPeriods(), true);
     }
 
     private function performanceRecordLabelFromUpload(DocumentUpload $upload): string

@@ -14,7 +14,8 @@ const props = defineProps({
     type: Object,
     default: () => ({
       enabled: false,
-      year_groups: [],
+      record_type_groups: [],
+      selected_record_type: null,
       selected_year: null,
       selected_period: null,
       selected_period_name: null,
@@ -66,6 +67,9 @@ const sort = ref(props.filters?.sort ?? 'latest')
 const perPage = ref(String(props.filters?.per_page ?? 10))
 const dateFrom = ref(props.filters?.date_from ?? '')
 const dateTo = ref(props.filters?.date_to ?? '')
+const selectedRecordType = ref(
+  props.filters?.record_type ?? props.performanceView?.selected_record_type ?? null
+)
 const selectedYear = ref(props.filters?.year ?? props.performanceView?.selected_year ?? null)
 const selectedPeriod = ref(props.filters?.period ?? props.performanceView?.selected_period ?? null)
 
@@ -79,10 +83,30 @@ const searchPlaceholder = computed(() => {
     : 'Search file, remarks, uploader...'
 })
 
-const performanceYearGroups = computed(() => props.performanceView?.year_groups ?? [])
+const performanceRecordTypeGroups = computed(() => props.performanceView?.record_type_groups ?? [])
 const performanceSelectedFiles = computed(() => props.performanceView?.selected_files ?? [])
 const performanceSelectedPeriodName = computed(() => props.performanceView?.selected_period_name ?? '')
-const hasPerformanceUploads = computed(() => performanceYearGroups.value.length > 0)
+
+const performanceSelectedRecordTypeName = computed(() => {
+  const selected = performanceRecordTypeGroups.value.find(
+    (group) => group.record_type === selectedRecordType.value
+  )
+
+  return selected?.record_type_name ?? formatPerformanceRecordType(selectedRecordType.value)
+})
+
+const selectedRecordTypeGroup = computed(() => {
+  return performanceRecordTypeGroups.value.find(
+    (group) => group.record_type === selectedRecordType.value
+  ) ?? null
+})
+
+const performanceYearGroups = computed(() => {
+  return selectedRecordTypeGroup.value?.years ?? []
+})
+
+const hasPerformanceUploads = computed(() => performanceRecordTypeGroups.value.length > 0)
+
 const shouldShowPerformanceFirstUpload = computed(() => {
   return isPerformanceForm.value && !hasPerformanceUploads.value && canUpload.value
 })
@@ -101,6 +125,7 @@ function reloadDocuments(extra = {}) {
       per_page: !isPerformanceForm.value ? perPage.value || 10 : undefined,
       date_from: dateFrom.value || undefined,
       date_to: dateTo.value || undefined,
+      record_type: isPerformanceForm.value ? selectedRecordType.value || undefined : undefined,
       year: isPerformanceForm.value ? selectedYear.value || undefined : undefined,
       period: isPerformanceForm.value ? selectedPeriod.value || undefined : undefined,
       ...extra,
@@ -146,11 +171,20 @@ const fileInput = ref(null)
 const currentYear = new Date().getFullYear()
 
 const yearOptions = computed(() => {
-  const years = []
-  for (let year = currentYear + 1; year >= 2020; year -= 1) {
-    years.push(year)
+  const startYear = currentYear + 1
+  const endYear = 2020
+
+  const generatedYears = []
+  for (let year = startYear; year >= endYear; year -= 1) {
+    generatedYears.push(year)
   }
-  return years
+
+  const existingYears = performanceRecordTypeGroups.value
+    .flatMap((group) => group.years || [])
+    .map((yearGroup) => Number(yearGroup.year))
+    .filter(Boolean)
+
+  return [...new Set([...generatedYears, ...existingYears])].sort((a, b) => b - a)
 })
 
 const periodOptions = [
@@ -166,7 +200,8 @@ const performanceRecordTypeOptions = [
 const uploadForm = ref({
   files: [],
   revision: '',
-  performance_record_type: 'TARGET',
+  performance_record_type:
+    props.filters?.record_type ?? props.performanceView?.selected_record_type ?? 'TARGET',
   year: props.filters?.year ?? props.performanceView?.selected_year ?? currentYear,
   period: props.filters?.period ?? props.performanceView?.selected_period ?? 'JAN_JUN',
 })
@@ -176,9 +211,12 @@ function resetUploadForm() {
   uploadForm.value = {
     files: [],
     revision: '',
-    performance_record_type: 'TARGET',
-    year: props.filters?.year ?? props.performanceView?.selected_year ?? currentYear,
-    period: props.filters?.period ?? props.performanceView?.selected_period ?? 'JAN_JUN',
+    performance_record_type:
+      selectedRecordType.value ||
+      props.performanceView?.selected_record_type ||
+      'TARGET',
+    year: selectedYear.value ?? props.performanceView?.selected_year ?? currentYear,
+    period: selectedPeriod.value ?? props.performanceView?.selected_period ?? 'JAN_JUN',
   }
 
   if (fileInput.value) {
@@ -290,6 +328,10 @@ function submitUpload() {
     data.append('period', String(uploadForm.value.period))
   }
 
+  const uploadedRecordType = uploadForm.value.performance_record_type
+  const uploadedYear = uploadForm.value.year
+  const uploadedPeriod = uploadForm.value.period
+
   uploading.value = true
   loading.open('Uploading file...')
 
@@ -313,11 +355,26 @@ function submitUpload() {
       const uploadedCount = uploadForm.value.files.length
       closeUpload(true)
 
+      if (isPerformanceForm.value) {
+        selectedRecordType.value = uploadedRecordType
+        selectedYear.value = uploadedYear
+        selectedPeriod.value = uploadedPeriod
+      }
+
       toast.success(
         uploadedCount > 1
           ? 'Files uploaded successfully.'
           : 'File uploaded successfully.'
       )
+
+      if (isPerformanceForm.value) {
+        reloadDocuments({
+          record_type: uploadedRecordType,
+          year: uploadedYear,
+          period: uploadedPeriod,
+          page: 1,
+        })
+      }
     },
     onFinish: () => {
       uploading.value = false
@@ -326,16 +383,40 @@ function submitUpload() {
   })
 }
 
-function selectPerformanceYear(year) {
-  selectedYear.value = year
+function selectPerformanceRecordType(recordType) {
+  selectedRecordType.value = recordType
+  selectedYear.value = null
   selectedPeriod.value = null
-  reloadDocuments({ year, period: undefined, page: 1 })
+  reloadDocuments({
+    record_type: recordType,
+    year: undefined,
+    period: undefined,
+    page: 1,
+  })
 }
 
-function selectPerformancePeriod(year, period) {
+function selectPerformanceYear(recordType, year) {
+  selectedRecordType.value = recordType
+  selectedYear.value = year
+  selectedPeriod.value = null
+  reloadDocuments({
+    record_type: recordType,
+    year,
+    period: undefined,
+    page: 1,
+  })
+}
+
+function selectPerformancePeriod(recordType, year, period) {
+  selectedRecordType.value = recordType
   selectedYear.value = year
   selectedPeriod.value = period
-  reloadDocuments({ year, period, page: 1 })
+  reloadDocuments({
+    record_type: recordType,
+    year,
+    period,
+    page: 1,
+  })
 }
 
 function formatDate(date) {
@@ -464,7 +545,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 
               <p class="mt-1 max-w-xl text-sm leading-5 text-slate-300">
                 <template v-if="isPerformanceForm">
-                  Browse uploads by year and semestral period, then open the files stored inside each folder.
+                  Browse uploads by record type, year, and semestral period, then open the files stored inside each folder.
                 </template>
                 <template v-else>
                   View all uploaded files under this document code.
@@ -640,7 +721,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
         </div>
 
         <div
-          v-else-if="!performanceYearGroups.length"
+          v-else-if="!performanceRecordTypeGroups.length"
           class="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm"
         >
           <div class="text-lg font-semibold text-slate-900">No uploads yet</div>
@@ -650,68 +731,179 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
         </div>
 
         <div v-else class="grid grid-cols-1 gap-6 xl:grid-cols-12">
-          <div class="xl:col-span-4">
+          <div class="space-y-6 xl:col-span-4">
             <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div class="border-b border-slate-200 px-5 py-4">
-                <h2 class="text-base font-semibold text-slate-900">Years and Periods</h2>
+                <h2 class="text-base font-semibold text-slate-900">Record Type</h2>
                 <p class="mt-1 text-sm text-slate-600">
-                  Select a year, then open the semestral folder inside it.
+                  Select Target or Accomplishment first.
                 </p>
               </div>
 
-              <div class="max-h-[720px] space-y-4 overflow-y-auto px-4 py-4">
-                <div
-                  v-for="yearGroup in performanceYearGroups"
-                  :key="yearGroup.year"
-                  class="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+              <div class="space-y-3 p-4">
+                <button
+                  v-for="group in performanceRecordTypeGroups"
+                  :key="group.record_type"
+                  type="button"
+                  @click="selectPerformanceRecordType(group.record_type)"
+                  class="w-full rounded-2xl border px-4 py-4 text-left transition"
+                  :class="selectedRecordType === group.record_type
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'"
                 >
-                  <div class="mb-3 flex items-start justify-between gap-3">
-                    <button
-                      type="button"
-                      @click="selectPerformanceYear(yearGroup.year)"
-                      class="text-left"
+                  <div class="flex items-start gap-3">
+                    <div
+                      class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                      :class="selectedRecordType === group.record_type ? 'bg-white/10' : 'bg-amber-50'"
                     >
-                      <div class="text-lg font-semibold text-slate-900 hover:text-slate-700">
-                        {{ yearGroup.year }}
-                      </div>
-                      <div class="text-xs text-slate-500">
-                        {{ yearGroup.total_files }} file(s) • {{ yearGroup.periods_count }} period(s)
-                      </div>
-                    </button>
+                      <svg
+                        class="h-5 w-5"
+                        :class="selectedRecordType === group.record_type ? 'text-white' : 'text-amber-600'"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                      >
+                        <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                      </svg>
+                    </div>
 
-                    <div class="rounded-full bg-slate-200 px-2.5 py-1 text-xs font-medium text-slate-700">
-                      {{ yearGroup.periods_count }}
+                    <div class="min-w-0 flex-1">
+                      <div class="font-semibold">
+                        {{ group.record_type_name }}
+                      </div>
+                      <div
+                        class="mt-1 text-xs"
+                        :class="selectedRecordType === group.record_type ? 'text-slate-300' : 'text-slate-500'"
+                      >
+                        {{ group.total_files }} file(s) • {{ group.years_count }} year(s)
+                      </div>
                     </div>
                   </div>
+                </button>
+              </div>
+            </div>
 
-                  <div class="grid grid-cols-1 gap-2">
-                    <button
-                      v-for="periodItem in yearGroup.periods"
-                      :key="`${yearGroup.year}-${periodItem.period}`"
-                      type="button"
-                      @click="selectPerformancePeriod(yearGroup.year, periodItem.period)"
-                      class="rounded-xl border px-3 py-3 text-left transition"
-                      :class="
-                        Number(selectedYear) === Number(yearGroup.year) && selectedPeriod === periodItem.period
-                          ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
-                          : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'
-                      "
+            <div
+              v-if="selectedRecordType"
+              class="rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div class="border-b border-slate-200 px-5 py-4">
+                <h2 class="text-base font-semibold text-slate-900">Year</h2>
+                <p class="mt-1 text-sm text-slate-600">
+                  Open a year folder under {{ performanceSelectedRecordTypeName }}.
+                </p>
+              </div>
+
+              <div v-if="performanceYearGroups.length" class="grid grid-cols-2 gap-3 p-4">
+                <button
+                  v-for="yearGroup in performanceYearGroups"
+                  :key="yearGroup.year"
+                  type="button"
+                  @click="selectPerformanceYear(selectedRecordType, yearGroup.year)"
+                  class="rounded-2xl border px-4 py-4 text-left transition"
+                  :class="selectedYear === yearGroup.year
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'"
+                >
+                  <div class="flex items-start gap-3">
+                    <div
+                      class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                      :class="selectedYear === yearGroup.year ? 'bg-white/10' : 'bg-amber-50'"
                     >
-                      <div class="font-medium">
+                      <svg
+                        class="h-5 w-5"
+                        :class="selectedYear === yearGroup.year ? 'text-white' : 'text-amber-600'"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                      >
+                        <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                      </svg>
+                    </div>
+
+                    <div class="min-w-0 flex-1">
+                      <div class="font-semibold">
+                        {{ yearGroup.year }}
+                      </div>
+                      <div
+                        class="mt-1 text-xs"
+                        :class="selectedYear === yearGroup.year ? 'text-slate-300' : 'text-slate-500'"
+                      >
+                        {{ yearGroup.total_files }} file(s) • {{ yearGroup.periods_count }} period(s)
+                      </div>
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              <div v-else class="p-8 text-center">
+                <div class="text-base font-semibold text-slate-900">No year folders yet</div>
+                <div class="mt-2 text-sm text-slate-600">
+                  Upload a file to create the first year under {{ performanceSelectedRecordTypeName }}.
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="selectedRecordType && selectedYear"
+              class="rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div class="border-b border-slate-200 px-5 py-4">
+                <h2 class="text-base font-semibold text-slate-900">Periods</h2>
+                <p class="mt-1 text-sm text-slate-600">
+                  Open a semestral folder inside year {{ selectedYear }}.
+                </p>
+              </div>
+
+              <div v-if="selectedRecordTypeGroup && performanceYearGroups.find(y => Number(y.year) === Number(selectedYear))?.periods?.length" class="space-y-3 p-4">
+                <button
+                  v-for="periodItem in performanceYearGroups.find(y => Number(y.year) === Number(selectedYear))?.periods || []"
+                  :key="`${selectedRecordType}-${selectedYear}-${periodItem.period}`"
+                  type="button"
+                  @click="selectPerformancePeriod(selectedRecordType, selectedYear, periodItem.period)"
+                  class="w-full rounded-2xl border px-4 py-4 text-left transition"
+                  :class="selectedPeriod === periodItem.period
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                    : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50'"
+                >
+                  <div class="flex items-start gap-3">
+                    <div
+                      class="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+                      :class="selectedPeriod === periodItem.period ? 'bg-white/10' : 'bg-amber-50'"
+                    >
+                      <svg
+                        class="h-5 w-5"
+                        :class="selectedPeriod === periodItem.period ? 'text-white' : 'text-amber-600'"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="1.8"
+                      >
+                        <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
+                      </svg>
+                    </div>
+
+                    <div class="min-w-0 flex-1">
+                      <div class="font-semibold">
                         {{ periodItem.period_name }}
                       </div>
                       <div
                         class="mt-1 text-xs"
-                        :class="
-                          Number(selectedYear) === Number(yearGroup.year) && selectedPeriod === periodItem.period
-                            ? 'text-slate-300'
-                            : 'text-slate-500'
-                        "
+                        :class="selectedPeriod === periodItem.period ? 'text-slate-300' : 'text-slate-500'"
                       >
                         {{ periodItem.files_count }} file(s)
                       </div>
-                    </button>
+                    </div>
                   </div>
+                </button>
+              </div>
+
+              <div v-else class="p-8 text-center">
+                <div class="text-base font-semibold text-slate-900">No period folders yet</div>
+                <div class="mt-2 text-sm text-slate-600">
+                  Upload a file to create the first period for {{ selectedYear }}.
                 </div>
               </div>
             </div>
@@ -723,25 +915,34 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <h2 class="text-base font-semibold text-slate-900">
-                      <template v-if="selectedYear && selectedPeriod">
-                        {{ documentType?.name }} — {{ selectedYear }} / {{ performanceSelectedPeriodName }}
+                      <template v-if="selectedRecordType && selectedYear && selectedPeriod">
+                        {{ documentType?.name }} — {{ performanceSelectedRecordTypeName }} / {{ selectedYear }} / {{ performanceSelectedPeriodName }}
+                      </template>
+                      <template v-else-if="selectedRecordType">
+                        {{ documentType?.name }} — {{ performanceSelectedRecordTypeName }}
                       </template>
                       <template v-else>
-                        Select a year and period
+                        Select a record type, year, and period
                       </template>
                     </h2>
                     <p class="mt-1 text-sm text-slate-600">
-                      <template v-if="selectedYear && selectedPeriod">
+                      <template v-if="selectedRecordType && selectedYear && selectedPeriod">
                         All files uploaded under this semestral folder are shown below.
                       </template>
+                      <template v-else-if="selectedRecordType && !selectedYear">
+                        Choose a year from the left panel.
+                      </template>
+                      <template v-else-if="selectedRecordType && selectedYear && !selectedPeriod">
+                        Choose a period from the left panel.
+                      </template>
                       <template v-else>
-                        Choose a year and period from the left panel.
+                        Start by selecting a record type from the left panel.
                       </template>
                     </p>
                   </div>
 
                   <div
-                    v-if="selectedYear && selectedPeriod"
+                    v-if="selectedRecordType && selectedYear && selectedPeriod"
                     class="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700"
                   >
                     {{ performanceSelectedFiles.length }} file(s)
@@ -749,10 +950,24 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 </div>
               </div>
 
-              <div v-if="!selectedYear || !selectedPeriod" class="p-10 text-center">
-                <div class="text-lg font-semibold text-slate-900">No folder selected</div>
+              <div v-if="!selectedRecordType" class="p-10 text-center">
+                <div class="text-lg font-semibold text-slate-900">No record type selected</div>
                 <div class="mt-2 text-sm text-slate-600">
-                  Select a year and semestral period to view the files.
+                  Select Target or Accomplishment to continue.
+                </div>
+              </div>
+
+              <div v-else-if="selectedRecordType && !selectedYear" class="p-10 text-center">
+                <div class="text-lg font-semibold text-slate-900">No year selected</div>
+                <div class="mt-2 text-sm text-slate-600">
+                  Select a year folder from the left panel.
+                </div>
+              </div>
+
+              <div v-else-if="selectedRecordType && selectedYear && !selectedPeriod" class="p-10 text-center">
+                <div class="text-lg font-semibold text-slate-900">No period selected</div>
+                <div class="mt-2 text-sm text-slate-600">
+                  Select a semestral period from the left panel.
                 </div>
               </div>
 
