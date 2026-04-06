@@ -189,12 +189,14 @@ class PerformanceController extends Controller
                 ->where('period', $selectedPeriod);
 
             if ($search !== '') {
-                $filesQuery->where(function ($query) use ($search) {
-                    $query->where('file_name', 'like', "%{$search}%")
-                        ->orWhere('remarks', 'like', "%{$search}%")
-                        ->orWhereHas('uploader', function ($uploaderQuery) use ($search) {
-                            $uploaderQuery->where('name', 'like', "%{$search}%")
-                                ->orWhere('email', 'like', "%{$search}%");
+                $escaped = $this->escapeLike($search);
+
+                $filesQuery->where(function ($query) use ($escaped) {
+                    $query->where('file_name', 'like', "%{$escaped}%")
+                        ->orWhere('remarks', 'like', "%{$escaped}%")
+                        ->orWhereHas('uploader', function ($uploaderQuery) use ($escaped) {
+                            $uploaderQuery->where('name', 'like', "%{$escaped}%")
+                                ->orWhere('email', 'like', "%{$escaped}%");
                         });
                 });
             }
@@ -275,6 +277,10 @@ class PerformanceController extends Controller
         ]);
     }
 
+    private function escapeLike(string $value): string
+    {
+        return addcslashes($value, '\\%_');
+    }
     public function upload(Request $request)
     {
         $data = $request->validate([
