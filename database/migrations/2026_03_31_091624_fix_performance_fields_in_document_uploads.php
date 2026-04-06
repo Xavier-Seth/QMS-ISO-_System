@@ -5,22 +5,24 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
+    private string $table = 'document_uploads';
+
+    private function hasIndex(string $indexName): bool
+    {
+        return in_array($indexName, Schema::getIndexListing($this->table), true);
+    }
+
     public function up(): void
     {
-        Schema::table('document_uploads', function (Blueprint $table) {
-
-            // Drop indexes using month FIRST (important!)
-            try {
+        Schema::table($this->table, function (Blueprint $table) {
+            if ($this->hasIndex('document_uploads_type_year_month_idx')) {
                 $table->dropIndex('document_uploads_type_year_month_idx');
-            } catch (\Exception $e) {
             }
 
-            // Remove month column
             if (Schema::hasColumn('document_uploads', 'month')) {
                 $table->dropColumn('month');
             }
 
-            // Add new fields
             if (!Schema::hasColumn('document_uploads', 'performance_category')) {
                 $table->string('performance_category')
                     ->nullable()
@@ -32,20 +34,24 @@ return new class extends Migration {
                     ->nullable()
                     ->after('performance_category');
             }
+        });
 
-            // New index
-            $table->index(
-                ['document_type_id', 'year', 'performance_category', 'period'],
-                'document_uploads_perf_idx'
-            );
+        Schema::table($this->table, function (Blueprint $table) {
+            if (!$this->hasIndex('document_uploads_perf_idx')) {
+                $table->index(
+                    ['document_type_id', 'year', 'performance_category', 'period'],
+                    'document_uploads_perf_idx'
+                );
+            }
         });
     }
 
     public function down(): void
     {
-        Schema::table('document_uploads', function (Blueprint $table) {
-
-            $table->dropIndex('document_uploads_perf_idx');
+        Schema::table($this->table, function (Blueprint $table) {
+            if ($this->hasIndex('document_uploads_perf_idx')) {
+                $table->dropIndex('document_uploads_perf_idx');
+            }
 
             if (Schema::hasColumn('document_uploads', 'performance_category')) {
                 $table->dropColumn('performance_category');
@@ -55,18 +61,20 @@ return new class extends Migration {
                 $table->dropColumn('period');
             }
 
-            // Restore month if rollback
             if (!Schema::hasColumn('document_uploads', 'month')) {
                 $table->unsignedTinyInteger('month')
                     ->nullable()
                     ->after('year');
             }
+        });
 
-            // Restore old index
-            $table->index(
-                ['document_type_id', 'year', 'month'],
-                'document_uploads_type_year_month_idx'
-            );
+        Schema::table($this->table, function (Blueprint $table) {
+            if (!$this->hasIndex('document_uploads_type_year_month_idx')) {
+                $table->index(
+                    ['document_type_id', 'year', 'month'],
+                    'document_uploads_type_year_month_idx'
+                );
+            }
         });
     }
 };

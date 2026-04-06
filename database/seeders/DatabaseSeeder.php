@@ -16,6 +16,7 @@ class DatabaseSeeder extends Seeder
             RQmsDocumentTypesSeeder::class,
             FQmsDocumentTypesSeeder::class,
             ManualDocumentTypesSeeder::class,
+            PerformanceDocumentTypesSeeder::class,
         ]);
     }
 }
