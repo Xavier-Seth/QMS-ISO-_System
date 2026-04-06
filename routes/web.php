@@ -8,6 +8,7 @@ use App\Http\Controllers\LogsController;
 use App\Http\Controllers\ManualController;
 use App\Http\Controllers\OFIController;
 use App\Http\Controllers\OfiRecordController;
+use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UsersController;
 use Illuminate\Support\Facades\Route;
@@ -99,11 +100,15 @@ Route::middleware('auth')->group(function () {
         Route::post('/users', [UsersController::class, 'store'])->name('users.store');
         Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
 
+        /*
+        |--------------------------------------------------------------------------
+        | Documents
+        |--------------------------------------------------------------------------
+        */
         Route::get('/documents', [DocumentController::class, 'index'])->name('documents.index');
         Route::get('/documents/{documentType}', [DocumentController::class, 'show'])->name('documents.show');
         Route::post('/documents/{documentType}/upload', [DocumentController::class, 'upload'])->name('documents.upload');
 
-        // Document Type Management
         Route::post('/documents/types', [DocumentController::class, 'storeType'])
             ->name('documents.types.store');
 
@@ -118,6 +123,23 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/documents/uploads/{upload}/download', [DocumentController::class, 'download'])
             ->name('documents.uploads.download');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Performance Commitment and Review Forms
+        |--------------------------------------------------------------------------
+        */
+        Route::get('/performance', [PerformanceController::class, 'index'])
+            ->name('performance.index');
+
+        Route::post('/performance/upload', [PerformanceController::class, 'upload'])
+            ->name('performance.upload');
+
+        Route::get('/performance/uploads/{upload}/preview', [PerformanceController::class, 'preview'])
+            ->name('performance.uploads.preview');
+
+        Route::get('/performance/uploads/{upload}/download', [PerformanceController::class, 'download'])
+            ->name('performance.uploads.download');
 
         Route::get('/upload', fn() => Inertia::render('Upload'))->name('upload');
 

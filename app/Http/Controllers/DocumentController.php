@@ -37,6 +37,7 @@ class DocumentController extends Controller
         $sort = (string) $request->input('sort', 'code_asc');
         $view = (string) $request->input('view', 'group');
         $status = (string) $request->input('status', 'All');
+        $mode = (string) $request->input('mode', '');
 
         $allowedTypeStatuses = ['All', 'Active', 'Obsolete'];
         if (!in_array($status, $allowedTypeStatuses, true)) {
@@ -59,7 +60,17 @@ class DocumentController extends Controller
             ->withCount('uploads')
             ->withMax('uploads', 'created_at');
 
-        if ($seriesCode !== 'All' && $seriesCode !== '') {
+        if ($mode === 'performance') {
+            $query->whereHas('series', function ($qq) {
+                $qq->whereIn('code_prefix', ['IPCR', 'DPCR', 'UPCR']);
+            });
+
+            if ($seriesCode !== 'All' && $seriesCode !== '') {
+                $query->whereHas('series', function ($qq) use ($seriesCode) {
+                    $qq->where('code_prefix', $seriesCode);
+                });
+            }
+        } elseif ($seriesCode !== 'All' && $seriesCode !== '') {
             $selected = DocumentSeries::query()
                 ->where('code_prefix', $seriesCode)
                 ->first();
@@ -113,6 +124,7 @@ class DocumentController extends Controller
                 'name' => $t->title,
                 'file_type' => $t->storage,
                 'requires_revision' => $this->isRevisionControlled($t),
+                'is_performance_form' => $this->isPerformanceFormType($t),
                 'documents_count' => (int) $t->uploads_count,
                 'latest_upload_at' => $t->uploads_max_created_at,
                 'status' => $normalizedStatus === 'obsolete' ? 'Obsolete' : 'Active',
@@ -134,6 +146,7 @@ class DocumentController extends Controller
                 'sort' => $sort,
                 'view' => $view,
                 'status' => $status,
+                'mode' => $mode,
             ],
         ]);
     }
@@ -344,6 +357,11 @@ class DocumentController extends Controller
         $sort = (string) $request->input('sort', 'latest');
         $dateFrom = trim((string) $request->input('date_from', ''));
         $dateTo = trim((string) $request->input('date_to', ''));
+        $selectedRecordType = $request->filled('record_type')
+            ? strtoupper((string) $request->input('record_type'))
+            : null;
+        $selectedYear = $request->filled('year') ? (int) $request->input('year') : null;
+        $selectedPeriod = $request->filled('period') ? (string) $request->input('period') : null;
 
         $allowedPerPage = [10, 25, 50, 100];
         $perPage = (int) $request->input('per_page', 10);
@@ -364,6 +382,237 @@ class DocumentController extends Controller
         }
 
         $isRevisionControlled = $this->isRevisionControlled($documentType);
+        $isPerformanceForm = $this->isPerformanceFormType($documentType);
+
+        $normalizedTypeStatus = strtolower((string) ($documentType->status ?: 'active'));
+
+        $statsBase = DocumentUpload::query()
+            ->where('document_type_id', $documentType->id);
+
+        $stats = [
+            'total' => (clone $statsBase)->count(),
+            'active' => $isRevisionControlled && !$isPerformanceForm
+                ? (clone $statsBase)->where('status', 'Active')->count()
+                : 0,
+            'obsolete' => $isRevisionControlled && !$isPerformanceForm
+                ? (clone $statsBase)->where('status', 'Obsolete')->count()
+                : 0,
+        ];
+
+        $documentTypePayload = [
+            'id' => $documentType->id,
+            'code' => $documentType->code,
+            'name' => $documentType->title,
+            'file_type' => $documentType->storage,
+            'requires_revision' => $isRevisionControlled,
+            'is_performance_form' => $isPerformanceForm,
+            'status' => $normalizedTypeStatus === 'obsolete' ? 'Obsolete' : 'Active',
+            'status_note' => $documentType->status_note,
+            'is_obsolete' => $documentType->isObsolete(),
+            'can_upload' => !$documentType->isObsolete(),
+            'series' => [
+                'code_prefix' => $documentType->series?->code_prefix,
+                'name' => $documentType->series?->name,
+            ],
+        ];
+
+        if ($isPerformanceForm) {
+            $groupedBaseQuery = DocumentUpload::query()
+                ->where('document_type_id', $documentType->id)
+                ->whereNotNull('performance_record_type')
+                ->whereNotNull('year')
+                ->whereNotNull('period');
+
+            if ($q !== '') {
+                $groupedBaseQuery->where(function ($qq) use ($q) {
+                    $qq->where('file_name', 'like', "%{$q}%")
+                        ->orWhere('remarks', 'like', "%{$q}%")
+                        ->orWhereHas('uploader', function ($uploaderQuery) use ($q) {
+                            $uploaderQuery->where('name', 'like', "%{$q}%")
+                                ->orWhere('username', 'like', "%{$q}%")
+                                ->orWhere('email', 'like', "%{$q}%");
+                        });
+                });
+            }
+
+            if ($dateFrom !== '') {
+                $groupedBaseQuery->whereDate('created_at', '>=', $dateFrom);
+            }
+
+            if ($dateTo !== '') {
+                $groupedBaseQuery->whereDate('created_at', '<=', $dateTo);
+            }
+
+            $groupRows = (clone $groupedBaseQuery)
+                ->selectRaw('performance_record_type, year, period, COUNT(*) as files_count, MAX(created_at) as latest_uploaded_at')
+                ->groupBy('performance_record_type', 'year', 'period')
+                ->orderByRaw("CASE performance_record_type WHEN 'TARGET' THEN 1 WHEN 'ACCOMPLISHMENT' THEN 2 ELSE 3 END")
+                ->orderByDesc('year')
+                ->orderByRaw("CASE period WHEN 'JAN_JUN' THEN 1 WHEN 'JUL_DEC' THEN 2 ELSE 3 END")
+                ->get();
+
+            $recordTypeGroups = $groupRows
+                ->groupBy('performance_record_type')
+                ->map(function ($recordTypeRows, $recordType) {
+                    $yearGroups = $recordTypeRows
+                        ->groupBy('year')
+                        ->map(function ($yearRows, $year) {
+                            $periods = $yearRows->map(function ($row) {
+                                return [
+                                    'period' => (string) $row->period,
+                                    'period_name' => $this->resolvePerformancePeriodName((string) $row->period),
+                                    'files_count' => (int) $row->files_count,
+                                    'latest_uploaded_at' => $row->latest_uploaded_at,
+                                ];
+                            })->values();
+
+                            return [
+                                'year' => (int) $year,
+                                'total_files' => (int) $periods->sum('files_count'),
+                                'periods_count' => $periods->count(),
+                                'periods' => $periods,
+                            ];
+                        })
+                        ->sortByDesc('year')
+                        ->values();
+
+                    return [
+                        'record_type' => (string) $recordType,
+                        'record_type_name' => match ((string) $recordType) {
+                            'TARGET' => 'Target',
+                            'ACCOMPLISHMENT' => 'Accomplishment',
+                            default => 'Record Type',
+                        },
+                        'total_files' => (int) $yearGroups->sum('total_files'),
+                        'years_count' => $yearGroups->count(),
+                        'years' => $yearGroups,
+                    ];
+                })
+                ->values();
+
+            $hasValidSelectedRecordType = $selectedRecordType !== null
+                && $recordTypeGroups->contains(fn($group) => (string) $group['record_type'] === $selectedRecordType);
+
+            if (!$hasValidSelectedRecordType && $recordTypeGroups->isNotEmpty()) {
+                $selectedRecordType = (string) $recordTypeGroups->first()['record_type'];
+            }
+
+            $selectedRecordTypeGroup = $recordTypeGroups->firstWhere('record_type', $selectedRecordType);
+            $availableYearsForSelectedRecordType = collect($selectedRecordTypeGroup['years'] ?? []);
+
+            $hasValidSelectedYear = $selectedYear !== null
+                && $availableYearsForSelectedRecordType->contains(fn($group) => (int) $group['year'] === $selectedYear);
+
+            if (!$hasValidSelectedYear && $availableYearsForSelectedRecordType->isNotEmpty()) {
+                $selectedYear = (int) $availableYearsForSelectedRecordType->first()['year'];
+            }
+
+            $selectedYearGroup = $availableYearsForSelectedRecordType->firstWhere('year', $selectedYear);
+            $availablePeriodsForSelectedYear = collect($selectedYearGroup['periods'] ?? []);
+
+            $hasValidSelectedPeriod = $selectedPeriod !== null
+                && $availablePeriodsForSelectedYear->contains(fn($period) => (string) $period['period'] === $selectedPeriod);
+
+            if (!$hasValidSelectedPeriod && $availablePeriodsForSelectedYear->isNotEmpty()) {
+                $selectedPeriod = (string) $availablePeriodsForSelectedYear->first()['period'];
+            }
+
+            $selectedPeriodFiles = collect();
+
+            if ($selectedRecordType !== null && $selectedYear !== null && $selectedPeriod !== null) {
+                $periodFilesQuery = DocumentUpload::query()
+                    ->with(['uploader', 'ofiRecord', 'dcrRecord'])
+                    ->where('document_type_id', $documentType->id)
+                    ->where('performance_record_type', $selectedRecordType)
+                    ->where('year', $selectedYear)
+                    ->where('period', $selectedPeriod);
+
+                if ($q !== '') {
+                    $periodFilesQuery->where(function ($qq) use ($q) {
+                        $qq->where('file_name', 'like', "%{$q}%")
+                            ->orWhere('remarks', 'like', "%{$q}%")
+                            ->orWhereHas('uploader', function ($uploaderQuery) use ($q) {
+                                $uploaderQuery->where('name', 'like', "%{$q}%")
+                                    ->orWhere('username', 'like', "%{$q}%")
+                                    ->orWhere('email', 'like', "%{$q}%");
+                            });
+                    });
+                }
+
+                if ($dateFrom !== '') {
+                    $periodFilesQuery->whereDate('created_at', '>=', $dateFrom);
+                }
+
+                if ($dateTo !== '') {
+                    $periodFilesQuery->whereDate('created_at', '<=', $dateTo);
+                }
+
+                switch ($sort) {
+                    case 'oldest':
+                        $periodFilesQuery->orderBy('created_at', 'asc');
+                        break;
+                    case 'name_asc':
+                        $periodFilesQuery->orderBy('file_name', 'asc');
+                        break;
+                    case 'name_desc':
+                        $periodFilesQuery->orderBy('file_name', 'desc');
+                        break;
+                    case 'latest':
+                    default:
+                        $periodFilesQuery->orderBy('created_at', 'desc');
+                        break;
+                }
+
+                $selectedPeriodFiles = $periodFilesQuery->get()->map(fn($d) => [
+                    'id' => $d->id,
+                    'file_name' => $d->file_name,
+                    'revision' => $d->revision,
+                    'status' => $d->status,
+                    'year' => $d->year,
+                    'period' => $d->period,
+                    'period_name' => $this->resolvePerformancePeriodName((string) $d->period),
+                    'performance_category' => $d->performance_category,
+                    'performance_record_type' => $d->performance_record_type,
+                    'uploaded_by_name' => $d->uploader?->name ?? '—',
+                    'created_at' => $d->created_at,
+                    'ofi_record_id' => $d->ofi_record_id,
+                    'dcr_record_id' => $d->dcr_record_id,
+                    'ofi_workflow_status' => $d->ofiRecord?->workflow_status,
+                    'ofi_resolution_status' => $d->ofiRecord?->resolution_status,
+                    'preview_url' => route('documents.uploads.preview', $d->id),
+                    'download_url' => route('documents.uploads.download', $d->id),
+                    'file_url' => $d->file_path ? Storage::url($d->file_path) : null,
+                ])->values();
+            }
+
+            return Inertia::render('Documents/Show', [
+                'documentType' => $documentTypePayload,
+                'documents' => null,
+                'filters' => [
+                    'q' => $q,
+                    'status' => 'All',
+                    'sort' => $sort,
+                    'per_page' => $perPage,
+                    'date_from' => $dateFrom,
+                    'date_to' => $dateTo,
+                    'record_type' => $selectedRecordType,
+                    'year' => $selectedYear,
+                    'period' => $selectedPeriod,
+                ],
+                'stats' => $stats,
+                'performanceView' => [
+                    'enabled' => true,
+                    'record_type_groups' => $recordTypeGroups,
+                    'selected_record_type' => $selectedRecordType,
+                    'selected_year' => $selectedYear,
+                    'selected_period' => $selectedPeriod,
+                    'selected_period_name' => $selectedPeriod
+                        ? $this->resolvePerformancePeriodName($selectedPeriod)
+                        : null,
+                    'selected_files' => $selectedPeriodFiles,
+                ],
+            ]);
+        }
 
         $query = DocumentUpload::query()
             ->with(['uploader', 'ofiRecord', 'dcrRecord'])
@@ -398,23 +647,18 @@ class DocumentController extends Controller
             case 'oldest':
                 $query->orderBy('created_at', 'asc');
                 break;
-
             case 'name_asc':
                 $query->orderBy('file_name', 'asc');
                 break;
-
             case 'name_desc':
                 $query->orderBy('file_name', 'desc');
                 break;
-
             case 'revision_asc':
                 $query->orderBy('revision', 'asc');
                 break;
-
             case 'revision_desc':
                 $query->orderBy('revision', 'desc');
                 break;
-
             case 'latest':
             default:
                 $query->orderBy('created_at', 'desc');
@@ -429,6 +673,9 @@ class DocumentController extends Controller
                 'file_name' => $d->file_name,
                 'revision' => $d->revision,
                 'status' => $d->status,
+                'year' => $d->year,
+                'period' => $d->period,
+                'performance_category' => $d->performance_category,
                 'uploaded_by_name' => $d->uploader?->name ?? '—',
                 'created_at' => $d->created_at,
                 'ofi_record_id' => $d->ofi_record_id,
@@ -440,33 +687,8 @@ class DocumentController extends Controller
                 'file_url' => $d->file_path ? Storage::url($d->file_path) : null,
             ]);
 
-        $statsBase = DocumentUpload::query()
-            ->where('document_type_id', $documentType->id);
-
-        $normalizedTypeStatus = strtolower((string) ($documentType->status ?: 'active'));
-
-        $stats = [
-            'total' => (clone $statsBase)->count(),
-            'active' => $isRevisionControlled
-                ? (clone $statsBase)->where('status', 'Active')->count()
-                : 0,
-            'obsolete' => $isRevisionControlled
-                ? (clone $statsBase)->where('status', 'Obsolete')->count()
-                : 0,
-        ];
-
         return Inertia::render('Documents/Show', [
-            'documentType' => [
-                'id' => $documentType->id,
-                'code' => $documentType->code,
-                'name' => $documentType->title,
-                'file_type' => $documentType->storage,
-                'requires_revision' => $isRevisionControlled,
-                'status' => $normalizedTypeStatus === 'obsolete' ? 'Obsolete' : 'Active',
-                'status_note' => $documentType->status_note,
-                'is_obsolete' => $documentType->isObsolete(),
-                'can_upload' => !$documentType->isObsolete(),
-            ],
+            'documentType' => $documentTypePayload,
             'documents' => $documents,
             'filters' => [
                 'q' => $q,
@@ -475,8 +697,20 @@ class DocumentController extends Controller
                 'per_page' => $perPage,
                 'date_from' => $dateFrom,
                 'date_to' => $dateTo,
+                'record_type' => null,
+                'year' => null,
+                'period' => null,
             ],
             'stats' => $stats,
+            'performanceView' => [
+                'enabled' => false,
+                'record_type_groups' => [],
+                'selected_record_type' => null,
+                'selected_year' => null,
+                'selected_period' => null,
+                'selected_period_name' => null,
+                'selected_files' => [],
+            ],
         ]);
     }
 
@@ -489,6 +723,7 @@ class DocumentController extends Controller
         }
 
         $isRevisionControlled = $this->isRevisionControlled($documentType);
+        $isPerformanceForm = $this->isPerformanceFormType($documentType);
 
         $rules = [
             'files' => ['required', 'array', 'min:1'],
@@ -496,15 +731,30 @@ class DocumentController extends Controller
             'remarks' => ['nullable', 'string', 'max:1000'],
         ];
 
-        if ($isRevisionControlled) {
+        if ($isRevisionControlled && !$isPerformanceForm) {
             $rules['revision'] = ['required', 'string', 'max:50'];
         }
 
-        $data = $request->validate($rules);
+        if ($isPerformanceForm) {
+            $rules['performance_record_type'] = ['required', 'string', 'in:TARGET,ACCOMPLISHMENT'];
+            $rules['year'] = ['required', 'integer', 'min:2000', 'max:2100'];
+            $rules['period'] = ['required', 'string', 'in:JAN_JUN,JUL_DEC'];
+        }
+
+        $data = $request->validate($rules, [
+            'performance_record_type.required' => 'Record type is required for performance forms.',
+            'performance_record_type.in' => 'Record type must be either Target or Accomplishment.',
+            'year.required' => 'Year is required for performance forms.',
+            'year.integer' => 'Year must be a valid year.',
+            'year.min' => 'Year must be at least 2000.',
+            'year.max' => 'Year must not be greater than 2100.',
+            'period.required' => 'Period is required for performance forms.',
+            'period.in' => 'Period must be either January–June or July–December.',
+        ]);
 
         $files = $request->file('files', []);
 
-        if ($isRevisionControlled && count($files) > 1) {
+        if ($isRevisionControlled && !$isPerformanceForm && count($files) > 1) {
             return back()->withErrors([
                 'files' => 'Multiple upload is not allowed for revision-controlled documents.',
             ]);
@@ -512,10 +762,23 @@ class DocumentController extends Controller
 
         $created = 0;
 
-        foreach ($files as $file) {
-            $path = $file->store("qms/{$documentType->code}", 'public');
+        $year = $isPerformanceForm ? (int) $data['year'] : null;
+        $period = $isPerformanceForm ? (string) $data['period'] : null;
+        $performanceCategory = $isPerformanceForm
+            ? strtoupper((string) $documentType->series?->code_prefix)
+            : null;
+        $performanceRecordType = $isPerformanceForm
+            ? strtoupper((string) $data['performance_record_type'])
+            : null;
 
-            if ($isRevisionControlled) {
+        foreach ($files as $file) {
+            $storePath = $isPerformanceForm
+                ? "qms/{$performanceCategory}/{$performanceRecordType}/{$year}/{$period}"
+                : "qms/{$documentType->code}";
+
+            $path = $file->store($storePath, 'public');
+
+            if ($isRevisionControlled && !$isPerformanceForm) {
                 DocumentUpload::where('document_type_id', $documentType->id)
                     ->where('status', 'Active')
                     ->update(['status' => 'Obsolete']);
@@ -524,8 +787,14 @@ class DocumentController extends Controller
             DocumentUpload::create([
                 'document_type_id' => $documentType->id,
                 'uploaded_by' => $request->user()->id,
-                'revision' => $isRevisionControlled ? trim((string) $data['revision']) : null,
-                'status' => $isRevisionControlled ? 'Active' : null,
+                'revision' => ($isRevisionControlled && !$isPerformanceForm)
+                    ? trim((string) $data['revision'])
+                    : null,
+                'year' => $year,
+                'performance_category' => $performanceCategory,
+                'performance_record_type' => $performanceRecordType,
+                'period' => $period,
+                'status' => ($isRevisionControlled && !$isPerformanceForm) ? 'Active' : null,
                 'file_name' => $file->getClientOriginalName(),
                 'file_path' => $path,
                 'storage_disk' => 'public',
@@ -645,6 +914,24 @@ class DocumentController extends Controller
         return str_starts_with(strtoupper((string) $documentType->code), 'F-QMS');
     }
 
+    private function isPerformanceFormType(DocumentType $documentType): bool
+    {
+        $documentType->loadMissing('series');
+
+        $seriesCode = strtoupper(trim((string) $documentType->series?->code_prefix));
+
+        return in_array($seriesCode, ['IPCR', 'DPCR', 'UPCR'], true);
+    }
+
+    private function resolvePerformancePeriodName(string $period): string
+    {
+        return match ($period) {
+            'JAN_JUN' => 'January – June',
+            'JUL_DEC' => 'July – December',
+            default => 'Unknown Period',
+        };
+    }
+
     private function resolveModuleFromUpload(DocumentUpload $upload): string
     {
         return strtoupper((string) $upload->documentType?->series?->code_prefix) === 'MANUAL'
@@ -654,6 +941,15 @@ class DocumentController extends Controller
 
     private function resolveDocumentRecordLabel(DocumentUpload $upload): string
     {
+        if (
+            $upload->documentType &&
+            $this->isPerformanceFormType($upload->documentType) &&
+            $upload->year &&
+            $upload->period
+        ) {
+            return $upload->documentType->title . ' - ' . $upload->year . ' ' . $this->resolvePerformancePeriodName((string) $upload->period);
+        }
+
         return $upload->documentType?->code
             ?: $upload->file_name
             ?: 'Upload #' . $upload->id;

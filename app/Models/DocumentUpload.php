@@ -11,6 +11,10 @@ class DocumentUpload extends Model
         'document_type_id',
         'uploaded_by',
         'revision',
+        'year',
+        'performance_category',
+        'performance_record_type',
+        'period',
         'ofi_record_id',
         'dcr_record_id',
         'status',
@@ -28,6 +32,7 @@ class DocumentUpload extends Model
     ];
 
     protected $casts = [
+        'year' => 'integer',
         'preview_generated_at' => 'datetime',
         'preview_last_accessed_at' => 'datetime',
         'preview_size' => 'integer',
@@ -71,6 +76,14 @@ class DocumentUpload extends Model
     public function isGeneratedRecordDocument(): bool
     {
         return !is_null($this->ofi_record_id) || !is_null($this->dcr_record_id);
+    }
+
+    public function isPerformanceUpload(): bool
+    {
+        return filled($this->performance_category)
+            && filled($this->performance_record_type)
+            && filled($this->year)
+            && filled($this->period);
     }
 
     public function markPreviewAccessed(): void

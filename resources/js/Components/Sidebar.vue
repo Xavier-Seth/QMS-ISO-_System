@@ -30,7 +30,8 @@ watch(
             isStartsWith("/dcr") ||
             isStartsWith("/ofi") ||
             isStartsWith("/ofi-form");
-        openDocuments.value = isStartsWith("/documents");
+        openDocuments.value =
+            isStartsWith("/documents") || isStartsWith("/performance");
     },
     { immediate: true }
 );
@@ -155,12 +156,12 @@ const dropdownItemClass = (active = false) => [
                 <button
                     type="button"
                     @click="openDocuments = !openDocuments"
-                    :class="navItemClass(openDocuments || isStartsWith('/documents'))"
+                    :class="navItemClass(openDocuments || isStartsWith('/documents') || isStartsWith('/performance'))"
                     class="justify-between border-0 bg-transparent"
                 >
                     <div class="flex items-center gap-3">
                         <svg
-                            :class="iconClass(openDocuments || isStartsWith('/documents'))"
+                            :class="iconClass(openDocuments || isStartsWith('/documents') || isStartsWith('/performance'))"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
@@ -202,8 +203,8 @@ const dropdownItemClass = (active = false) => [
                     </Link>
 
                     <Link
-                        href="/documents?mode=performance"
-                        :class="dropdownItemClass(page.url.includes('mode=performance'))"
+                        href="/performance"
+                        :class="dropdownItemClass(isStartsWith('/performance'))"
                     >
                         Performance Commitment and Review Forms
                     </Link>
