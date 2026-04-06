@@ -2,33 +2,46 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
+use Illuminate\Database\Seeder;
 
 class PerformanceDocumentTypesSeeder extends Seeder
 {
     public function run(): void
     {
-        $map = [
-            'IPCR' => 'PERF-IPCR',
-            'DPCR' => 'PERF-DPCR',
-            'UPCR' => 'PERF-UPCR',
+        $seriesMap = [
+            'IPCR' => [
+                'series_name' => 'IPCR',
+                'type_code' => 'PERF-IPCR',
+                'type_title' => 'IPCR Performance Files',
+            ],
+            'DPCR' => [
+                'series_name' => 'Department Performance Commitment and Review',
+                'type_code' => 'PERF-DPCR',
+                'type_title' => 'DPCR Performance Files',
+            ],
+            'UPCR' => [
+                'series_name' => 'University Performance Commitment and Review',
+                'type_code' => 'PERF-UPCR',
+                'type_title' => 'UPCR Performance Files',
+            ],
         ];
 
-        foreach ($map as $seriesCode => $typeCode) {
-            $series = DocumentSeries::where('code_prefix', $seriesCode)->first();
-
-            if (!$series) {
-                continue;
-            }
+        foreach ($seriesMap as $codePrefix => $config) {
+            $series = DocumentSeries::firstOrCreate(
+                ['code_prefix' => $codePrefix],
+                ['name' => $config['series_name']]
+            );
 
             DocumentType::updateOrCreate(
-                ['code' => $typeCode],
+                ['code' => $config['type_code']],
                 [
                     'series_id' => $series->id,
-                    'title' => "{$seriesCode} Performance Files",
+                    'title' => $config['type_title'],
                     'storage' => 'Electronic',
+                    'status' => 'Active',
+                    'requires_revision' => false,
                 ]
             );
         }
