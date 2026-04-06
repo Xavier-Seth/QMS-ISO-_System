@@ -62,36 +62,46 @@ class PerformanceController extends Controller
             ->whereNotNull('year')
             ->whereNotNull('period');
 
-        $categories = collect($allowedCategories)->map(function (string $category) use ($baseQuery) {
-            $count = (clone $baseQuery)
-                ->where('performance_category', $category)
-                ->count();
-
-            return [
-                'value' => $category,
-                'label' => $category,
-                'files_count' => $count,
-            ];
-        })->values();
+        $categories = collect($allowedCategories)
+            ->map(function (string $category) use ($baseQuery) {
+                return [
+                    'value' => $category,
+                    'label' => $category,
+                    'files_count' => (clone $baseQuery)
+                        ->where('performance_category', $category)
+                        ->count(),
+                ];
+            })
+            ->values();
 
         $recordTypes = collect();
         $years = collect();
         $periods = collect();
-        $files = collect();
+
+        $files = [
+            'data' => [],
+            'links' => [],
+            'total' => 0,
+            'from' => null,
+            'to' => null,
+            'current_page' => 1,
+            'last_page' => 1,
+            'per_page' => 10,
+        ];
 
         if ($selectedCategory !== '') {
-            $recordTypes = collect($allowedRecordTypes)->map(function (string $recordType) use ($baseQuery, $selectedCategory) {
-                $count = (clone $baseQuery)
-                    ->where('performance_category', $selectedCategory)
-                    ->where('performance_record_type', $recordType)
-                    ->count();
-
-                return [
-                    'value' => $recordType,
-                    'label' => $this->recordTypeLabel($recordType),
-                    'files_count' => $count,
-                ];
-            })->values();
+            $recordTypes = collect($allowedRecordTypes)
+                ->map(function (string $recordType) use ($baseQuery, $selectedCategory) {
+                    return [
+                        'value' => $recordType,
+                        'label' => $this->recordTypeLabel($recordType),
+                        'files_count' => (clone $baseQuery)
+                            ->where('performance_category', $selectedCategory)
+                            ->where('performance_record_type', $recordType)
+                            ->count(),
+                    ];
+                })
+                ->values();
         }
 
         if ($selectedCategory !== '' && $selectedRecordType !== '') {
@@ -159,33 +169,40 @@ class PerformanceController extends Controller
                 case 'oldest':
                     $filesQuery->orderBy('created_at', 'asc');
                     break;
+
                 case 'name_asc':
                     $filesQuery->orderBy('file_name', 'asc');
                     break;
+
                 case 'name_desc':
                     $filesQuery->orderBy('file_name', 'desc');
                     break;
+
                 case 'latest':
                 default:
                     $filesQuery->orderBy('created_at', 'desc');
                     break;
             }
 
-            $files = $filesQuery->get()->map(function (DocumentUpload $upload) {
-                return [
-                    'id' => $upload->id,
-                    'file_name' => $upload->file_name,
-                    'remarks' => $upload->remarks,
-                    'uploaded_by_name' => $upload->uploader?->name ?? '—',
-                    'created_at' => $upload->created_at,
-                    'performance_category' => $upload->performance_category,
-                    'performance_record_type' => $upload->performance_record_type,
-                    'year' => $upload->year,
-                    'period' => $upload->period,
-                    'preview_url' => route('performance.uploads.preview', $upload->id),
-                    'download_url' => route('performance.uploads.download', $upload->id),
-                ];
-            })->values();
+            $files = $filesQuery
+                ->paginate(10)
+                ->withQueryString()
+                ->through(function (DocumentUpload $upload) {
+                    return [
+                        'id' => $upload->id,
+                        'file_name' => $upload->file_name,
+                        'remarks' => $upload->remarks,
+                        'uploaded_by_name' => $upload->uploader?->name ?? '—',
+                        'created_at' => $upload->created_at,
+                        'performance_category' => $upload->performance_category,
+                        'performance_record_type' => $upload->performance_record_type,
+                        'year' => $upload->year,
+                        'period' => $upload->period,
+                        'preview_url' => route('performance.uploads.preview', $upload->id),
+                        'download_url' => route('performance.uploads.download', $upload->id),
+                    ];
+                })
+                ->toArray();
         }
 
         return Inertia::render('Performance/Index', [
@@ -204,8 +221,12 @@ class PerformanceController extends Controller
             ],
             'meta' => [
                 'category_label' => $selectedCategory,
-                'record_type_label' => $selectedRecordType !== '' ? $this->recordTypeLabel($selectedRecordType) : null,
-                'period_label' => $selectedPeriod !== '' ? $this->periodLabel($selectedPeriod) : null,
+                'record_type_label' => $selectedRecordType !== ''
+                    ? $this->recordTypeLabel($selectedRecordType)
+                    : null,
+                'period_label' => $selectedPeriod !== ''
+                    ? $this->periodLabel($selectedPeriod)
+                    : null,
                 'can_upload' => $selectedCategory !== ''
                     && $selectedRecordType !== ''
                     && $selectedYear !== null

@@ -21,7 +21,7 @@ const props = defineProps({
     default: () => [],
   },
   files: {
-    type: Array,
+    type: [Array, Object],
     default: () => [],
   },
   filters: {
@@ -69,6 +69,30 @@ const yearOptions = computed(() => {
   return years
 })
 
+const fileItems = computed(() => {
+  return Array.isArray(props.files) ? props.files : (props.files?.data ?? [])
+})
+
+const fileLinks = computed(() => {
+  return Array.isArray(props.files) ? [] : (props.files?.links ?? [])
+})
+
+const fileTotal = computed(() => {
+  return Array.isArray(props.files) ? fileItems.value.length : (props.files?.total ?? 0)
+})
+
+const fileFrom = computed(() => {
+  return Array.isArray(props.files) ? (fileItems.value.length ? 1 : 0) : (props.files?.from ?? 0)
+})
+
+const fileTo = computed(() => {
+  return Array.isArray(props.files) ? fileItems.value.length : (props.files?.to ?? 0)
+})
+
+const fileLastPage = computed(() => {
+  return Array.isArray(props.files) ? 1 : (props.files?.last_page ?? 1)
+})
+
 function visitPerformance(params = {}) {
   router.get(
     '/performance',
@@ -79,6 +103,7 @@ function visitPerformance(params = {}) {
       period: params.period ?? (selectedPeriod.value || undefined),
       q: params.q ?? (search.value || undefined),
       sort: params.sort ?? (sort.value || 'latest'),
+      page: params.page ?? undefined,
     },
     {
       preserveState: true,
@@ -161,6 +186,16 @@ function selectPeriod(period) {
   )
 }
 
+function goToPage(url) {
+  if (!url) return
+
+  router.visit(url, {
+    preserveScroll: true,
+    preserveState: true,
+    replace: true,
+  })
+}
+
 let searchTimeout = null
 
 watch(search, () => {
@@ -168,13 +203,13 @@ watch(search, () => {
 
   clearTimeout(searchTimeout)
   searchTimeout = setTimeout(() => {
-    visitPerformance({ q: search.value || undefined })
+    visitPerformance({ q: search.value || undefined, page: 1 })
   }, 300)
 })
 
 watch(sort, () => {
   if (!selectedRecordType.value || !selectedYear.value || !selectedPeriod.value) return
-  visitPerformance({ sort: sort.value || 'latest' })
+  visitPerformance({ sort: sort.value || 'latest', page: 1 })
 })
 
 function formatDate(date) {
@@ -465,7 +500,7 @@ function submitUpload() {
             <div class="border-b border-slate-200 px-5 py-4">
               <div class="flex items-center justify-between gap-3">
                 <div>
-                  <h2 class="text-base font-semibold text-slate-900">Years</h2>
+                  <h2 class="text-base font-semibold text-slate-900">Year</h2>
                   <p class="mt-1 text-sm text-slate-600">
                     Open a year folder under {{ selectedRecordTypeLabel }}.
                   </p>
@@ -700,7 +735,7 @@ function submitUpload() {
               </div>
             </div>
 
-            <div v-else-if="!files.length" class="p-10 text-center">
+            <div v-else-if="!fileItems.length" class="p-10 text-center">
               <div class="text-lg font-semibold text-slate-900">No files yet</div>
               <div class="mt-2 text-sm text-slate-600">
                 Upload the first file inside this period folder.
@@ -716,7 +751,7 @@ function submitUpload() {
 
             <div v-else class="space-y-4 p-5">
               <div
-                v-for="file in files"
+                v-for="file in fileItems"
                 :key="file.id"
                 class="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300 hover:bg-white"
               >
@@ -770,6 +805,34 @@ function submitUpload() {
                       Download
                     </a>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            <div
+              v-if="showFilesSection && fileLastPage > 1"
+              class="border-t border-slate-200 bg-white px-5 py-4"
+            >
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="text-sm text-slate-600">
+                  Showing {{ fileFrom }} to {{ fileTo }} of {{ fileTotal }} files
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2">
+                  <button
+                    v-for="(link, index) in fileLinks"
+                    :key="`${index}-${link.label}`"
+                    type="button"
+                    :disabled="!link.url || link.active"
+                    @click="goToPage(link.url)"
+                    class="rounded-lg border px-3 py-1.5 text-sm transition"
+                    :class="link.active
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : link.url
+                        ? 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                        : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'"
+                    v-html="link.label"
+                  />
                 </div>
               </div>
             </div>
