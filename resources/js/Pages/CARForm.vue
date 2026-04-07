@@ -1,6 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
-import { reactive, ref, computed } from 'vue'
+import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { Head, usePage } from '@inertiajs/vue3'
 import axios from 'axios'
 import logo from '@/images/LNU_logo.png'
@@ -19,8 +19,44 @@ const page = usePage()
 const recordId = ref(props.record?.id ?? null)
 const isSaving = ref(false)
 const isSubmitting = ref(false)
+const isGenerating = ref(false)
+const isPublishing = ref(false)
+const isLoadingRecord = ref(false)
+
+const recordStatus = ref(props.record?.status ?? 'draft')
+const workflowStatus = ref(props.record?.workflow_status ?? null)
+const resolutionStatus = ref(props.record?.resolution_status ?? 'open')
+
+const publishFileName = ref('')
+const showPublishRenameModal = ref(false)
 
 const currentUser = computed(() => page.props.auth?.user ?? null)
+
+const isAdmin = computed(() => {
+  return String(currentUser.value?.role || '').toLowerCase() === 'admin'
+})
+
+const canSubmitToAdmin = computed(() => {
+  return !isAdmin.value && !!recordId.value && workflowStatus.value !== 'pending' && workflowStatus.value !== 'approved'
+})
+
+const isFormLocked = computed(() => {
+  if (isAdmin.value) return false
+  return workflowStatus.value === 'pending' || workflowStatus.value === 'approved'
+})
+
+const workflowBadgeClass = computed(() => {
+  if (workflowStatus.value === 'approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (workflowStatus.value === 'rejected') return 'border-rose-200 bg-rose-50 text-rose-700'
+  if (workflowStatus.value === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
+  return 'border-slate-200 bg-white text-slate-600'
+})
+
+const resolutionBadgeClass = computed(() => {
+  if (resolutionStatus.value === 'closed') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (resolutionStatus.value === 'ongoing') return 'border-blue-200 bg-blue-50 text-blue-700'
+  return 'border-slate-200 bg-white text-slate-600'
+})
 
 function emptyFollowUpRow() {
   return {
@@ -93,7 +129,9 @@ function emptyForm() {
 const form = reactive(emptyForm())
 
 function applyRecordData(data = {}) {
-  Object.keys(emptyForm()).forEach((key) => {
+  const fresh = emptyForm()
+
+  Object.keys(fresh).forEach((key) => {
     if (key === 'followUp') return
     if (data[key] !== undefined) {
       form[key] = data[key]
@@ -109,6 +147,10 @@ function applyRecordData(data = {}) {
       form.followUp[i].rep = row.rep ?? ''
       form.followUp[i].effective = row.effective ?? ''
     }
+  }
+
+  if (!publishFileName.value && (data.carNo || form.carNo)) {
+    publishFileName.value = `CAR_${data.carNo || form.carNo}`
   }
 }
 
@@ -182,6 +224,33 @@ const payloadData = computed(() => ({
   causeOthers: form.causeOthers,
 }))
 
+const suggestedPublishName = computed(() => `CAR_${form.carNo || recordId.value || 'record'}`)
+
+function currentFileLabel() {
+  return (
+    publishFileName.value?.trim() ||
+    (form.carNo ? `CAR_${form.carNo}` : '') ||
+    (recordId.value ? `CAR_${recordId.value}` : 'CAR_record')
+  )
+}
+
+function withDocx(name) {
+  const n = (name || '').trim()
+  if (!n) return null
+  return n.toLowerCase().endsWith('.docx') ? n : `${n}.docx`
+}
+
+function downloadBlob(blobData, filename) {
+  const url = window.URL.createObjectURL(new Blob([blobData]))
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  window.URL.revokeObjectURL(url)
+}
+
 async function runTask(flagRef, message, task) {
   flagRef.value = true
   loading.open(message)
@@ -194,64 +263,298 @@ async function runTask(flagRef, message, task) {
   }
 }
 
+function resetFormState() {
+  const fresh = emptyForm()
+
+  Object.keys(fresh).forEach((key) => {
+    form[key] = fresh[key]
+  })
+
+  recordId.value = null
+  recordStatus.value = 'draft'
+  workflowStatus.value = null
+  resolutionStatus.value = 'open'
+  publishFileName.value = ''
+  showPublishRenameModal.value = false
+
+  const url = new URL(window.location.href)
+  url.searchParams.delete('record')
+  window.history.replaceState({}, '', url)
+}
+
+function getRecordIdFromUrl() {
+  const params = new URLSearchParams(window.location.search)
+  const value = params.get('record')
+  return value ? Number(value) : null
+}
+
+async function loadRecord(id) {
+  await runTask(isLoadingRecord, 'Loading saved CAR record...', async () => {
+    const res = await axios.get(`/car/records/${id}`)
+    recordId.value = id
+    recordStatus.value = res.data.status ?? 'draft'
+    workflowStatus.value = res.data.workflow_status ?? null
+    resolutionStatus.value = res.data.resolution_status ?? 'open'
+    applyRecordData(res.data.data || {})
+
+    const shown = withDocx(currentFileLabel()) || `Record #${id}`
+    toast.success(`Loaded saved record: ${shown}`)
+  }).catch((err) => {
+    console.error(err)
+    toast.error('Failed to load saved CAR record.')
+  })
+}
+
+async function upsertRecord(requestedStatus = null) {
+  const payload = {
+    document_type_id: props.record?.document_type_id ?? props.documentTypeId,
+    data: payloadData.value,
+    status: requestedStatus,
+  }
+
+  if (!recordId.value) {
+    const res = await axios.post('/car/records', payload)
+    recordId.value = res.data.id
+    recordStatus.value = res.data.status ?? 'draft'
+    workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
+    resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
+
+    const url = new URL(window.location.href)
+    url.searchParams.set('record', recordId.value)
+    window.history.replaceState({}, '', url)
+  } else {
+    const res = await axios.put(`/car/records/${recordId.value}`, payload)
+    recordStatus.value = res.data.status ?? recordStatus.value
+    workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
+    resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
+  }
+
+  if (!publishFileName.value) {
+    publishFileName.value = currentFileLabel()
+  }
+
+  return recordId.value
+}
+
+async function ensureDraftSaved() {
+  const requestedStatus = recordId.value
+    ? (recordStatus.value || 'draft')
+    : 'draft'
+
+  return await upsertRecord(requestedStatus)
+}
+
 async function saveDraft() {
   if (!props.documentTypeId && !props.record?.document_type_id) {
     toast.error('Missing CAR document type ID.')
     return
   }
 
-  await runTask(isSaving, 'Saving draft...', async () => {
-    const payload = {
-      document_type_id: props.record?.document_type_id ?? props.documentTypeId,
-      data: payloadData.value,
-    }
+  await runTask(isSaving, 'Saving CAR draft...', async () => {
+    const wasNew = !recordId.value
+    const id = await upsertRecord(wasNew ? 'draft' : (recordStatus.value || 'draft'))
+    const name = currentFileLabel()
 
-    let res
-
-    if (!recordId.value) {
-      res = await axios.post('/car/records', payload)
-      recordId.value = res.data.id
-      toast.success(`Draft saved. Record #${recordId.value}`)
-    } else {
-      res = await axios.put(`/car/records/${recordId.value}`, payload)
-      toast.success(`Draft updated. Record #${recordId.value}`)
-    }
+    toast.success(
+      wasNew
+        ? `Saved draft: ${name} (Record #${id})`
+        : `Updated draft: ${name} (Record #${id})`
+    )
   }).catch((err) => {
     console.error(err)
     toast.error(
       err?.response?.data?.message ||
-      'Failed to save draft.'
+      err?.response?.data?.error ||
+      (err?.response?.status === 403
+        ? 'This CAR record can no longer be edited. Pending and approved records are locked.'
+        : 'Failed to save draft.')
     )
   })
 }
 
 async function submitToAdmin() {
+  if (!recordId.value) {
+    toast.error('Save the draft first before submitting to admin.')
+    return
+  }
+
+  if (isAdmin.value) {
+    toast.error('Admin-created CAR records do not need inbox submission.')
+    return
+  }
+
   await runTask(isSubmitting, 'Submitting CAR to admin...', async () => {
-    if (!recordId.value) {
-      await saveDraft()
-    }
+    await ensureDraftSaved()
 
-    if (!recordId.value) {
-      throw new Error('Draft was not created.')
-    }
+    const res = await axios.post(`/car/records/${recordId.value}/submit`)
 
-    await axios.post(`/car/records/${recordId.value}/submit`)
-    toast.success('CAR submitted to admin successfully.')
+    recordStatus.value = res.data.status ?? 'submitted'
+    workflowStatus.value = res.data.workflow_status ?? 'pending'
+
+    toast.success(res?.data?.message || 'CAR submitted to admin successfully.')
   }).catch((err) => {
     console.error(err)
     toast.error(
       err?.response?.data?.message ||
-      err?.message ||
+      err?.response?.data?.error ||
       'Failed to submit CAR.'
     )
   })
 }
+
+async function downloadDocx() {
+  await runTask(isGenerating, 'Generating CAR document...', async () => {
+    await ensureDraftSaved()
+
+    const res = await axios.get(`/car/records/${recordId.value}/download`, {
+      responseType: 'blob',
+    })
+
+    const name = withDocx(currentFileLabel()) || 'CAR.docx'
+    downloadBlob(res.data, name)
+    toast.success(`Downloaded: ${name}`)
+  }).catch((err) => {
+    console.error(err)
+    toast.error(
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      'Failed to download DOCX.'
+    )
+  })
+}
+
+function openPublishRenameModal() {
+  if (!recordId.value) {
+    toast.error('Save the record first before publishing.')
+    return
+  }
+
+  if (!publishFileName.value) {
+    publishFileName.value = suggestedPublishName.value
+  }
+
+  showPublishRenameModal.value = true
+}
+
+function closePublishModal() {
+  if (isPublishing.value) return
+  showPublishRenameModal.value = false
+}
+
+async function publishToUploads() {
+  if (!recordId.value) {
+    toast.error('Save the record first before publishing.')
+    return
+  }
+
+  await runTask(isPublishing, 'Publishing CAR...', async () => {
+    const id = await ensureDraftSaved()
+
+    const res = await axios.post(`/car/records/${id}/publish`, {
+      file_name: publishFileName.value?.trim() || null,
+      remarks: 'Published from CAR form',
+    })
+
+    const fileName = res?.data?.file_name || withDocx(currentFileLabel()) || 'CAR.docx'
+    toast.success(`Published: ${fileName} (Upload #${res.data.upload_id})`)
+
+    resetFormState()
+  }).catch((err) => {
+    console.error(err)
+    toast.error(
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      (err?.response?.status === 403
+        ? 'Only admins can publish CAR records.'
+        : 'Failed to publish CAR.')
+    )
+  })
+}
+
+async function confirmPublish() {
+  showPublishRenameModal.value = false
+  await publishToUploads()
+}
+
+function onKeydown(event) {
+  if (event.key === 'Escape') {
+    closePublishModal()
+  }
+}
+
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+
+  const id = getRecordIdFromUrl()
+  if (id) {
+    loadRecord(id)
+  }
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
   <Head title="Create CAR Form" />
 
   <AdminLayout>
+    <div
+      v-if="showPublishRenameModal"
+      class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      @click.self="closePublishModal"
+    >
+      <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
+        <div class="flex items-start justify-between gap-4">
+          <div>
+            <h3 class="text-lg font-bold text-slate-900">Rename file before publishing</h3>
+            <p class="mt-1 text-sm text-slate-500">Enter a filename (no need to add <b>.docx</b>).</p>
+          </div>
+
+          <button
+            class="rounded-lg px-3 py-1 text-sm text-slate-500 hover:bg-slate-100 disabled:opacity-60"
+            @click="closePublishModal"
+            :disabled="isPublishing"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div class="mt-4">
+          <label class="text-sm font-semibold text-slate-700">Filename</label>
+          <input
+            v-model="publishFileName"
+            type="text"
+            class="mt-2 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+            placeholder="e.g. CAR_2026-001"
+          />
+          <p class="mt-2 text-xs text-slate-500">
+            Suggested: <span class="font-mono">{{ suggestedPublishName }}</span>
+          </p>
+        </div>
+
+        <div class="mt-6 flex justify-end gap-2">
+          <button
+            class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            @click="closePublishModal"
+            :disabled="isPublishing"
+          >
+            Cancel
+          </button>
+
+          <button
+            class="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-60"
+            @click="confirmPublish"
+            :disabled="isPublishing"
+          >
+            <span v-if="!isPublishing">Publish</span>
+            <span v-else>Publishing...</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div class="h-screen overflow-hidden bg-slate-100 font-sans">
       <div class="flex h-full flex-col gap-6 px-10 py-8">
         <div class="flex shrink-0 flex-wrap items-end justify-between gap-3">
@@ -272,6 +575,35 @@ async function submitToAdmin() {
             <p class="mt-1 text-[13px] text-slate-400">
               Corrective Action Request · Leyte Normal University
             </p>
+
+            <div v-if="recordId" class="mt-3 flex flex-wrap items-center gap-3">
+              <div
+                class="inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold"
+                :class="workflowBadgeClass"
+              >
+                Workflow: {{ workflowStatus || 'draft' }}
+              </div>
+
+              <div
+                class="inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold"
+                :class="resolutionBadgeClass"
+              >
+                Resolution: {{ resolutionStatus || 'open' }}
+              </div>
+
+              <div
+                class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-semibold text-slate-600"
+              >
+                Status: {{ recordStatus || 'draft' }}
+              </div>
+
+              <span
+                v-if="recordId && isFormLocked"
+                class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[12px] font-semibold text-amber-800"
+              >
+                {{ workflowStatus === 'pending' ? 'Read-only while under review' : 'Read-only after approval' }}
+              </span>
+            </div>
           </div>
 
           <div class="flex flex-wrap items-center gap-2.5">
@@ -285,18 +617,39 @@ async function submitToAdmin() {
             <button
               class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               @click="saveDraft"
-              :disabled="isSaving"
+              :disabled="isSaving || isFormLocked"
             >
               <span v-if="!isSaving">{{ recordId ? 'Update Draft' : 'Save Draft' }}</span>
               <span v-else>Saving...</span>
             </button>
 
             <button
+              v-if="isAdmin"
+              class="inline-flex items-center gap-2 rounded-xl bg-slate-800 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-slate-900 disabled:cursor-not-allowed disabled:bg-slate-400"
+              @click="downloadDocx"
+              :disabled="isGenerating"
+              title="Auto-saves draft, then generates & downloads DOCX"
+            >
+              <span>{{ isGenerating ? 'Downloading...' : 'Download DOCX' }}</span>
+            </button>
+
+            <button
+              v-if="!isAdmin"
               class="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
               @click="submitToAdmin"
-              :disabled="isSubmitting"
+              :disabled="!canSubmitToAdmin || isSubmitting || isFormLocked"
             >
               <span>{{ isSubmitting ? 'Submitting...' : 'Submit to Admin' }}</span>
+            </button>
+
+            <button
+              v-if="isAdmin"
+              class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="openPublishRenameModal"
+              :disabled="isPublishing || !recordId"
+              title="Saves DOCX to uploads list (R-QMS-017)"
+            >
+              <span>{{ isPublishing ? 'Publishing...' : 'Publish' }}</span>
             </button>
           </div>
         </div>
@@ -305,7 +658,8 @@ async function submitToAdmin() {
           class="flex flex-1 items-start justify-center overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
         >
           <div
-            class="flex w-[210mm] flex-col border-2 border-black bg-white text-black"
+            class="flex w-[210mm] flex-col border-2 border-black bg-white text-black transition"
+            :class="{ 'pointer-events-none opacity-70': isFormLocked }"
             style="font-family: Arial, Helvetica, sans-serif;"
           >
             <!-- Header -->

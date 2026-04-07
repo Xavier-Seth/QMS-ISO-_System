@@ -5,149 +5,616 @@ namespace App\Http\Controllers;
 use App\Models\CarRecord;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
+use App\Services\ActivityLogService;
 use App\Services\CARFormGenerator;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Inertia\Inertia;
 
 class CarRecordController extends Controller
 {
-    /**
-     * Store (create draft)
-     */
+    public function __construct(
+        protected ActivityLogService $activityLogService
+    ) {
+    }
+
+    private function rQms017TypeId(): int
+    {
+        return DocumentType::where('code', 'R-QMS-017')->value('id')
+            ?? abort(404, 'DocumentType R-QMS-017 not found.');
+    }
+
+    private function templatePath(): string
+    {
+        $path = config('qms_templates.car.path');
+
+        if (!is_string($path) || $path === '' || !file_exists($path)) {
+            abort(500, 'CAR template file not found.');
+        }
+
+        return $path;
+    }
+
+    private function ensureTmpDir(): string
+    {
+        $tmpDir = storage_path('app/car_forms_tmp');
+
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0755, true);
+        }
+
+        return $tmpDir;
+    }
+
+    private function sanitizeBaseFileName(?string $raw, CarRecord $carRecord): string
+    {
+        $raw = trim((string) $raw);
+
+        if ($raw !== '') {
+            $raw = preg_replace('/\.docx$/i', '', $raw);
+            $raw = preg_replace('/[^A-Za-z0-9 _\-\(\)]/', '', $raw);
+            $raw = trim((string) preg_replace('/\s+/', ' ', $raw));
+        }
+
+        if ($raw !== '') {
+            return $raw;
+        }
+
+        $fallbackBase = $carRecord->car_no
+            ? preg_replace('/[^A-Za-z0-9_\-]/', '_', $carRecord->car_no)
+            : now()->format('Ymd_His');
+
+        return "CAR_{$fallbackBase}";
+    }
+
+    private function generateDocxToPath(CarRecord $carRecord, string $outputPath): void
+    {
+        $generator = new CARFormGenerator($this->templatePath());
+        $generator->generate($carRecord->data ?? [], $outputPath);
+    }
+
+    private function isAdminUser(): bool
+    {
+        return auth()->user()?->role === 'admin';
+    }
+
+    private function canManageRecord(CarRecord $carRecord): bool
+    {
+        if ($this->isAdminUser()) {
+            return true;
+        }
+
+        return (int) $carRecord->created_by === (int) auth()->id();
+    }
+
+    private function canEditRecordContent(CarRecord $carRecord): bool
+    {
+        if ($this->isAdminUser()) {
+            return true;
+        }
+
+        if ((int) $carRecord->created_by !== (int) auth()->id()) {
+            return false;
+        }
+
+        if (in_array($carRecord->workflow_status, ['pending', 'approved'], true)) {
+            return false;
+        }
+
+        return $carRecord->status === 'draft'
+            || $carRecord->workflow_status === 'rejected'
+            || $carRecord->workflow_status === null;
+    }
+
+    private function ensureCanManageRecord(CarRecord $carRecord): void
+    {
+        abort_unless(
+            $this->canManageRecord($carRecord),
+            403,
+            'You are not allowed to access this CAR record.'
+        );
+    }
+
+    private function ensureCanEditRecordContent(CarRecord $carRecord): void
+    {
+        abort_unless(
+            $this->canEditRecordContent($carRecord),
+            403,
+            'This CAR record can no longer be edited. Pending and approved records are locked.'
+        );
+    }
+
+    private function resolveSafeStatusForSave(CarRecord $carRecord, ?string $requestedStatus): string
+    {
+        $currentStatus = $carRecord->status ?: 'draft';
+        $requestedStatus = trim((string) $requestedStatus);
+
+        $allowedStatuses = ['draft', 'submitted'];
+
+        if ($requestedStatus === '') {
+            $requestedStatus = 'draft';
+        }
+
+        if (!in_array($requestedStatus, $allowedStatuses, true)) {
+            return $currentStatus;
+        }
+
+        if ($requestedStatus === 'draft') {
+            if (
+                in_array($carRecord->workflow_status, ['pending', 'approved'], true)
+                || $currentStatus === 'submitted'
+            ) {
+                return 'submitted';
+            }
+
+            return 'draft';
+        }
+
+        if ($requestedStatus === 'submitted') {
+            return 'submitted';
+        }
+
+        return $currentStatus;
+    }
+
+    private function publishRecordDocument(
+        CarRecord $carRecord,
+        ?string $requestedFileName = null,
+        ?string $remarks = null
+    ): DocumentUpload {
+        $existingUpload = DocumentUpload::query()
+            ->where('car_record_id', $carRecord->id)
+            ->orderByDesc('id')
+            ->first();
+
+        $tmpDir = $this->ensureTmpDir();
+        $disk = Storage::disk('public');
+
+        if ($existingUpload) {
+            $fileName = $existingUpload->file_name
+                ?: ($this->sanitizeBaseFileName($requestedFileName, $carRecord) . '.docx');
+
+            $tmpPath = $tmpDir . '/' . uniqid('car_republish_', true) . '_' . $fileName;
+            $this->generateDocxToPath($carRecord, $tmpPath);
+
+            $publicPath = $existingUpload->file_path ?: ('documents/car/' . $fileName);
+            $disk->put($publicPath, file_get_contents($tmpPath));
+
+            $existingUpload->update([
+                'document_type_id' => $this->rQms017TypeId(),
+                'uploaded_by' => auth()->id(),
+                'file_name' => $fileName,
+                'file_path' => $publicPath,
+                'storage_disk' => 'public',
+                'remarks' => $remarks ?? $existingUpload->remarks,
+            ]);
+
+            @unlink($tmpPath);
+
+            return $existingUpload->fresh();
+        }
+
+        $baseName = $this->sanitizeBaseFileName($requestedFileName, $carRecord);
+        $fileName = "{$baseName}.docx";
+        $publicPath = 'documents/car/' . $fileName;
+
+        if ($disk->exists($publicPath)) {
+            $fileName = "{$baseName}_" . now()->format('His') . '.docx';
+            $publicPath = 'documents/car/' . $fileName;
+        }
+
+        $tmpPath = $tmpDir . '/' . uniqid('car_publish_', true) . '_' . $fileName;
+        $this->generateDocxToPath($carRecord, $tmpPath);
+
+        $disk->put($publicPath, file_get_contents($tmpPath));
+
+        $upload = DocumentUpload::create([
+            'document_type_id' => $this->rQms017TypeId(),
+            'uploaded_by' => auth()->id(),
+            'car_record_id' => $carRecord->id,
+            'revision' => null,
+            'status' => null,
+            'file_name' => $fileName,
+            'file_path' => $publicPath,
+            'storage_disk' => 'public',
+            'remarks' => $remarks,
+        ]);
+
+        @unlink($tmpPath);
+
+        return $upload;
+    }
+
     public function store(Request $request)
     {
-        $data = $request->validate([
-            'document_type_id' => 'required|exists:document_types,id',
-            'data' => 'nullable|array',
+        $validated = $request->validate([
+            'document_type_id' => ['required', 'exists:document_types,id'],
+            'data' => ['nullable', 'array'],
+            'status' => ['nullable', 'in:draft,submitted'],
         ]);
+
+        $payload = (array) ($validated['data'] ?? []);
+        $isAdmin = $this->isAdminUser();
 
         $record = CarRecord::create([
-            'document_type_id' => $data['document_type_id'],
-            'data' => $data['data'] ?? [],
+            'document_type_id' => $validated['document_type_id'],
+            'car_no' => $payload['carNo'] ?? null,
+            'ref_no' => $payload['refNo'] ?? null,
+            'dept_section' => $payload['deptSection'] ?? null,
+            'auditor' => $payload['auditor'] ?? null,
             'status' => 'draft',
-            'workflow_status' => null,
+            'workflow_status' => $isAdmin ? 'approved' : null,
             'resolution_status' => 'open',
-            'created_by' => Auth::id(),
-            'updated_by' => Auth::id(),
+            'data' => $payload,
+            'created_by' => auth()->id(),
+            'updated_by' => auth()->id(),
         ]);
 
-        return response()->json($record);
+        return response()->json([
+            'id' => $record->id,
+            'status' => $record->status,
+            'workflow_status' => $record->workflow_status,
+            'resolution_status' => $record->resolution_status,
+        ]);
     }
 
-    /**
-     * Update draft
-     */
+    public function show(CarRecord $carRecord)
+    {
+        $this->ensureCanManageRecord($carRecord);
+
+        $carRecord->load([
+            'creator:id,name,department',
+            'rejectedBy:id,name',
+        ]);
+
+        return response()->json([
+            'id' => $carRecord->id,
+            'status' => $carRecord->status,
+            'workflow_status' => $carRecord->workflow_status,
+            'resolution_status' => $carRecord->resolution_status,
+            'rejection_reason' => $carRecord->rejection_reason,
+            'rejected_at' => $carRecord->rejected_at,
+            'rejected_by_name' => $carRecord->rejectedBy?->name ?? null,
+            'created_by_name' => $carRecord->creator?->name ?? '—',
+            'created_by_department' => $carRecord->creator?->department ?? '—',
+            'data' => $carRecord->data,
+        ]);
+    }
+
     public function update(Request $request, CarRecord $carRecord)
     {
-        $data = $request->validate([
-            'data' => 'nullable|array',
+        $this->ensureCanManageRecord($carRecord);
+        $this->ensureCanEditRecordContent($carRecord);
+
+        $validated = $request->validate([
+            'data' => ['nullable', 'array'],
+            'status' => ['nullable', 'in:draft,submitted'],
         ]);
+
+        $payload = (array) ($validated['data'] ?? []);
+        $safeStatus = $this->resolveSafeStatusForSave($carRecord, $validated['status'] ?? null);
 
         $carRecord->update([
-            'data' => $data['data'] ?? $carRecord->data,
-            'updated_by' => Auth::id(),
+            'car_no' => $payload['carNo'] ?? $carRecord->car_no,
+            'ref_no' => $payload['refNo'] ?? $carRecord->ref_no,
+            'dept_section' => $payload['deptSection'] ?? $carRecord->dept_section,
+            'auditor' => $payload['auditor'] ?? $carRecord->auditor,
+            'status' => $safeStatus,
+            'data' => $payload ?: $carRecord->data,
+            'updated_by' => auth()->id(),
         ]);
 
-        return response()->json($carRecord);
+        $fresh = $carRecord->fresh();
+
+        return response()->json([
+            'ok' => true,
+            'status' => $fresh->status,
+            'workflow_status' => $fresh->workflow_status,
+            'resolution_status' => $fresh->resolution_status,
+        ]);
     }
 
-    /**
-     * Submit to admin
-     */
-    public function submit(CarRecord $carRecord)
+    public function submitForApproval(CarRecord $carRecord)
     {
+        $this->ensureCanManageRecord($carRecord);
+
+        if ($this->isAdminUser()) {
+            return response()->json([
+                'message' => 'Admin-created CAR records do not need inbox submission.',
+            ], 422);
+        }
+
+        if (!$this->canEditRecordContent($carRecord)) {
+            return response()->json([
+                'message' => 'This CAR record can no longer be submitted from its current state.',
+            ], 422);
+        }
+
+        if ($carRecord->workflow_status === 'approved') {
+            return response()->json([
+                'message' => 'This CAR record is already approved.',
+            ], 422);
+        }
+
+        if ($carRecord->workflow_status === 'pending') {
+            return response()->json([
+                'message' => 'This CAR record is already submitted for approval.',
+            ], 422);
+        }
+
+        $isResubmission = $carRecord->workflow_status === 'rejected';
+
         $carRecord->update([
             'status' => 'submitted',
             'workflow_status' => 'pending',
+            'rejection_reason' => null,
+            'rejected_at' => null,
+            'rejected_by' => null,
+            'updated_by' => auth()->id(),
         ]);
 
-        return response()->json(['message' => 'CAR submitted']);
+        $this->activityLogService->log([
+            'module' => 'car',
+            'action' => 'submitted',
+            'entity_type' => CarRecord::class,
+            'entity_id' => $carRecord->id,
+            'record_label' => $carRecord->car_no ?: 'CAR #' . $carRecord->id,
+            'file_type' => null,
+            'description' => $isResubmission
+                ? 'CAR corrected and resubmitted to admin.'
+                : 'CAR submitted to admin for approval.',
+        ]);
+
+        return response()->json([
+            'message' => $isResubmission
+                ? 'CAR corrected and resubmitted to admin successfully.'
+                : 'CAR submitted to admin for approval successfully.',
+            'status' => $carRecord->status,
+            'workflow_status' => $carRecord->workflow_status,
+        ]);
     }
 
-    /**
-     * Approve (admin)
-     */
+    public function download(CarRecord $carRecord)
+    {
+        $this->ensureCanManageRecord($carRecord);
+
+        $tmpDir = $this->ensureTmpDir();
+
+        $fileName = 'CAR_' . ($carRecord->car_no ?: now()->format('Ymd_His')) . '.docx';
+        $outputPath = $tmpDir . '/' . uniqid('car_download_', true) . '_' . $fileName;
+
+        $this->generateDocxToPath($carRecord, $outputPath);
+
+        $this->activityLogService->log([
+            'module' => 'car',
+            'action' => 'downloaded',
+            'entity_type' => CarRecord::class,
+            'entity_id' => $carRecord->id,
+            'record_label' => $carRecord->car_no ?: 'CAR #' . $carRecord->id,
+            'file_type' => 'docx',
+            'description' => 'Downloaded generated CAR form ' . ($carRecord->car_no ?: 'CAR #' . $carRecord->id),
+        ]);
+
+        return response()->download($outputPath, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        ])->deleteFileAfterSend(true);
+    }
+
+    public function publish(Request $request, CarRecord $carRecord)
+    {
+        abort_unless($this->isAdminUser(), 403, 'Only admins can publish CAR records.');
+
+        $data = $request->validate([
+            'remarks' => ['nullable', 'string', 'max:1000'],
+            'file_name' => ['nullable', 'string', 'max:200'],
+        ]);
+
+        if ($request->has('data')) {
+            $payload = (array) $request->input('data', []);
+
+            if ($this->canEditRecordContent($carRecord)) {
+                $safeStatus = $this->resolveSafeStatusForSave(
+                    $carRecord,
+                    $request->input('status', $carRecord->status)
+                );
+
+                $carRecord->update([
+                    'car_no' => $payload['carNo'] ?? $carRecord->car_no,
+                    'ref_no' => $payload['refNo'] ?? $carRecord->ref_no,
+                    'dept_section' => $payload['deptSection'] ?? $carRecord->dept_section,
+                    'auditor' => $payload['auditor'] ?? $carRecord->auditor,
+                    'status' => $safeStatus,
+                    'data' => $payload ?: $carRecord->data,
+                    'updated_by' => auth()->id(),
+                ]);
+            }
+        }
+
+        $carRecord = $carRecord->fresh();
+
+        $upload = $this->publishRecordDocument(
+            $carRecord,
+            $data['file_name'] ?? null,
+            $data['remarks'] ?? null
+        );
+
+        $this->activityLogService->log([
+            'module' => 'car',
+            'action' => 'published',
+            'entity_type' => CarRecord::class,
+            'entity_id' => $carRecord->id,
+            'record_label' => $carRecord->car_no ?: 'CAR #' . $carRecord->id,
+            'file_type' => 'docx',
+            'description' => 'Published CAR record ' . ($carRecord->car_no ?: 'CAR #' . $carRecord->id) . ' as document ' . $upload->file_name,
+            'new_values' => [
+                'upload_id' => $upload->id,
+                'file_name' => $upload->file_name,
+                'file_path' => $upload->file_path,
+                'remarks' => $upload->remarks,
+            ],
+        ]);
+
+        return response()->json([
+            'ok' => true,
+            'upload_id' => $upload->id,
+            'car_record_id' => $carRecord->id,
+            'file_name' => $upload->file_name,
+            'workflow_status' => $carRecord->workflow_status,
+            'resolution_status' => $carRecord->resolution_status,
+        ]);
+    }
+
     public function approve(CarRecord $carRecord)
     {
+        abort_unless($this->isAdminUser(), 403, 'Only admins can approve CAR records.');
+
+        if ($carRecord->status !== 'submitted' || $carRecord->workflow_status !== 'pending') {
+            return back()->with('error', 'Only submitted pending CAR records can be approved.');
+        }
+
         DB::transaction(function () use ($carRecord) {
             $carRecord->update([
                 'workflow_status' => 'approved',
-                'resolution_status' => 'open',
+                'resolution_status' => $carRecord->resolution_status ?: 'open',
+                'updated_by' => auth()->id(),
             ]);
 
-            $this->publish($carRecord);
+            DB::afterCommit(function () use ($carRecord) {
+                $fresh = $carRecord->fresh();
+
+                $upload = $this->publishRecordDocument(
+                    $fresh,
+                    null,
+                    'Auto-published after admin approval'
+                );
+
+                $fresh = $fresh->fresh();
+
+                $this->activityLogService->log([
+                    'module' => 'car',
+                    'action' => 'approved',
+                    'entity_type' => CarRecord::class,
+                    'entity_id' => $fresh->id,
+                    'record_label' => $fresh->car_no ?: 'CAR #' . $fresh->id,
+                    'file_type' => 'docx',
+                    'description' => 'Approved CAR and published document ' . $upload->file_name,
+                    'new_values' => [
+                        'workflow_status' => $fresh->workflow_status,
+                        'resolution_status' => $fresh->resolution_status,
+                        'upload_id' => $upload->id,
+                    ],
+                ]);
+            });
         });
 
-        return response()->json(['message' => 'CAR approved']);
+        return back()->with('success', 'CAR approved and published successfully.');
     }
 
-    /**
-     * Reject (admin)
-     */
     public function reject(Request $request, CarRecord $carRecord)
     {
-        $data = $request->validate([
-            'reason' => 'required|string',
+        abort_unless($this->isAdminUser(), 403, 'Only admins can reject CAR records.');
+
+        if ($carRecord->status !== 'submitted' || $carRecord->workflow_status !== 'pending') {
+            return back()->with('error', 'Only submitted pending CAR records can be rejected.');
+        }
+
+        $validated = $request->validate([
+            'rejection_reason' => ['required', 'string', 'max:2000'],
         ]);
 
         $carRecord->update([
             'workflow_status' => 'rejected',
-            'rejection_reason' => $data['reason'],
+            'rejection_reason' => $validated['rejection_reason'],
             'rejected_at' => now(),
-            'rejected_by' => Auth::id(),
+            'rejected_by' => auth()->id(),
+            'updated_by' => auth()->id(),
         ]);
 
-        return response()->json(['message' => 'CAR rejected']);
+        $this->activityLogService->log([
+            'module' => 'car',
+            'action' => 'rejected',
+            'entity_type' => CarRecord::class,
+            'entity_id' => $carRecord->id,
+            'record_label' => $carRecord->car_no ?: 'CAR #' . $carRecord->id,
+            'file_type' => null,
+            'description' => 'Rejected CAR and returned it for correction.',
+            'new_values' => [
+                'workflow_status' => 'rejected',
+                'rejection_reason' => $validated['rejection_reason'],
+            ],
+        ]);
+
+        return back()->with('success', 'CAR rejected and returned for correction.');
     }
 
-    /**
-     * Publish → generate DOCX + save to document_uploads
-     * FINAL OUTPUT SHOULD GO TO R-QMS-017, NOT F-QMS-006
-     */
-    private function publish(CarRecord $carRecord): void
+    public function inbox(Request $request)
     {
-        $templatePath = config('qms_templates.car.path');
+        abort_unless($this->isAdminUser(), 403);
 
-        if (!is_string($templatePath) || $templatePath === '' || !file_exists($templatePath)) {
-            throw new \RuntimeException('CAR template not found.');
+        $status = $request->input('workflow_status', 'pending');
+        $allowed = ['pending', 'approved', 'rejected'];
+
+        if (!in_array($status, $allowed, true)) {
+            $status = 'pending';
         }
 
-        $recordDocumentType = DocumentType::where('code', 'R-QMS-017')->first();
+        $records = CarRecord::query()
+            ->with([
+                'creator:id,name,department,role',
+                'rejectedBy:id,name',
+            ])
+            ->where('status', 'submitted')
+            ->where('workflow_status', $status)
+            ->whereHas('creator', function ($query) {
+                $query->where('role', '!=', 'admin');
+            })
+            ->latest()
+            ->paginate(10)
+            ->withQueryString()
+            ->through(fn(CarRecord $record) => [
+                'id' => $record->id,
+                'car_no' => $record->car_no,
+                'ref_no' => $record->ref_no,
+                'dept_section' => $record->dept_section,
+                'auditor' => $record->auditor,
+                'status' => $record->status,
+                'workflow_status' => $record->workflow_status,
+                'resolution_status' => $record->resolution_status,
+                'rejection_reason' => $record->rejection_reason,
+                'rejected_at' => $record->rejected_at,
+                'rejected_by_name' => $record->rejectedBy?->name ?? null,
+                'created_at' => $record->created_at,
+                'created_by_name' => $record->creator?->name ?? '—',
+                'created_by_department' => $record->creator?->department ?? '—',
+            ]);
 
-        if (!$recordDocumentType) {
-            throw new \RuntimeException('R-QMS-017 document type not found.');
-        }
+        $counts = [
+            'pending' => CarRecord::query()
+                ->where('status', 'submitted')
+                ->where('workflow_status', 'pending')
+                ->whereHas('creator', fn($q) => $q->where('role', '!=', 'admin'))
+                ->count(),
 
-        $generator = new CARFormGenerator($templatePath);
+            'approved' => CarRecord::query()
+                ->where('status', 'submitted')
+                ->where('workflow_status', 'approved')
+                ->whereHas('creator', fn($q) => $q->where('role', '!=', 'admin'))
+                ->count(),
 
-        $tempDir = storage_path('app/car_forms_tmp');
-        if (!is_dir($tempDir)) {
-            mkdir($tempDir, 0777, true);
-        }
+            'rejected' => CarRecord::query()
+                ->where('status', 'submitted')
+                ->where('workflow_status', 'rejected')
+                ->whereHas('creator', fn($q) => $q->where('role', '!=', 'admin'))
+                ->count(),
+        ];
 
-        $fileName = 'CAR_' . now()->timestamp . '.docx';
-        $tempPath = $tempDir . '/' . $fileName;
-
-        $generator->generate($carRecord->data ?? [], $tempPath);
-
-        $storagePath = 'documents/car/' . $fileName;
-
-        Storage::disk('public')->put($storagePath, file_get_contents($tempPath));
-
-        DocumentUpload::create([
-            'document_type_id' => $recordDocumentType->id, // ✅ R-QMS-017
-            'uploaded_by' => Auth::id(),
-            'car_record_id' => $carRecord->id,
-            'file_name' => $fileName,
-            'file_path' => $storagePath,
-            'storage_disk' => 'public',
-            'status' => 'Active',
+        return Inertia::render('Inbox/CARInbox', [
+            'records' => $records,
+            'filters' => [
+                'workflow_status' => $status,
+            ],
+            'counts' => $counts,
         ]);
-
-        if (file_exists($tempPath)) {
-            unlink($tempPath);
-        }
     }
 }

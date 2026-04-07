@@ -12,6 +12,7 @@ use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UsersController;
+use App\Models\DocumentType;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -28,7 +29,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
     Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
-    Route::get('/car', fn() => Inertia::render('CARForm'))->name('car.form');
+
+    Route::get('/car', function () {
+        $carType = DocumentType::where('code', 'F-QMS-006')->first();
+
+        return Inertia::render('CARForm', [
+            'documentTypeId' => $carType?->id,
+        ]);
+    })->name('car.form');
+
     Route::get('/settings', fn() => Inertia::render('Settings/Index'))->name('settings');
 
     Route::post('/settings/profile', [SettingsController::class, 'updateProfile'])
@@ -74,8 +83,11 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::post('/car/records', [CarRecordController::class, 'store'])->name('car.records.store');
+    Route::get('/car/records/{carRecord}', [CarRecordController::class, 'show'])->name('car.records.show');
     Route::put('/car/records/{carRecord}', [CarRecordController::class, 'update'])->name('car.records.update');
-    Route::post('/car/records/{carRecord}/submit', [CarRecordController::class, 'submit'])->name('car.records.submit');
+    Route::post('/car/records/{carRecord}/submit', [CarRecordController::class, 'submitForApproval'])->name('car.records.submit');
+    Route::get('/car/records/{carRecord}/download', [CarRecordController::class, 'download'])->name('car.records.download');
+    Route::post('/car/records/{carRecord}/publish', [CarRecordController::class, 'publish'])->name('car.records.publish');
 
     /*
     |--------------------------------------------------------------------------
@@ -171,6 +183,7 @@ Route::middleware('auth')->group(function () {
         | CAR Inbox
         |--------------------------------------------------------------------------
         */
+        Route::get('/inbox/car', [CarRecordController::class, 'inbox'])->name('car.inbox');
         Route::post('/inbox/car/{carRecord}/approve', [CarRecordController::class, 'approve'])->name('car.inbox.approve');
         Route::post('/inbox/car/{carRecord}/reject', [CarRecordController::class, 'reject'])->name('car.inbox.reject');
     });

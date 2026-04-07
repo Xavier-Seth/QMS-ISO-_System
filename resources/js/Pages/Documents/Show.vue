@@ -1032,6 +1032,14 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                         Edit
                       </Link>
 
+                      <Link
+  v-else-if="doc.car_record_id"
+  :href="`/car?record=${doc.car_record_id}`"
+  class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
+>
+  Edit
+</Link>
+
                       <a
                         :href="doc.preview_url"
                         target="_blank"
@@ -1195,6 +1203,14 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                       >
                         Edit
                       </Link>
+
+                      <Link
+  v-else-if="doc.car_record_id"
+  :href="`/car?record=${doc.car_record_id}`"
+  class="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs text-white transition hover:bg-indigo-500"
+>
+  Edit
+</Link>
 
                       <a
                         :href="doc.preview_url"
