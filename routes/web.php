@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\CarRecordController;
 use App\Http\Controllers\DCRController;
 use App\Http\Controllers\DcrRecordController;
 use App\Http\Controllers\DocumentController;
@@ -27,6 +28,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
     Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
+    Route::get('/car', fn() => Inertia::render('CARForm'))->name('car.form');
     Route::get('/settings', fn() => Inertia::render('Settings/Index'))->name('settings');
 
     Route::post('/settings/profile', [SettingsController::class, 'updateProfile'])
@@ -65,6 +67,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/dcr/records/{dcrRecord}/download', [DcrRecordController::class, 'download'])->name('dcr.records.download');
     Route::post('/dcr/records/{dcrRecord}/publish', [DcrRecordController::class, 'publish'])
         ->name('dcr.records.publish');
+
+    /*
+    |--------------------------------------------------------------------------
+    | CAR
+    |--------------------------------------------------------------------------
+    */
+    Route::post('/car/records', [CarRecordController::class, 'store'])->name('car.records.store');
+    Route::put('/car/records/{carRecord}', [CarRecordController::class, 'update'])->name('car.records.update');
+    Route::post('/car/records/{carRecord}/submit', [CarRecordController::class, 'submit'])->name('car.records.submit');
 
     /*
     |--------------------------------------------------------------------------
@@ -154,5 +165,13 @@ Route::middleware('auth')->group(function () {
 
         Route::patch('/ofi/records/{ofiRecord}/resolution-status', [OfiRecordController::class, 'updateResolutionStatus'])
             ->name('ofi.records.resolution-status');
+
+        /*
+        |--------------------------------------------------------------------------
+        | CAR Inbox
+        |--------------------------------------------------------------------------
+        */
+        Route::post('/inbox/car/{carRecord}/approve', [CarRecordController::class, 'approve'])->name('car.inbox.approve');
+        Route::post('/inbox/car/{carRecord}/reject', [CarRecordController::class, 'reject'])->name('car.inbox.reject');
     });
 });

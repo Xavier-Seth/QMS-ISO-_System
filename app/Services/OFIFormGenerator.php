@@ -11,12 +11,17 @@ class OFIFormGenerator
     public function __construct(string $templatePath)
     {
         if (!file_exists($templatePath)) {
-            throw new \InvalidArgumentException("Template not found: $templatePath");
+            throw new \InvalidArgumentException("Template not found: {$templatePath}");
         }
+
         $this->templatePath = $templatePath;
     }
 
     /**
+     * IMPORTANT:
+     * This generator requires template placeholders like ${fieldName}.
+     * Templates without placeholders will NOT work.
+     *
      * Fill and save the OFI form.
      *
      * @param array $data  See buildValues() for all accepted keys.
@@ -28,7 +33,10 @@ class OFIFormGenerator
         $values = $this->buildValues($data);
 
         foreach ($values as $placeholder => $value) {
-            $processor->setValue($placeholder, htmlspecialchars($value ?? '', ENT_COMPAT | ENT_XML1));
+            $processor->setValue(
+                $placeholder,
+                htmlspecialchars((string) ($value ?? ''), ENT_COMPAT | ENT_XML1)
+            );
         }
 
         $processor->saveAs($outputPath);
@@ -42,7 +50,7 @@ class OFIFormGenerator
      *  - "generate controller" style booleans:
      *      assessmentUpdateNo/Yes, qmsUpdateNo/Yes, dcrUpdated
      *  - "saved JSON" style raw fields from Vue:
-     *      assessmentUpdate ("NO"/"YES"), imsUpdate ("NO"/"YES"), dcrNo
+     *      assessmentUpdate ("NO"|"YES"), imsUpdate ("NO"|"YES"), dcrNo
      */
     private function buildValues(array $data): array
     {
@@ -52,6 +60,7 @@ class OFIFormGenerator
         // Follow-up rows (4 rows)
         $followUp = $d('followUp', []);
         $rows = [];
+
         for ($i = 1; $i <= 4; $i++) {
             $row = $followUp[$i - 1] ?? [];
             $rows["f{$i}_date"] = $row['date'] ?? '';
@@ -66,14 +75,14 @@ class OFIFormGenerator
          * Section 4 uses template placeholders: ${s4aNo} / ${s4aYes}
          *
          * Support two input styles:
-         *  A) boolean keys (from your current controller):
+         *  A) boolean keys:
          *     assessmentUpdateNo/Yes, qmsUpdateNo/Yes
-         *  B) radio value keys (from Vue / DB JSON):
+         *  B) radio value keys:
          *     assessmentUpdate: "NO"|"YES"
          *     imsUpdate: "NO"|"YES"
          */
-        $assessmentRadio = $d('assessmentUpdate', null); // "NO" | "YES" | null
-        $imsRadio = $d('imsUpdate', null);               // "NO" | "YES" | null
+        $assessmentRadio = $d('assessmentUpdate', null);
+        $imsRadio = $d('imsUpdate', null);
 
         $s3aNo = $check($d('assessmentUpdateNo', false) || $assessmentRadio === 'NO');
         $s3aYes = $check($d('assessmentUpdateYes', false) || $assessmentRadio === 'YES');
@@ -81,8 +90,8 @@ class OFIFormGenerator
         $s4aNo = $check($d('qmsUpdateNo', false) || $imsRadio === 'NO');
         $s4aYes = $check($d('qmsUpdateYes', false) || $imsRadio === 'YES');
 
-        // DCR No placeholder in template is ${dcrUpdated}
-        // Support either 'dcrUpdated' (controller) OR 'dcrNo' (Vue/DB JSON)
+        // Template placeholder is ${dcrUpdated}
+        // Support either controller-style 'dcrUpdated' or saved JSON 'dcrNo'
         $dcrUpdated = $d('dcrUpdated', $d('dcrNo'));
 
         return array_merge([
@@ -100,7 +109,7 @@ class OFIFormGenerator
             'sourceSurvey' => $check($d('sourceSurvey', false)),
             'sourceSystem' => $check($d('sourceSystem', false)),
             'sourceOthersCheck' => $check($d('sourceOthersCheck', false)),
-            'sourceOthersText' => $d('sourceOthersText') . str_repeat(" ", max(0, 30 - mb_strlen($d('sourceOthersText')))),
+            'sourceOthersText' => $d('sourceOthersText') . str_repeat(' ', max(0, 30 - mb_strlen((string) $d('sourceOthersText')))),
 
             // Section 1
             'suggestion' => $d('suggestion'),
@@ -115,19 +124,19 @@ class OFIFormGenerator
             'deptRepDate2' => $d('deptRepDate2'),
             'deptHeadDate2' => $d('deptHeadDate2'),
 
-            // Section 3 — independent placeholders
+            // Section 3
             's3aNo' => $s3aNo,
             's3aYes' => $s3aYes,
             'dateUpdated' => $d('dateUpdated'),
             'verifiedBy1' => $d('verifiedBy1'),
 
-            // Section 4 — independent placeholders
+            // Section 4
             's4aNo' => $s4aNo,
             's4aYes' => $s4aYes,
             'dcrUpdated' => $dcrUpdated,
             'verifiedBy2' => $d('verifiedBy2'),
 
-            // Section 5 — Signature (template placeholder: ${followsig})
+            // Section 5
             'followsig' => $d('followSig'),
 
             // Section 6

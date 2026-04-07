@@ -29,7 +29,8 @@ watch(
         openCreateDocuments.value =
             isStartsWith("/dcr") ||
             isStartsWith("/ofi") ||
-            isStartsWith("/ofi-form");
+            isStartsWith("/ofi-form") ||
+            isStartsWith("/car");
         openDocuments.value =
             isStartsWith("/documents") || isStartsWith("/performance");
     },
@@ -103,12 +104,24 @@ const dropdownItemClass = (active = false) => [
                 <button
                     type="button"
                     @click="openCreateDocuments = !openCreateDocuments"
-                    :class="navItemClass(openCreateDocuments || isStartsWith('/dcr') || isStartsWith('/ofi') || isStartsWith('/ofi-form'))"
+                    :class="navItemClass(
+                        openCreateDocuments ||
+                        isStartsWith('/dcr') ||
+                        isStartsWith('/ofi') ||
+                        isStartsWith('/ofi-form') ||
+                        isStartsWith('/car')
+                    )"
                     class="justify-between border-0 bg-transparent"
                 >
                     <div class="flex items-center gap-3">
                         <svg
-                            :class="iconClass(openCreateDocuments || isStartsWith('/dcr') || isStartsWith('/ofi') || isStartsWith('/ofi-form'))"
+                            :class="iconClass(
+                                openCreateDocuments ||
+                                isStartsWith('/dcr') ||
+                                isStartsWith('/ofi') ||
+                                isStartsWith('/ofi-form') ||
+                                isStartsWith('/car')
+                            )"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
@@ -147,6 +160,13 @@ const dropdownItemClass = (active = false) => [
                         :class="dropdownItemClass(isActive('/ofi-form'))"
                     >
                         Create OFI Forms
+                    </Link>
+
+                    <Link
+                        href="/car"
+                        :class="dropdownItemClass(isActive('/car'))"
+                    >
+                        Create CAR Forms
                     </Link>
                 </div>
             </div>

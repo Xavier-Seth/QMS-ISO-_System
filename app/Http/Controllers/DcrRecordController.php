@@ -31,9 +31,9 @@ class DcrRecordController extends Controller
 
     private function templatePath(): string
     {
-        $path = base_path('templates/F-QMS-001 _template.docx');
+        $path = config('qms_templates.dcr.path');
 
-        if (!file_exists($path)) {
+        if (!is_string($path) || $path === '' || !file_exists($path)) {
             abort(500, 'DCR template file not found.');
         }
 

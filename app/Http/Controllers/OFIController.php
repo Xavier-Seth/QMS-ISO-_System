@@ -84,7 +84,11 @@ class OFIController extends Controller
         ];
 
         // 3. Define paths
-        $templatePath = base_path('templates/F-QMS-007_template_fixed_v6.docx');
+        $templatePath = config('qms_templates.ofi.path');
+
+if (!is_string($templatePath) || $templatePath === '' || !file_exists($templatePath)) {
+    return response()->json(['error' => 'OFI template file not found.'], 500);
+}
         $outputDir = storage_path('app/ofi_forms');
         $recordLabel = $request->input('ofiNo', '');
         $fileName = 'OFI_' . now()->format('Ymd_His') . '.docx';

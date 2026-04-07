@@ -17,6 +17,7 @@ class DocumentUpload extends Model
         'period',
         'ofi_record_id',
         'dcr_record_id',
+        'car_record_id',
         'status',
         'file_name',
         'file_path',
@@ -58,6 +59,11 @@ class DocumentUpload extends Model
         return $this->belongsTo(DcrRecord::class, 'dcr_record_id');
     }
 
+    public function carRecord(): BelongsTo
+    {
+        return $this->belongsTo(CarRecord::class, 'car_record_id');
+    }
+
     public function getStorageDiskName(): string
     {
         return $this->storage_disk ?: 'public';
@@ -75,7 +81,9 @@ class DocumentUpload extends Model
 
     public function isGeneratedRecordDocument(): bool
     {
-        return !is_null($this->ofi_record_id) || !is_null($this->dcr_record_id);
+        return !is_null($this->ofi_record_id)
+            || !is_null($this->dcr_record_id)
+            || !is_null($this->car_record_id);
     }
 
     public function isPerformanceUpload(): bool
