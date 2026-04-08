@@ -12,6 +12,7 @@ use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UsersController;
+use App\Http\Controllers\InboxController;
 use App\Models\DocumentType;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -89,11 +90,14 @@ Route::middleware('auth')->group(function () {
     Route::get('/car/records/{carRecord}/download', [CarRecordController::class, 'download'])->name('car.records.download');
     Route::post('/car/records/{carRecord}/publish', [CarRecordController::class, 'publish'])->name('car.records.publish');
 
-    /*
-    |--------------------------------------------------------------------------
-    | Manuals
-    |--------------------------------------------------------------------------
-    */
+
+    //My Records (Unified User Inbox)
+
+    Route::get('/my-records', [InboxController::class, 'myRecords'])
+        ->name('inbox.my-records');
+
+    //Manuals
+
     Route::get('/manual/{category}', [ManualController::class, 'show'])
         ->where('category', 'asm|qsm|hrm|riem|rem')
         ->name('manual.show');
@@ -177,6 +181,9 @@ Route::middleware('auth')->group(function () {
 
         Route::patch('/ofi/records/{ofiRecord}/resolution-status', [OfiRecordController::class, 'updateResolutionStatus'])
             ->name('ofi.records.resolution-status');
+
+
+        Route::get('/inbox', [InboxController::class, 'index'])->name('inbox.index');
 
         /*
         |--------------------------------------------------------------------------
