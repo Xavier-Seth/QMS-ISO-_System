@@ -29,17 +29,29 @@ return new class extends Migration {
                     ->constrained('users')
                     ->nullOnDelete();
             }
+        });
 
-            $table->index(['status', 'workflow_status'], 'dcr_records_status_workflow_idx');
-            $table->index(['created_by', 'workflow_status'], 'dcr_records_created_by_workflow_idx');
+        Schema::table('dcr_records', function (Blueprint $table) {
+            if (!$this->hasIndex('dcr_records', 'dcr_records_status_workflow_idx')) {
+                $table->index(['status', 'workflow_status'], 'dcr_records_status_workflow_idx');
+            }
+
+            if (!$this->hasIndex('dcr_records', 'dcr_records_created_by_workflow_idx')) {
+                $table->index(['created_by', 'workflow_status'], 'dcr_records_created_by_workflow_idx');
+            }
         });
     }
 
     public function down(): void
     {
         Schema::table('dcr_records', function (Blueprint $table) {
-            $table->dropIndex('dcr_records_status_workflow_idx');
-            $table->dropIndex('dcr_records_created_by_workflow_idx');
+            if ($this->hasIndex('dcr_records', 'dcr_records_status_workflow_idx')) {
+                $table->dropIndex('dcr_records_status_workflow_idx');
+            }
+
+            if ($this->hasIndex('dcr_records', 'dcr_records_created_by_workflow_idx')) {
+                $table->dropIndex('dcr_records_created_by_workflow_idx');
+            }
 
             if (Schema::hasColumn('dcr_records', 'rejected_by')) {
                 $table->dropConstrainedForeignId('rejected_by');
@@ -61,5 +73,19 @@ return new class extends Migration {
                 $table->dropColumn('workflow_status');
             }
         });
+    }
+
+    private function hasIndex(string $table, string $indexName): bool
+    {
+        $connection = Schema::getConnection();
+        $schemaManager = $connection->getDoctrineSchemaManager();
+
+        foreach ($schemaManager->listTableIndexes($table) as $index) {
+            if ($index->getName() === $indexName) {
+                return true;
+            }
+        }
+
+        return false;
     }
 };

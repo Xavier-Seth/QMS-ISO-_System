@@ -251,6 +251,22 @@ function downloadBlob(blobData, filename) {
   window.URL.revokeObjectURL(url)
 }
 
+async function extractBlobErrorMessage(err, fallback = 'Request failed.') {
+  const data = err?.response?.data
+
+  if (data instanceof Blob) {
+    try {
+      const text = await data.text()
+      const parsed = JSON.parse(text)
+      return parsed?.message || parsed?.error || fallback
+    } catch {
+      return fallback
+    }
+  }
+
+  return data?.message || data?.error || fallback
+}
+
 async function runTask(flagRef, message, task) {
   flagRef.value = true
   loading.open(message)
@@ -362,13 +378,15 @@ async function saveDraft() {
     )
   }).catch((err) => {
     console.error(err)
-    toast.error(
+
+    const message =
       err?.response?.data?.message ||
       err?.response?.data?.error ||
       (err?.response?.status === 403
         ? 'This CAR record can no longer be edited. Pending and approved records are locked.'
         : 'Failed to save draft.')
-    )
+
+    toast.error(message)
   })
 }
 
@@ -403,24 +421,23 @@ async function submitToAdmin() {
 }
 
 async function downloadDocx() {
-  await runTask(isGenerating, 'Generating CAR document...', async () => {
-    await ensureDraftSaved()
+  try {
+    await runTask(isGenerating, 'Generating CAR document...', async () => {
+      await ensureDraftSaved()
 
-    const res = await axios.get(`/car/records/${recordId.value}/download`, {
-      responseType: 'blob',
+      const res = await axios.get(`/car/records/${recordId.value}/download`, {
+        responseType: 'blob',
+      })
+
+      const name = withDocx(currentFileLabel()) || 'CAR.docx'
+      downloadBlob(res.data, name)
+      toast.success(`Downloaded: ${name}`)
     })
-
-    const name = withDocx(currentFileLabel()) || 'CAR.docx'
-    downloadBlob(res.data, name)
-    toast.success(`Downloaded: ${name}`)
-  }).catch((err) => {
+  } catch (err) {
     console.error(err)
-    toast.error(
-      err?.response?.data?.message ||
-      err?.response?.data?.error ||
-      'Failed to download DOCX.'
-    )
-  })
+    const message = await extractBlobErrorMessage(err, 'Failed to download DOCX.')
+    toast.error(message)
+  }
 }
 
 function openPublishRenameModal() {
