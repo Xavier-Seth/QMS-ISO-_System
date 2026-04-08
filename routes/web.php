@@ -1,9 +1,11 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\CarRecordController;
 use App\Http\Controllers\DCRController;
 use App\Http\Controllers\DcrRecordController;
 use App\Http\Controllers\DocumentController;
+use App\Http\Controllers\InboxController;
 use App\Http\Controllers\LogsController;
 use App\Http\Controllers\ManualController;
 use App\Http\Controllers\OFIController;
@@ -11,6 +13,7 @@ use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UsersController;
+use App\Models\DocumentType;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -27,6 +30,15 @@ Route::middleware('auth')->group(function () {
     Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
     Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
     Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
+
+    Route::get('/car', function () {
+        $carType = DocumentType::where('code', 'F-QMS-006')->first();
+
+        return Inertia::render('CARForm', [
+            'documentTypeId' => $carType?->id,
+        ]);
+    })->name('car.form');
+
     Route::get('/settings', fn() => Inertia::render('Settings/Index'))->name('settings');
 
     Route::post('/settings/profile', [SettingsController::class, 'updateProfile'])
@@ -65,6 +77,32 @@ Route::middleware('auth')->group(function () {
     Route::get('/dcr/records/{dcrRecord}/download', [DcrRecordController::class, 'download'])->name('dcr.records.download');
     Route::post('/dcr/records/{dcrRecord}/publish', [DcrRecordController::class, 'publish'])
         ->name('dcr.records.publish');
+
+    Route::post('/dcr/records/{dcrRecord}/submit', [DcrRecordController::class, 'submitForApproval'])
+        ->name('dcr.records.submit');
+
+    Route::get('/dcr/my-records', [DcrRecordController::class, 'myRecords'])
+        ->name('dcr.records.mine');
+
+    /*
+    |--------------------------------------------------------------------------
+    | CAR
+    |--------------------------------------------------------------------------
+    */
+    Route::post('/car/records', [CarRecordController::class, 'store'])->name('car.records.store');
+    Route::get('/car/records/{carRecord}', [CarRecordController::class, 'show'])->name('car.records.show');
+    Route::put('/car/records/{carRecord}', [CarRecordController::class, 'update'])->name('car.records.update');
+    Route::post('/car/records/{carRecord}/submit', [CarRecordController::class, 'submitForApproval'])->name('car.records.submit');
+    Route::get('/car/records/{carRecord}/download', [CarRecordController::class, 'download'])->name('car.records.download');
+    Route::post('/car/records/{carRecord}/publish', [CarRecordController::class, 'publish'])->name('car.records.publish');
+
+    /*
+    |--------------------------------------------------------------------------
+    | My Records (Unified User Inbox)
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/my-records', [InboxController::class, 'myRecords'])
+        ->name('inbox.my-records');
 
     /*
     |--------------------------------------------------------------------------
@@ -126,7 +164,7 @@ Route::middleware('auth')->group(function () {
 
         /*
         |--------------------------------------------------------------------------
-        | Performance Commitment and Review Forms
+        | Performance
         |--------------------------------------------------------------------------
         */
         Route::get('/performance', [PerformanceController::class, 'index'])
@@ -145,14 +183,26 @@ Route::middleware('auth')->group(function () {
 
         /*
         |--------------------------------------------------------------------------
-        | OFI Inbox
+        | Unified Admin Inbox
         |--------------------------------------------------------------------------
         */
-        Route::get('/inbox/ofi', [OfiRecordController::class, 'inbox'])->name('ofi.inbox');
+        Route::get('/inbox', [InboxController::class, 'index'])->name('inbox.index');
+
+        /*
+        |--------------------------------------------------------------------------
+        | ACTION ROUTES (KEEP THESE)
+        |--------------------------------------------------------------------------
+        */
         Route::post('/inbox/ofi/{ofiRecord}/approve', [OfiRecordController::class, 'approve'])->name('ofi.inbox.approve');
         Route::post('/inbox/ofi/{ofiRecord}/reject', [OfiRecordController::class, 'reject'])->name('ofi.inbox.reject');
 
         Route::patch('/ofi/records/{ofiRecord}/resolution-status', [OfiRecordController::class, 'updateResolutionStatus'])
             ->name('ofi.records.resolution-status');
+
+        Route::post('/inbox/car/{carRecord}/approve', [CarRecordController::class, 'approve'])->name('car.inbox.approve');
+        Route::post('/inbox/car/{carRecord}/reject', [CarRecordController::class, 'reject'])->name('car.inbox.reject');
+
+        Route::post('/inbox/dcr/{dcrRecord}/approve', [DcrRecordController::class, 'approve'])->name('dcr.inbox.approve');
+        Route::post('/inbox/dcr/{dcrRecord}/reject', [DcrRecordController::class, 'reject'])->name('dcr.inbox.reject');
     });
 });

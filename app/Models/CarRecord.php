@@ -5,15 +5,16 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class DcrRecord extends Model
+class CarRecord extends Model
 {
-    protected $table = 'dcr_records';
+    protected $table = 'car_records';
 
     protected $fillable = [
         'document_type_id',
-        'dcr_no',
-        'to_for',
-        'from',
+        'car_no',
+        'ref_no',
+        'dept_section',
+        'auditor',
         'status',
         'workflow_status',
         'resolution_status',

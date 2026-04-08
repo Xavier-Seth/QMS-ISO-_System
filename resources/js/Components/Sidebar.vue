@@ -29,7 +29,8 @@ watch(
         openCreateDocuments.value =
             isStartsWith("/dcr") ||
             isStartsWith("/ofi") ||
-            isStartsWith("/ofi-form");
+            isStartsWith("/ofi-form") ||
+            isStartsWith("/car");
         openDocuments.value =
             isStartsWith("/documents") || isStartsWith("/performance");
     },
@@ -103,12 +104,24 @@ const dropdownItemClass = (active = false) => [
                 <button
                     type="button"
                     @click="openCreateDocuments = !openCreateDocuments"
-                    :class="navItemClass(openCreateDocuments || isStartsWith('/dcr') || isStartsWith('/ofi') || isStartsWith('/ofi-form'))"
+                    :class="navItemClass(
+                        openCreateDocuments ||
+                        isStartsWith('/dcr') ||
+                        isStartsWith('/ofi') ||
+                        isStartsWith('/ofi-form') ||
+                        isStartsWith('/car')
+                    )"
                     class="justify-between border-0 bg-transparent"
                 >
                     <div class="flex items-center gap-3">
                         <svg
-                            :class="iconClass(openCreateDocuments || isStartsWith('/dcr') || isStartsWith('/ofi') || isStartsWith('/ofi-form'))"
+                            :class="iconClass(
+                                openCreateDocuments ||
+                                isStartsWith('/dcr') ||
+                                isStartsWith('/ofi') ||
+                                isStartsWith('/ofi-form') ||
+                                isStartsWith('/car')
+                            )"
                             viewBox="0 0 24 24"
                             fill="none"
                             stroke="currentColor"
@@ -147,6 +160,13 @@ const dropdownItemClass = (active = false) => [
                         :class="dropdownItemClass(isActive('/ofi-form'))"
                     >
                         Create OFI Forms
+                    </Link>
+
+                    <Link
+                        href="/car"
+                        :class="dropdownItemClass(isActive('/car'))"
+                    >
+                        Create CAR Forms
                     </Link>
                 </div>
             </div>
@@ -277,28 +297,28 @@ const dropdownItemClass = (active = false) => [
             </Link>
 
             <!-- Admin Inbox -->
-            <Link
-                v-if="isAdmin"
-                href="/inbox/ofi"
-                :class="navItemClass(isActive('/inbox/ofi'))"
-            >
-                <svg
-                    :class="iconClass(isActive('/inbox/ofi'))"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="1.8"
-                >
-                    <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
-                    <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
-                </svg>
-                <span>Inbox</span>
-            </Link>
+          <Link
+    v-if="isAdmin"
+    href="/inbox"
+    :class="navItemClass(isStartsWith('/inbox'))"
+>
+    <svg
+        :class="iconClass(isStartsWith('/inbox'))"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.8"
+    >
+        <polyline points="22 12 16 12 14 15 10 15 8 12 2 12" />
+        <path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" />
+    </svg>
+    <span>Inbox</span>
+</Link>
 
             <!-- My OFIs - non-admin -->
             <Link
                 v-else
-                href="/ofi/my-records"
+                href="/my-records"
                 :class="navItemClass(isActive('/ofi/my-records'))"
             >
                 <svg
@@ -313,7 +333,7 @@ const dropdownItemClass = (active = false) => [
                     <line x1="8" y1="13" x2="16" y2="13" />
                     <line x1="8" y1="17" x2="13" y2="17" />
                 </svg>
-                <span>My OFIs</span>
+                <span>My Records</span>
             </Link>
 
             <!-- Users - admin only -->

@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
+use App\Services\CARFormGenerator;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 
@@ -521,7 +522,7 @@ class DocumentController extends Controller
 
             if ($selectedRecordType !== null && $selectedYear !== null && $selectedPeriod !== null) {
                 $periodFilesQuery = DocumentUpload::query()
-                    ->with(['uploader', 'ofiRecord', 'dcrRecord'])
+                    ->with(['uploader', 'ofiRecord', 'dcrRecord', 'carRecord'])
                     ->where('document_type_id', $documentType->id)
                     ->where('performance_record_type', $selectedRecordType)
                     ->where('year', $selectedYear)
@@ -577,6 +578,7 @@ class DocumentController extends Controller
                     'created_at' => $d->created_at,
                     'ofi_record_id' => $d->ofi_record_id,
                     'dcr_record_id' => $d->dcr_record_id,
+                    'car_record_id' => $d->car_record_id,
                     'ofi_workflow_status' => $d->ofiRecord?->workflow_status,
                     'ofi_resolution_status' => $d->ofiRecord?->resolution_status,
                     'preview_url' => route('documents.uploads.preview', $d->id),
@@ -615,7 +617,7 @@ class DocumentController extends Controller
         }
 
         $query = DocumentUpload::query()
-            ->with(['uploader', 'ofiRecord', 'dcrRecord'])
+            ->with(['uploader', 'ofiRecord', 'dcrRecord', 'carRecord'])
             ->where('document_type_id', $documentType->id);
 
         if ($q !== '') {
@@ -680,6 +682,7 @@ class DocumentController extends Controller
                 'created_at' => $d->created_at,
                 'ofi_record_id' => $d->ofi_record_id,
                 'dcr_record_id' => $d->dcr_record_id,
+                'car_record_id' => $d->car_record_id,
                 'ofi_workflow_status' => $d->ofiRecord?->workflow_status,
                 'ofi_resolution_status' => $d->ofiRecord?->resolution_status,
                 'preview_url' => route('documents.uploads.preview', $d->id),
@@ -811,7 +814,7 @@ class DocumentController extends Controller
 
     public function preview(DocumentUpload $upload)
     {
-        $upload->loadMissing(['documentType.series', 'ofiRecord', 'dcrRecord']);
+        $upload->loadMissing(['documentType.series', 'ofiRecord', 'dcrRecord', 'carRecord']);
 
         if ($upload->ofi_record_id && $upload->ofiRecord) {
             $this->activityLogService->log([
@@ -841,6 +844,20 @@ class DocumentController extends Controller
             return $this->previewLatestDcrAsPdf($upload);
         }
 
+        if ($upload->car_record_id && $upload->carRecord) {
+            $this->activityLogService->log([
+                'module' => 'car',
+                'action' => 'previewed',
+                'entity_type' => DocumentUpload::class,
+                'entity_id' => $upload->id,
+                'record_label' => $upload->carRecord->car_no ?: 'CAR #' . $upload->carRecord->id,
+                'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+                'description' => 'Previewed published CAR document ' . ($upload->file_name ?: 'file'),
+            ]);
+
+            return $this->previewLatestCarAsPdf($upload);
+        }
+
         abort_unless(
             $this->documentPreviewService->canPreview($upload),
             404,
@@ -862,7 +879,7 @@ class DocumentController extends Controller
 
     public function download(DocumentUpload $upload)
     {
-        $upload->loadMissing(['documentType.series', 'ofiRecord', 'dcrRecord']);
+        $upload->loadMissing(['documentType.series', 'ofiRecord', 'dcrRecord', 'carRecord']);
 
         if ($upload->ofi_record_id && $upload->ofiRecord) {
             $this->activityLogService->log([
@@ -890,6 +907,20 @@ class DocumentController extends Controller
             ]);
 
             return $this->downloadLatestDcrDocx($upload);
+        }
+
+        if ($upload->car_record_id && $upload->carRecord) {
+            $this->activityLogService->log([
+                'module' => 'car',
+                'action' => 'downloaded',
+                'entity_type' => DocumentUpload::class,
+                'entity_id' => $upload->id,
+                'record_label' => $upload->carRecord->car_no ?: 'CAR #' . $upload->carRecord->id,
+                'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+                'description' => 'Downloaded published CAR document ' . ($upload->file_name ?: 'file'),
+            ]);
+
+            return $this->downloadLatestCarDocx($upload);
         }
 
         $this->activityLogService->log([
@@ -985,8 +1016,8 @@ class DocumentController extends Controller
 
         abort_unless($upload->ofiRecord, 404, 'Linked OFI record not found.');
 
-        $templatePath = base_path('templates/F-QMS-007_template_fixed_v6.docx');
-        abort_unless(file_exists($templatePath), 500, 'OFI template file not found.');
+        $templatePath = config('qms_templates.ofi.path');
+        abort_unless(is_string($templatePath) && file_exists($templatePath), 500, 'OFI template file not found.');
 
         $tmpDir = storage_path('app/ofi_forms_tmp');
         if (!is_dir($tmpDir)) {
@@ -1040,8 +1071,8 @@ class DocumentController extends Controller
 
         abort_unless($upload->dcrRecord, 404, 'Linked DCR record not found.');
 
-        $templatePath = base_path('templates/F-QMS-001 _template.docx');
-        abort_unless(file_exists($templatePath), 500, 'DCR template file not found.');
+        $templatePath = config('qms_templates.dcr.path');
+        abort_unless(is_string($templatePath) && file_exists($templatePath), 500, 'DCR template file not found.');
 
         $tmpDir = storage_path('app/dcr_forms_tmp');
         if (!is_dir($tmpDir)) {
@@ -1097,5 +1128,60 @@ class DocumentController extends Controller
         }
 
         return [$pdfPath, $safeBaseName . '.pdf'];
+    }
+
+    private function generateLatestCarTempFile(DocumentUpload $upload): array
+    {
+        $upload->loadMissing('carRecord');
+
+        abort_unless($upload->carRecord, 404, 'Linked CAR record not found.');
+
+        $templatePath = config('qms_templates.car.path');
+        abort_unless(is_string($templatePath) && file_exists($templatePath), 500, 'CAR template file not found.');
+
+        $tmpDir = storage_path('app/car_forms_tmp');
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir, 0755, true);
+        }
+
+        $baseName = pathinfo($upload->file_name ?: 'CAR_record.docx', PATHINFO_FILENAME);
+        $safeBaseName = preg_replace('/[^A-Za-z0-9 _\-\(\)]/', '', $baseName);
+        $safeBaseName = trim(preg_replace('/\s+/', ' ', $safeBaseName));
+
+        if ($safeBaseName === '') {
+            $safeBaseName = 'CAR_record';
+        }
+
+        $fileName = $safeBaseName . '.docx';
+        $outputPath = $tmpDir . '/' . uniqid('car_', true) . '_' . $fileName;
+
+        $generator = new CARFormGenerator($templatePath);
+        $generator->generate($upload->carRecord->data ?? [], $outputPath);
+
+        return [$outputPath, $fileName];
+    }
+
+    private function downloadLatestCarDocx(DocumentUpload $upload)
+    {
+        [$outputPath, $fileName] = $this->generateLatestCarTempFile($upload);
+
+        return response()->download($outputPath, $fileName, [
+            'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT . '; filename="' . addslashes($fileName) . '"',
+        ])->deleteFileAfterSend(true);
+    }
+
+    private function previewLatestCarAsPdf(DocumentUpload $upload)
+    {
+        [$docxPath, $fileName] = $this->generateLatestCarTempFile($upload);
+        [$pdfPath, $pdfName] = $this->convertGeneratedDocxToPdfUsingExistingConverter($docxPath, $fileName);
+
+        return response()->file($pdfPath, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($pdfName) . '"',
+            'X-Content-Type-Options' => 'nosniff',
+            'Cache-Control' => 'private, max-age=0, must-revalidate',
+            'Pragma' => 'public',
+        ])->deleteFileAfterSend(true);
     }
 }
