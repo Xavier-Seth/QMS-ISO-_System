@@ -15,6 +15,11 @@ class DcrRecord extends Model
         'to_for',
         'from',
         'status',
+        'workflow_status',
+        'resolution_status',
+        'rejection_reason',
+        'rejected_at',
+        'rejected_by',
         'data',
         'created_by',
         'updated_by',
@@ -22,6 +27,7 @@ class DcrRecord extends Model
 
     protected $casts = [
         'data' => 'array',
+        'rejected_at' => 'datetime',
     ];
 
     public function documentType(): BelongsTo
@@ -37,5 +43,10 @@ class DcrRecord extends Model
     public function updater(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_by');
+    }
+
+    public function rejectedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'rejected_by');
     }
 }

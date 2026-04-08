@@ -55,6 +55,7 @@ function resolutionBadgeClass(status) {
 
 function typeBadgeClass(type) {
   if (type === 'car') return 'bg-blue-50 text-blue-700 ring-blue-200'
+  if (type === 'dcr') return 'bg-violet-50 text-violet-700 ring-violet-200'
   return 'bg-slate-100 text-slate-700 ring-slate-200'
 }
 </script>
@@ -67,14 +68,13 @@ function typeBadgeClass(type) {
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5">
           <h1 class="text-xl font-semibold text-white">My Records</h1>
           <p class="mt-1 text-sm text-slate-300">
-            Track your submitted OFI, CAR and future records.
+            Track your submitted OFI, CAR, and DCR records.
           </p>
         </div>
 
         <!-- Tabs + Type Filter -->
         <div class="border-t border-slate-200 px-6 py-4">
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-
             <!-- Tabs -->
             <div class="flex flex-wrap gap-2">
               <button
@@ -110,9 +110,9 @@ function typeBadgeClass(type) {
                 <option value="all">All</option>
                 <option value="ofi">OFI</option>
                 <option value="car">CAR</option>
+                <option value="dcr">DCR</option>
               </select>
             </div>
-
           </div>
         </div>
       </div>
@@ -137,7 +137,7 @@ function typeBadgeClass(type) {
             <tbody>
               <tr
                 v-for="record in records.data"
-                :key="record.id"
+                :key="`${record.type}-${record.id}`"
                 class="border-b border-slate-100 hover:bg-slate-50"
               >
                 <!-- TYPE -->
@@ -227,6 +227,13 @@ function typeBadgeClass(type) {
             >
               <span v-html="link.label" />
             </Link>
+
+            <span
+              v-else
+              class="inline-flex cursor-not-allowed items-center rounded-lg border border-slate-200 bg-slate-100 px-3 py-1.5 text-sm text-slate-400"
+            >
+              <span v-html="link.label" />
+            </span>
           </template>
         </div>
       </div>

@@ -1,5 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
+import { router, usePage } from '@inertiajs/vue3'
 import { reactive, onMounted, onBeforeUnmount, ref, computed } from 'vue'
 import axios from 'axios'
 import logo from '@/images/LNU_logo.png'
@@ -8,16 +9,53 @@ import { useToast } from '@/Composables/useToast'
 
 const loading = useLoadingOverlay()
 const toast = useToast()
+const page = usePage()
 
 // states
 const recordId = ref(null)
 const isSaving = ref(false)
 const isGenerating = ref(false)
 const isPublishing = ref(false)
+const isSubmitting = ref(false)
 const isLoadingRecord = ref(false)
 
 const publishFileName = ref('')
 const showPublishRenameModal = ref(false)
+
+// workflow states
+const recordStatus = ref('draft')
+const workflowStatus = ref(null)
+const resolutionStatus = ref('open')
+
+const isAdmin = computed(() => {
+  const role = String(page.props.auth?.user?.role || '').toLowerCase().trim()
+  return role === 'admin'
+})
+
+const canSubmitToAdmin = computed(() => {
+  return !isAdmin.value && !!recordId.value && workflowStatus.value !== 'pending' && workflowStatus.value !== 'approved'
+})
+
+const isFormLocked = computed(() => {
+  if (isAdmin.value) {
+    return false
+  }
+
+  return workflowStatus.value === 'pending' || workflowStatus.value === 'approved'
+})
+
+const workflowBadgeClass = computed(() => {
+  if (workflowStatus.value === 'approved') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (workflowStatus.value === 'rejected') return 'border-rose-200 bg-rose-50 text-rose-700'
+  if (workflowStatus.value === 'pending') return 'border-amber-200 bg-amber-50 text-amber-700'
+  return 'border-slate-200 bg-white text-slate-600'
+})
+
+const resolutionBadgeClass = computed(() => {
+  if (resolutionStatus.value === 'closed') return 'border-emerald-200 bg-emerald-50 text-emerald-700'
+  if (resolutionStatus.value === 'ongoing') return 'border-blue-200 bg-blue-50 text-blue-700'
+  return 'border-slate-200 bg-white text-slate-600'
+})
 
 function emptyForm() {
   return {
@@ -111,6 +149,9 @@ function resetFormState() {
   })
 
   recordId.value = null
+  recordStatus.value = 'draft'
+  workflowStatus.value = null
+  resolutionStatus.value = 'open'
   publishFileName.value = ''
   showPublishRenameModal.value = false
 
@@ -139,6 +180,9 @@ async function loadRecord(id) {
   await runTask(isLoadingRecord, 'Loading saved record...', async () => {
     const res = await axios.get(`/dcr/records/${id}`)
     recordId.value = id
+    recordStatus.value = res.data.status ?? 'draft'
+    workflowStatus.value = res.data.workflow_status ?? null
+    resolutionStatus.value = res.data.resolution_status ?? 'open'
     applyDataToForm(res.data.data || {})
 
     const fileShown = withDocx(currentFileLabel()) || `Record #${id}`
@@ -149,16 +193,39 @@ async function loadRecord(id) {
   })
 }
 
-async function upsertRecord(status = 'draft') {
+async function upsertRecord(requestedStatus = null) {
+  let safeStatus = requestedStatus
+
+  if (recordId.value) {
+    const isWorkflowLocked =
+      workflowStatus.value === 'pending' ||
+      workflowStatus.value === 'approved' ||
+      recordStatus.value === 'submitted'
+
+    if (isWorkflowLocked) {
+      safeStatus = recordStatus.value || 'submitted'
+    } else {
+      safeStatus = requestedStatus ?? recordStatus.value ?? 'draft'
+    }
+  } else {
+    safeStatus = requestedStatus ?? 'draft'
+  }
+
   if (!recordId.value) {
-    const res = await axios.post('/dcr/records', { ...form, status })
+    const res = await axios.post('/dcr/records', { ...form, status: safeStatus })
     recordId.value = res.data.id
+    recordStatus.value = res.data.status ?? 'draft'
+    workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
+    resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
 
     const url = new URL(window.location.href)
     url.searchParams.set('record', recordId.value)
     window.history.replaceState({}, '', url)
   } else {
-    await axios.put(`/dcr/records/${recordId.value}`, { ...form, status })
+    const res = await axios.put(`/dcr/records/${recordId.value}`, { ...form, status: safeStatus })
+    recordStatus.value = res.data.status ?? recordStatus.value
+    workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
+    resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
   }
 
   if (!publishFileName.value) {
@@ -169,13 +236,18 @@ async function upsertRecord(status = 'draft') {
 }
 
 async function ensureDraftSaved() {
-  return await upsertRecord('draft')
+  const requestedStatus = recordId.value
+    ? (recordStatus.value || 'draft')
+    : 'draft'
+
+  return await upsertRecord(requestedStatus)
 }
 
 async function saveDraft() {
   await runTask(isSaving, 'Saving draft...', async () => {
     const wasNew = !recordId.value
-    const id = await upsertRecord('draft')
+    const requestedStatus = wasNew ? 'draft' : (recordStatus.value || 'draft')
+    const id = await upsertRecord(requestedStatus)
     const name = currentFileLabel()
 
     toast.success(
@@ -185,7 +257,47 @@ async function saveDraft() {
     )
   }).catch((err) => {
     console.error(err)
-    toast.error('Failed to save draft. Please try again.')
+
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      (err?.response?.status === 403
+        ? 'This DCR record can no longer be edited. Pending and approved records are locked.'
+        : 'Failed to save draft. Please try again.')
+
+    toast.error(message)
+  })
+}
+
+async function submitToAdmin() {
+  if (!recordId.value) {
+    toast.error('Save the draft first before submitting to admin.')
+    return
+  }
+
+  if (isAdmin.value) {
+    toast.error('Admin-created DCR records do not need inbox submission.')
+    return
+  }
+
+  await runTask(isSubmitting, 'Submitting DCR to admin...', async () => {
+    await ensureDraftSaved()
+
+    const res = await axios.post(`/dcr/records/${recordId.value}/submit`)
+
+    recordStatus.value = res.data.status ?? 'submitted'
+    workflowStatus.value = res.data.workflow_status ?? 'pending'
+
+    toast.success(res?.data?.message || 'DCR submitted to admin successfully.')
+  }).catch((err) => {
+    console.error(err)
+
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      'Failed to submit DCR to admin.'
+
+    toast.error(message)
   })
 }
 
@@ -226,7 +338,15 @@ async function publishToUploads() {
     resetFormState()
   }).catch((err) => {
     console.error(err)
-    toast.error('Failed to publish to uploads. Please try again.')
+
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      (err?.response?.status === 403
+        ? 'You are not allowed to publish this DCR record.'
+        : 'Failed to publish to uploads. Please try again.')
+
+    toast.error(message)
   })
 }
 
@@ -334,10 +454,10 @@ onBeforeUnmount(() => {
     <div class="h-screen overflow-hidden bg-slate-100 font-sans">
       <div class="flex h-full flex-col gap-6 px-10 py-8">
         <!-- Page Header -->
-        <div class="flex flex-wrap items-end justify-between gap-3 shrink-0">
+        <div class="flex shrink-0 flex-wrap items-end justify-between gap-3">
           <div class="min-w-0">
             <div class="flex items-center gap-3">
-              <h1 class="text-2xl font-bold tracking-tight text-slate-900 truncate">Create DCR Form</h1>
+              <h1 class="truncate text-2xl font-bold tracking-tight text-slate-900">Create DCR Form</h1>
 
               <span
                 v-if="recordId"
@@ -348,6 +468,35 @@ onBeforeUnmount(() => {
             </div>
 
             <p class="mt-1 text-[13px] text-slate-400">Document Change Request · Leyte Normal University</p>
+
+            <div v-if="recordId" class="mt-3 flex flex-wrap items-center gap-3">
+              <div
+                class="inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold"
+                :class="workflowBadgeClass"
+              >
+                Workflow: {{ workflowStatus || 'draft' }}
+              </div>
+
+              <div
+                class="inline-flex items-center rounded-full border px-3 py-1 text-[12px] font-semibold"
+                :class="resolutionBadgeClass"
+              >
+                Resolution: {{ resolutionStatus || 'open' }}
+              </div>
+
+              <div
+                class="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-[12px] font-semibold text-slate-600"
+              >
+                Status: {{ recordStatus || 'draft' }}
+              </div>
+
+              <span
+                v-if="recordId && isFormLocked"
+                class="inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[12px] font-semibold text-amber-800"
+              >
+                {{ workflowStatus === 'pending' ? 'Read-only while under review' : 'Read-only after approval' }}
+              </span>
+            </div>
           </div>
 
           <div class="flex flex-wrap items-center gap-2.5">
@@ -361,7 +510,7 @@ onBeforeUnmount(() => {
             <button
               class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               @click="saveDraft"
-              :disabled="isSaving"
+              :disabled="isSaving || isFormLocked"
             >
               <span v-if="!isSaving">{{ recordId ? 'Update Draft' : 'Save Draft' }}</span>
               <span v-else>Saving...</span>
@@ -377,6 +526,17 @@ onBeforeUnmount(() => {
             </button>
 
             <button
+              v-if="!isAdmin"
+              class="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="submitToAdmin"
+              :disabled="!canSubmitToAdmin || isSubmitting || isFormLocked"
+              title="Submit this DCR to admin for review"
+            >
+              <span>{{ isSubmitting ? 'Submitting...' : 'Submit to Admin' }}</span>
+            </button>
+
+            <button
+              v-if="isAdmin"
               class="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2 text-[13.5px] font-semibold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
               @click="openPublishRenameModal"
               :disabled="isPublishing || !recordId"
@@ -389,10 +549,11 @@ onBeforeUnmount(() => {
 
         <!-- Form Card -->
         <div
-          class="flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)] flex justify-center items-start"
+          class="flex flex-1 items-start justify-center overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
         >
           <div
-            class="w-[210mm] border-2 border-black bg-white text-black flex flex-col px-6 py-5"
+            class="flex w-[210mm] flex-col border-2 border-black bg-white px-6 py-5 text-black transition"
+            :class="{ 'pointer-events-none opacity-70': isFormLocked }"
             style="font-family: Arial, Helvetica, sans-serif;"
           >
             <!-- Header -->

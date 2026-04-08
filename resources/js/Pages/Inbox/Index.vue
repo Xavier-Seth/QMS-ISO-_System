@@ -159,6 +159,10 @@ function typeBadgeClass(typeValue) {
         return "bg-blue-50 text-blue-700 ring-blue-200";
     }
 
+    if (typeValue === "dcr") {
+        return "bg-violet-50 text-violet-700 ring-violet-200";
+    }
+
     return "bg-slate-100 text-slate-700 ring-slate-200";
 }
 </script>
@@ -213,7 +217,7 @@ function typeBadgeClass(typeValue) {
                 <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5">
                     <h1 class="text-xl font-semibold text-white">Admin Inbox</h1>
                     <p class="mt-1 text-sm text-slate-300">
-                        Review submitted OFI and CAR records from departments and users.
+                        Review submitted OFI, CAR, and DCR records from departments and users.
                     </p>
                 </div>
 
@@ -263,6 +267,7 @@ function typeBadgeClass(typeValue) {
                                 <option value="all">All</option>
                                 <option value="ofi">OFI</option>
                                 <option value="car">CAR</option>
+                                <option value="dcr">DCR</option>
                             </select>
                         </div>
                     </div>
@@ -412,23 +417,6 @@ function typeBadgeClass(typeValue) {
                         </span>
                     </template>
                 </div>
-            </div>
-
-            <!-- Fallback Links -->
-            <div class="flex flex-wrap gap-2">
-                <Link
-                    href="/inbox/ofi"
-                    class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                    OFI Inbox
-                </Link>
-
-                <Link
-                    href="/inbox/car"
-                    class="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                >
-                    CAR Inbox
-                </Link>
             </div>
         </div>
     </AdminLayout>
