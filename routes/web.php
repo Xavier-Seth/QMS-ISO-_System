@@ -164,7 +164,7 @@ Route::middleware('auth')->group(function () {
 
         /*
         |--------------------------------------------------------------------------
-        | Performance Commitment and Review Forms
+        | Performance
         |--------------------------------------------------------------------------
         */
         Route::get('/performance', [PerformanceController::class, 'index'])
@@ -190,31 +190,18 @@ Route::middleware('auth')->group(function () {
 
         /*
         |--------------------------------------------------------------------------
-        | OFI Inbox
+        | ACTION ROUTES (KEEP THESE)
         |--------------------------------------------------------------------------
         */
-        Route::get('/inbox/ofi', [OfiRecordController::class, 'inbox'])->name('ofi.inbox');
         Route::post('/inbox/ofi/{ofiRecord}/approve', [OfiRecordController::class, 'approve'])->name('ofi.inbox.approve');
         Route::post('/inbox/ofi/{ofiRecord}/reject', [OfiRecordController::class, 'reject'])->name('ofi.inbox.reject');
 
         Route::patch('/ofi/records/{ofiRecord}/resolution-status', [OfiRecordController::class, 'updateResolutionStatus'])
             ->name('ofi.records.resolution-status');
 
-        /*
-        |--------------------------------------------------------------------------
-        | CAR Inbox
-        |--------------------------------------------------------------------------
-        */
-        Route::get('/inbox/car', [CarRecordController::class, 'inbox'])->name('car.inbox');
         Route::post('/inbox/car/{carRecord}/approve', [CarRecordController::class, 'approve'])->name('car.inbox.approve');
         Route::post('/inbox/car/{carRecord}/reject', [CarRecordController::class, 'reject'])->name('car.inbox.reject');
 
-        /*
-        |--------------------------------------------------------------------------
-        | DCR Inbox
-        |--------------------------------------------------------------------------
-        */
-        Route::get('/inbox/dcr', [DcrRecordController::class, 'inbox'])->name('dcr.inbox');
         Route::post('/inbox/dcr/{dcrRecord}/approve', [DcrRecordController::class, 'approve'])->name('dcr.inbox.approve');
         Route::post('/inbox/dcr/{dcrRecord}/reject', [DcrRecordController::class, 'reject'])->name('dcr.inbox.reject');
     });
