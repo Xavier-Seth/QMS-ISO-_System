@@ -258,7 +258,45 @@ class CarRecordController extends Controller
             'resolution_status' => $record->resolution_status,
         ]);
     }
+    public function updateResolutionStatus(Request $request, CarRecord $carRecord)
+    {
+        abort_unless($this->isAdminUser(), 403, 'Only admins can update CAR resolution status.');
 
+        $validated = $request->validate([
+            'resolution_status' => ['required', 'in:open,ongoing,closed'],
+        ]);
+
+        if ($carRecord->workflow_status !== 'approved') {
+            return response()->json([
+                'message' => 'Only approved CAR records can update resolution status.',
+            ], 422);
+        }
+
+        $newStatus = $validated['resolution_status'];
+        $currentStatus = $carRecord->resolution_status ?: 'open';
+
+        $allowedTransitions = [
+            'open' => ['open', 'ongoing', 'closed'],
+            'ongoing' => ['ongoing', 'closed'],
+            'closed' => ['closed'],
+        ];
+
+        if (!in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)) {
+            return response()->json([
+                'message' => "Invalid resolution status transition from {$currentStatus} to {$newStatus}.",
+            ], 422);
+        }
+
+        $carRecord->update([
+            'resolution_status' => $newStatus,
+            'updated_by' => auth()->id(),
+        ]);
+
+        return response()->json([
+            'message' => 'CAR resolution status updated successfully.',
+            'resolution_status' => $carRecord->resolution_status,
+        ]);
+    }
     public function show(CarRecord $carRecord)
     {
         $this->ensureCanManageRecord($carRecord);

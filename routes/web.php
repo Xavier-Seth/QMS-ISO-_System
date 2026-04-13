@@ -95,7 +95,8 @@ Route::middleware('auth')->group(function () {
     Route::post('/car/records/{carRecord}/submit', [CarRecordController::class, 'submitForApproval'])->name('car.records.submit');
     Route::get('/car/records/{carRecord}/download', [CarRecordController::class, 'download'])->name('car.records.download');
     Route::post('/car/records/{carRecord}/publish', [CarRecordController::class, 'publish'])->name('car.records.publish');
-
+    Route::patch('/car/records/{carRecord}/resolution-status', [CarRecordController::class, 'updateResolutionStatus'])
+        ->name('car.records.resolution-status');
     /*
     |--------------------------------------------------------------------------
     | My Records (Unified User Inbox)

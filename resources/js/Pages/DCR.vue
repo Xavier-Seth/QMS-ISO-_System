@@ -160,6 +160,11 @@ function resetFormState() {
   window.history.replaceState({}, '', url)
 }
 
+function cancelForm() {
+  resetFormState()
+  toast.success('Form cleared. You can start a new DCR draft.')
+}
+
 function applyDataToForm(data) {
   Object.keys(form).forEach((k) => {
     if (data?.[k] !== undefined) form[k] = data[k]
@@ -502,8 +507,9 @@ onBeforeUnmount(() => {
           <div class="flex flex-wrap items-center gap-2.5">
             <button
               class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-              @click="$inertia.visit('/dashboard')"
-            >
+              @click="cancelForm"
+  :disabled="isSaving || isGenerating || isPublishing || isSubmitting || isLoadingRecord"
+>
               Cancel
             </button>
 

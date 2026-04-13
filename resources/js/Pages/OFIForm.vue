@@ -225,6 +225,11 @@ function applyDataToForm(data) {
   }
 }
 
+function cancelForm() {
+  resetFormState()
+  toast.success('Form cleared. You can start a new OFI draft.')
+}
+
 function getRecordIdFromUrl() {
   const params = new URLSearchParams(window.location.search)
   const v = params.get('record')
@@ -653,12 +658,13 @@ onBeforeUnmount(() => {
 
           <div class="flex flex-wrap items-center gap-2.5">
             <button
-              class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-              @click="$inertia.visit('/dashboard')"
-            >
-              Cancel
-            </button>
-
+  type="button"
+  class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+  @click="cancelForm"
+  :disabled="isSaving || isGenerating || isPublishing || isSubmitting || isLoadingRecord || isUpdatingResolution"
+>
+  Cancel
+</button>
             <button
               class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
               @click="saveDraft"

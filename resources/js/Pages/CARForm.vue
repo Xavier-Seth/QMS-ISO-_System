@@ -22,10 +22,12 @@ const isSubmitting = ref(false)
 const isGenerating = ref(false)
 const isPublishing = ref(false)
 const isLoadingRecord = ref(false)
+const isUpdatingResolution = ref(false)
 
 const recordStatus = ref(props.record?.status ?? 'draft')
 const workflowStatus = ref(props.record?.workflow_status ?? null)
 const resolutionStatus = ref(props.record?.resolution_status ?? 'open')
+const lastConfirmedResolutionStatus = ref(props.record?.resolution_status ?? 'open')
 
 const publishFileName = ref('')
 const showPublishRenameModal = ref(false)
@@ -38,6 +40,24 @@ const isAdmin = computed(() => {
 
 const canSubmitToAdmin = computed(() => {
   return !isAdmin.value && !!recordId.value && workflowStatus.value !== 'pending' && workflowStatus.value !== 'approved'
+})
+
+const canUpdateResolution = computed(() => {
+  return isAdmin.value && workflowStatus.value === 'approved' && !!recordId.value
+})
+
+const allowedResolutionOptions = computed(() => {
+  if (workflowStatus.value !== 'approved') {
+    return ['open', 'ongoing', 'closed']
+  }
+
+  const current = lastConfirmedResolutionStatus.value || resolutionStatus.value || 'open'
+
+  if (current === 'open') return ['open', 'ongoing', 'closed']
+  if (current === 'ongoing') return ['ongoing', 'closed']
+  if (current === 'closed') return ['closed']
+
+  return ['open', 'ongoing', 'closed']
 })
 
 const isFormLocked = computed(() => {
@@ -290,12 +310,19 @@ function resetFormState() {
   recordStatus.value = 'draft'
   workflowStatus.value = null
   resolutionStatus.value = 'open'
+  lastConfirmedResolutionStatus.value = 'open'
   publishFileName.value = ''
   showPublishRenameModal.value = false
+  isUpdatingResolution.value = false
 
   const url = new URL(window.location.href)
   url.searchParams.delete('record')
   window.history.replaceState({}, '', url)
+}
+
+function cancelForm() {
+  resetFormState()
+  toast.success('Form cleared. You can start a new CAR draft.')
 }
 
 function getRecordIdFromUrl() {
@@ -311,6 +338,7 @@ async function loadRecord(id) {
     recordStatus.value = res.data.status ?? 'draft'
     workflowStatus.value = res.data.workflow_status ?? null
     resolutionStatus.value = res.data.resolution_status ?? 'open'
+    lastConfirmedResolutionStatus.value = res.data.resolution_status ?? 'open'
     applyRecordData(res.data.data || {})
 
     const shown = withDocx(currentFileLabel()) || `Record #${id}`
@@ -334,6 +362,7 @@ async function upsertRecord(requestedStatus = null) {
     recordStatus.value = res.data.status ?? 'draft'
     workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
     resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
+    lastConfirmedResolutionStatus.value = res.data.resolution_status ?? lastConfirmedResolutionStatus.value
 
     const url = new URL(window.location.href)
     url.searchParams.set('record', recordId.value)
@@ -343,6 +372,7 @@ async function upsertRecord(requestedStatus = null) {
     recordStatus.value = res.data.status ?? recordStatus.value
     workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
     resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
+    lastConfirmedResolutionStatus.value = res.data.resolution_status ?? lastConfirmedResolutionStatus.value
   }
 
   if (!publishFileName.value) {
@@ -438,6 +468,49 @@ async function downloadDocx() {
     const message = await extractBlobErrorMessage(err, 'Failed to download DOCX.')
     toast.error(message)
   }
+}
+
+async function updateResolutionStatus() {
+  if (!recordId.value) {
+    toast.error('Save the record first before updating resolution status.')
+    return
+  }
+
+  if (workflowStatus.value !== 'approved') {
+    resolutionStatus.value = lastConfirmedResolutionStatus.value || 'open'
+    toast.error('Only approved CAR records can update resolution status.')
+    return
+  }
+
+  const previousResolutionStatus = lastConfirmedResolutionStatus.value || resolutionStatus.value || 'open'
+
+  await runTask(isUpdatingResolution, 'Updating resolution status...', async () => {
+    const res = await axios.patch(`/car/records/${recordId.value}/resolution-status`, {
+      resolution_status: resolutionStatus.value,
+    })
+
+    resolutionStatus.value = res?.data?.resolution_status ?? resolutionStatus.value
+    lastConfirmedResolutionStatus.value = resolutionStatus.value || previousResolutionStatus
+
+    toast.success(
+      res?.data?.message || `Resolution status updated to ${resolutionStatus.value}.`
+    )
+  }).catch((err) => {
+    console.error(err)
+
+    resolutionStatus.value = previousResolutionStatus
+    lastConfirmedResolutionStatus.value = previousResolutionStatus
+
+    const message =
+      err?.response?.data?.message ||
+      err?.response?.data?.error ||
+      err?.response?.data?.errors?.resolution_status?.[0] ||
+      (err?.response?.status === 403
+        ? 'Only admins can update the resolution status.'
+        : 'Failed to update resolution status.')
+
+    toast.error(message)
+  })
 }
 
 function openPublishRenameModal() {
@@ -620,13 +693,44 @@ onBeforeUnmount(() => {
               >
                 {{ workflowStatus === 'pending' ? 'Read-only while under review' : 'Read-only after approval' }}
               </span>
+
+              <template v-if="isAdmin">
+                <div class="flex flex-wrap items-center gap-2">
+                  <label class="text-[12px] font-semibold text-slate-600">Update Resolution:</label>
+
+                  <select
+                    v-model="resolutionStatus"
+                    class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    :disabled="!canUpdateResolution || isUpdatingResolution"
+                  >
+                    <option
+                      v-for="option in allowedResolutionOptions"
+                      :key="option"
+                      :value="option"
+                    >
+                      {{ option }}
+                    </option>
+                  </select>
+
+                  <button
+                    type="button"
+                    class="rounded-lg bg-slate-800 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    @click="updateResolutionStatus"
+                    :disabled="!canUpdateResolution || isUpdatingResolution"
+                  >
+                    {{ isUpdatingResolution ? 'Updating...' : 'Update Status' }}
+                  </button>
+                </div>
+              </template>
             </div>
           </div>
 
           <div class="flex flex-wrap items-center gap-2.5">
             <button
+              type="button"
               class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
-              @click="$inertia.visit('/dashboard')"
+              @click="cancelForm"
+              :disabled="isSaving || isGenerating || isPublishing || isSubmitting || isLoadingRecord || isUpdatingResolution"
             >
               Cancel
             </button>
@@ -679,7 +783,6 @@ onBeforeUnmount(() => {
             :class="{ 'pointer-events-none opacity-70': isFormLocked }"
             style="font-family: Arial, Helvetica, sans-serif;"
           >
-            <!-- Header -->
             <header class="flex items-center border-b-2 border-black px-2 py-[4px]">
               <div class="mr-2 flex h-[0.57in] w-[0.57in]">
                 <img :src="logo" alt="LNU Logo" class="h-full w-full object-contain" />
@@ -690,7 +793,6 @@ onBeforeUnmount(() => {
               </div>
             </header>
 
-            <!-- Main header fields -->
             <section class="border-b-2 border-black px-3 py-2.5">
               <div class="grid grid-cols-[50%_50%] gap-y-2.5">
                 <div class="flex items-start pr-8">
@@ -775,7 +877,6 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <!-- 1 Description -->
             <section class="flex min-h-[180pt] flex-col border-b-2 border-black px-2.5 py-1.5">
               <h3 class="mb-[5pt] text-[10pt] font-bold leading-[1.1]">
                 DESCRIPTION OF NONCONFORMITY/COMPLAINT:
@@ -839,7 +940,6 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <!-- 2 Correction -->
             <section class="flex min-h-[120pt] flex-col border-b-2 border-black px-2.5 py-1.5">
               <h3 class="mb-[5pt] text-[10pt] font-bold leading-[1.1]">
                 2. CORRECTION (To be filled out by the Department/Division Representative)
@@ -871,7 +971,6 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <!-- 3 Root cause -->
             <section class="flex min-h-[130pt] flex-col border-b-2 border-black px-2.5 py-1.5">
               <h3 class="mb-[5pt] text-[10pt] font-bold leading-[1.1]">
                 3. ROOT CAUSE ANALYSIS (Use back page as guide.)
@@ -902,7 +1001,6 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <!-- 4 Corrective action -->
             <section class="flex min-h-[120pt] flex-col border-b-2 border-black px-2.5 py-1.5">
               <h3 class="mb-[5pt] text-[10pt] font-bold leading-[1.1]">
                 4. CORRECTIVE ACTION (To be filled out by the Department/Division Representative)
@@ -934,7 +1032,6 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <!-- 5 Risk -->
             <section class="border-b-2 border-black px-2.5 py-1.5">
               <h3 class="mb-[5pt] text-[10pt] font-bold leading-[1.1]">
                 5. RISK/OPPORTUNITY ASSESSMENT REQUIRES UPDATING?
@@ -972,7 +1069,6 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <!-- 6 IMS -->
             <section class="border-b-2 border-black px-2.5 py-1.5">
               <h3 class="mb-[5pt] text-[10pt] font-bold leading-[1.1]">6. IMS REQUIRES UPDATING?</h3>
 
@@ -1007,7 +1103,6 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <!-- 7 Follow-up -->
             <section class="border-b-2 border-black px-2.5 py-1.5 pb-1">
               <h3 class="mb-2 text-[10pt] font-bold leading-[1.1]">7. FOLLOW-UP COMMENTS</h3>
 
@@ -1046,7 +1141,6 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <!-- 8 Case closed -->
             <section class="border-b-2 border-black px-2.5 py-1.5">
               <h3 class="mb-[5pt] text-[10pt] font-bold leading-[1.1]">8. CASE CLOSED</h3>
 
@@ -1079,7 +1173,6 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <!-- 9 Cause and effect -->
             <section class="px-2.5 py-1.5">
               <h3 class="mb-[5pt] text-[10pt] font-bold leading-[1.1]">9. CAUSE AND EFFECT DIAGRAM</h3>
 
