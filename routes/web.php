@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CarRecordController;
 use App\Http\Controllers\DCRController;
 use App\Http\Controllers\DcrRecordController;
+use App\Http\Controllers\DcrTemplateSettingsController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\LogsController;
@@ -69,6 +70,9 @@ Route::middleware('auth')->group(function () {
     | DCR
     |--------------------------------------------------------------------------
     */
+    Route::get('/dcr/dynamic-fields', [DCRController::class, 'dynamicFields'])
+        ->name('dcr.dynamic-fields');
+
     Route::post('/dcr/generate', [DCRController::class, 'generate'])->name('dcr.generate');
 
     Route::post('/dcr/records', [DcrRecordController::class, 'store'])->name('dcr.records.store');
@@ -97,6 +101,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/car/records/{carRecord}/publish', [CarRecordController::class, 'publish'])->name('car.records.publish');
     Route::patch('/car/records/{carRecord}/resolution-status', [CarRecordController::class, 'updateResolutionStatus'])
         ->name('car.records.resolution-status');
+
     /*
     |--------------------------------------------------------------------------
     | My Records (Unified User Inbox)
@@ -138,6 +143,29 @@ Route::middleware('auth')->group(function () {
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
         Route::post('/users', [UsersController::class, 'store'])->name('users.store');
         Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
+
+        /*
+        |--------------------------------------------------------------------------
+        | DCR Template Settings
+        |--------------------------------------------------------------------------
+        */
+        Route::get('/settings/dcr-template', [DcrTemplateSettingsController::class, 'index'])
+            ->name('settings.dcr-template.index');
+
+        Route::post('/settings/dcr-template/upload', [DcrTemplateSettingsController::class, 'uploadTemplate'])
+            ->name('settings.dcr-template.upload');
+
+        Route::patch('/settings/dcr-template/{template}/activate', [DcrTemplateSettingsController::class, 'setActiveTemplate'])
+            ->name('settings.dcr-template.activate');
+
+        Route::post('/settings/dcr-template/fields', [DcrTemplateSettingsController::class, 'storeField'])
+            ->name('settings.dcr-template.fields.store');
+
+        Route::put('/settings/dcr-template/fields/{field}', [DcrTemplateSettingsController::class, 'updateField'])
+            ->name('settings.dcr-template.fields.update');
+
+        Route::delete('/settings/dcr-template/fields/{field}', [DcrTemplateSettingsController::class, 'destroyField'])
+            ->name('settings.dcr-template.fields.destroy');
 
         /*
         |--------------------------------------------------------------------------

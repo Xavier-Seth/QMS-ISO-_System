@@ -17,11 +17,6 @@ class DCRFormGenerator
         $this->template = new TemplateProcessor($templatePath);
     }
 
-    /**
-     * IMPORTANT:
-     * This generator requires template placeholders like ${fieldName}.
-     * Templates without placeholders will NOT work.
-     */
     public function generate(array $data, string $outputPath): void
     {
         $values = $this->buildValues($data);
@@ -41,7 +36,7 @@ class DCRFormGenerator
         $d = fn(string $key, mixed $default = '') => $data[$key] ?? $default;
         $check = fn(mixed $value): string => $value ? '✔' : '';
 
-        return [
+        $baseValues = [
             // Header
             'date' => $d('date'),
             'dcrNo' => $d('dcrNo'),
@@ -85,5 +80,45 @@ class DCRFormGenerator
             'idsDateUpdated' => $d('idsDateUpdated'),
             'updatedBy' => $d('updatedBy'),
         ];
+
+        $dynamicValues = $this->normalizeDynamicValues($d('dynamic', []));
+
+        return array_merge($dynamicValues, $baseValues);
+    }
+
+    private function normalizeDynamicValues(mixed $dynamic): array
+    {
+        if (!is_array($dynamic)) {
+            return [];
+        }
+
+        $normalized = [];
+
+        foreach ($dynamic as $key => $value) {
+            $placeholder = trim((string) $key);
+
+            if ($placeholder === '') {
+                continue;
+            }
+
+            // Keep placeholder names safe and predictable
+            if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $placeholder)) {
+                continue;
+            }
+
+            if (is_bool($value)) {
+                $normalized[$placeholder] = $value ? '✔' : '';
+                continue;
+            }
+
+            if (is_array($value) || is_object($value)) {
+                $normalized[$placeholder] = '';
+                continue;
+            }
+
+            $normalized[$placeholder] = (string) ($value ?? '');
+        }
+
+        return $normalized;
     }
 }

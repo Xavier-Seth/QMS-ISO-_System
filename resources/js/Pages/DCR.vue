@@ -1,6 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
-import { router, usePage } from '@inertiajs/vue3'
+import { usePage } from '@inertiajs/vue3'
 import { reactive, onMounted, onBeforeUnmount, ref, computed } from 'vue'
 import axios from 'axios'
 import logo from '@/images/LNU_logo.png'
@@ -18,9 +18,13 @@ const isGenerating = ref(false)
 const isPublishing = ref(false)
 const isSubmitting = ref(false)
 const isLoadingRecord = ref(false)
+const isLoadingDynamicFields = ref(false)
 
 const publishFileName = ref('')
 const showPublishRenameModal = ref(false)
+
+// dynamic field definitions
+const dynamicFields = ref([])
 
 // workflow states
 const recordStatus = ref('draft')
@@ -90,6 +94,9 @@ function emptyForm() {
     effectivityDate: '',
     idsDateUpdated: '',
     updatedBy: '',
+
+    // NEW: dynamic values filled by normal users
+    dynamic: {},
   }
 }
 
@@ -141,6 +148,58 @@ function pickOnlyOne(key) {
   form[key] = true
 }
 
+// NEW
+function ensureDynamicKeys() {
+  if (!form.dynamic || typeof form.dynamic !== 'object' || Array.isArray(form.dynamic)) {
+    form.dynamic = {}
+  }
+
+  dynamicFields.value.forEach((field) => {
+    if (form.dynamic[field.field_key] === undefined || form.dynamic[field.field_key] === null) {
+      form.dynamic[field.field_key] = ''
+    }
+  })
+}
+
+function firstMissingRequiredDynamicField() {
+  ensureDynamicKeys()
+
+  return dynamicFields.value.find((field) => {
+    if (!field.is_required) return false
+
+    const value = form.dynamic[field.field_key]
+
+    return value === undefined || value === null || String(value).trim() === ''
+  })
+}
+
+function validateRequiredDynamicFields() {
+  const missingField = firstMissingRequiredDynamicField()
+
+  if (!missingField) {
+    return true
+  }
+
+  toast.error(`${missingField.label} is required.`)
+  return false
+}
+
+// NEW
+async function loadDynamicFields() {
+  isLoadingDynamicFields.value = true
+
+  try {
+    const res = await axios.get('/dcr/dynamic-fields')
+    dynamicFields.value = res.data.fields || []
+    ensureDynamicKeys()
+  } catch (err) {
+    console.error(err)
+    toast.error('Failed to load additional DCR fields.')
+  } finally {
+    isLoadingDynamicFields.value = false
+  }
+}
+
 function resetFormState() {
   const fresh = emptyForm()
 
@@ -155,6 +214,8 @@ function resetFormState() {
   publishFileName.value = ''
   showPublishRenameModal.value = false
 
+  ensureDynamicKeys()
+
   const url = new URL(window.location.href)
   url.searchParams.delete('record')
   window.history.replaceState({}, '', url)
@@ -167,8 +228,15 @@ function cancelForm() {
 
 function applyDataToForm(data) {
   Object.keys(form).forEach((k) => {
+    if (k === 'dynamic') return
     if (data?.[k] !== undefined) form[k] = data[k]
   })
+
+  form.dynamic = (data?.dynamic && typeof data.dynamic === 'object' && !Array.isArray(data.dynamic))
+    ? { ...data.dynamic }
+    : {}
+
+  ensureDynamicKeys()
 
   if (!publishFileName.value && (data?.dcrNo || form.dcrNo)) {
     publishFileName.value = `DCR_${data?.dcrNo || form.dcrNo}`
@@ -199,6 +267,8 @@ async function loadRecord(id) {
 }
 
 async function upsertRecord(requestedStatus = null) {
+  ensureDynamicKeys()
+
   let safeStatus = requestedStatus
 
   if (recordId.value) {
@@ -285,6 +355,10 @@ async function submitToAdmin() {
     return
   }
 
+  if (!validateRequiredDynamicFields()) {
+    return
+  }
+
   await runTask(isSubmitting, 'Submitting DCR to admin...', async () => {
     await ensureDraftSaved()
 
@@ -307,6 +381,10 @@ async function submitToAdmin() {
 }
 
 async function downloadDocx() {
+  if (!validateRequiredDynamicFields()) {
+    return
+  }
+
   await runTask(isGenerating, 'Generating document...', async () => {
     await ensureDraftSaved()
 
@@ -326,6 +404,10 @@ async function downloadDocx() {
 async function publishToUploads() {
   if (!recordId.value) {
     toast.error('Save the record first before publishing.')
+    return
+  }
+
+  if (!validateRequiredDynamicFields()) {
     return
   }
 
@@ -384,12 +466,16 @@ function onKeydown(e) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
+
+  await loadDynamicFields()
 
   const id = getRecordIdFromUrl()
   if (id) {
-    loadRecord(id)
+    await loadRecord(id)
+  } else {
+    ensureDynamicKeys()
   }
 })
 
@@ -508,8 +594,8 @@ onBeforeUnmount(() => {
             <button
               class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
               @click="cancelForm"
-  :disabled="isSaving || isGenerating || isPublishing || isSubmitting || isLoadingRecord"
->
+              :disabled="isSaving || isGenerating || isPublishing || isSubmitting || isLoadingRecord"
+            >
               Cancel
             </button>
 
@@ -553,232 +639,301 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <!-- Form Card -->
-        <div
-          class="flex flex-1 items-start justify-center overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
-        >
+        <!-- Form Area -->
+        <div class="flex flex-1 gap-6 overflow-hidden">
+          <!-- Main Form Card -->
           <div
-            class="flex w-[210mm] flex-col border-2 border-black bg-white px-6 py-5 text-black transition"
-            :class="{ 'pointer-events-none opacity-70': isFormLocked }"
-            style="font-family: Arial, Helvetica, sans-serif;"
+            class="flex flex-1 items-start justify-center overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
           >
-            <!-- Header -->
-            <div class="flex items-start gap-4 border-b border-black pb-3">
-              <img :src="logo" alt="LNU Logo" class="h-[70px] w-[70px] object-contain" />
-              <div class="flex-1 text-center">
-                <h2 class="text-[12pt] font-bold leading-tight">LEYTE NORMAL UNIVERSITY</h2>
-                <h1 class="mt-1 text-[14pt] font-bold leading-tight">DOCUMENT CHANGE REQUEST</h1>
-              </div>
-            </div>
-
-            <!-- Metadata -->
-            <div class="mt-4 grid grid-cols-2 gap-x-10 gap-y-3 text-[10pt]">
-              <div class="flex items-center">
-                <span class="w-[70px]">DATE</span>
-                <span class="mr-2">:</span>
-                <input v-model="form.date" type="date" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+            <div
+              class="flex w-[210mm] flex-col border-2 border-black bg-white px-6 py-5 text-black transition"
+              :class="{ 'pointer-events-none opacity-70': isFormLocked }"
+              style="font-family: Arial, Helvetica, sans-serif;"
+            >
+              <!-- Header -->
+              <div class="flex items-start gap-4 border-b border-black pb-3">
+                <img :src="logo" alt="LNU Logo" class="h-[70px] w-[70px] object-contain" />
+                <div class="flex-1 text-center">
+                  <h2 class="text-[12pt] font-bold leading-tight">LEYTE NORMAL UNIVERSITY</h2>
+                  <h1 class="mt-1 text-[14pt] font-bold leading-tight">DOCUMENT CHANGE REQUEST</h1>
+                </div>
               </div>
 
-              <div class="flex items-center">
-                <span class="w-[90px]">DCR No.</span>
-                <span class="mr-2">:</span>
-                <input v-model="form.dcrNo" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
-              </div>
-
-              <div class="col-span-2 flex items-center">
-                <span class="w-[70px]">TO/FOR</span>
-                <span class="mr-2">:</span>
-                <input v-model="form.toFor" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
-              </div>
-
-              <div class="col-span-2 flex items-center">
-                <span class="w-[70px]">FROM</span>
-                <span class="mr-2">:</span>
-                <input v-model="form.from" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
-              </div>
-            </div>
-
-            <!-- Document Type -->
-            <div class="mt-5 text-[10pt]">
-              <div class="flex flex-wrap gap-6">
-                <label class="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    :checked="form.amend"
-                    @change="pickOnlyOne('amend')"
-                    class="hidden"
-                  />
-                  <span>Amend document</span>
-                  <span>{{ form.amend ? '[✔]' : '[ ]' }}</span>
-                </label>
-
-                <label class="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    :checked="form.newDoc"
-                    @change="pickOnlyOne('newDoc')"
-                    class="hidden"
-                  />
-                  <span>New document</span>
-                  <span>{{ form.newDoc ? '[✔]' : '[ ]' }}</span>
-                </label>
-
-                <label class="inline-flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    :checked="form.deleteDoc"
-                    @change="pickOnlyOne('deleteDoc')"
-                    class="hidden"
-                  />
-                  <span>Delete document</span>
-                  <span>{{ form.deleteDoc ? '[✔]' : '[ ]' }}</span>
-                </label>
-              </div>
-            </div>
-
-            <!-- Section 1 -->
-            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
-              <h3 class="mb-3 font-bold">1. DETAILS OF DOCUMENT</h3>
-
-              <div class="space-y-3">
+              <!-- Metadata -->
+              <div class="mt-4 grid grid-cols-2 gap-x-10 gap-y-3 text-[10pt]">
                 <div class="flex items-center">
-                  <span class="w-[140px]">Document Number</span>
+                  <span class="w-[70px]">DATE</span>
                   <span class="mr-2">:</span>
-                  <input v-model="form.documentNumber" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  <input v-model="form.date" type="date" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
                 </div>
 
                 <div class="flex items-center">
-                  <span class="w-[140px]">Document Title</span>
+                  <span class="w-[90px]">DCR No.</span>
                   <span class="mr-2">:</span>
-                  <input v-model="form.documentTitle" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
-                </div>
-
-                <div class="flex items-center">
-                  <span class="w-[140px]">Revision Status</span>
-                  <span class="mr-2">:</span>
-                  <input v-model="form.revisionStatus" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
-                </div>
-
-                <p class="text-[9pt] italic">Note: Please attach draft copy of the document.</p>
-              </div>
-            </div>
-
-            <!-- Section 2 -->
-            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
-              <h3 class="mb-3 font-bold">2. CHANGE(S) REQUESTED</h3>
-              <textarea
-                v-model="form.changesRequested"
-                rows="5"
-                class="w-full resize-none border border-black bg-transparent p-2 outline-none"
-              ></textarea>
-
-              <h3 class="mb-3 mt-4 font-bold">REASON FOR THE CHANGE</h3>
-              <textarea
-                v-model="form.reason"
-                rows="5"
-                class="w-full resize-none border border-black bg-transparent p-2 outline-none"
-              ></textarea>
-
-              <div class="mt-4 grid grid-cols-2 gap-6">
-                <div class="flex flex-col">
-                  <input v-model="form.requestedBy" class="border-0 border-b border-black bg-transparent text-center outline-none" />
-                  <label class="mt-1 text-center text-[9pt]">Requested by</label>
-                </div>
-
-                <div class="flex flex-col">
-                  <input v-model="form.deptUnitHead" class="border-0 border-b border-black bg-transparent text-center outline-none" />
-                  <label class="mt-1 text-center text-[9pt]">Department/Unit Head</label>
-                </div>
-              </div>
-            </div>
-
-            <!-- Section 3 -->
-            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
-              <h3 class="mb-3 font-bold">3. INTEGRATED MANAGEMENT REPRESENTATIVE’S COMMENTS</h3>
-
-              <div class="flex flex-wrap items-center gap-6">
-                <label class="inline-flex items-center gap-2 cursor-pointer">
-                  <input type="radio" v-model="form.requestDecision" value="DENIED" />
-                  <span>Request Denied</span>
-                </label>
-
-                <label class="inline-flex items-center gap-2 cursor-pointer">
-                  <input type="radio" v-model="form.requestDecision" value="ACCEPTED" />
-                  <span>Request Accepted</span>
-                </label>
-              </div>
-
-              <div class="mt-4 flex items-center">
-                <span class="w-[120px]">Signature/Date</span>
-                <span class="mr-2">:</span>
-                <input v-model="form.imrSigDate" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
-              </div>
-            </div>
-
-            <!-- Section 4 -->
-            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
-              <h3 class="mb-3 font-bold">4. APPROVING AUTHORITY</h3>
-
-              <div class="grid grid-cols-2 gap-6">
-                <div class="flex flex-col">
-                  <input v-model="form.approvingSigName" class="border-0 border-b border-black bg-transparent text-center outline-none" />
-                  <label class="mt-1 text-center text-[9pt]">Signature Over Printed Name</label>
-                </div>
-
-                <div class="flex flex-col">
-                  <input v-model="form.approvingDate" class="border-0 border-b border-black bg-transparent text-center outline-none" />
-                  <label class="mt-1 text-center text-[9pt]">Date</label>
-                </div>
-              </div>
-            </div>
-
-            <!-- Section 5 -->
-            <div class="mt-5 border-t border-black pt-3 text-[10pt]">
-              <h3 class="mb-3 font-bold">5. DOCUMENT STATUS</h3>
-
-              <div class="grid grid-cols-2 gap-x-10 gap-y-3">
-                <div class="flex items-center">
-                  <span class="w-[120px]">No.</span>
-                  <span class="mr-2">:</span>
-                  <input v-model="form.statusNo" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
-                </div>
-
-                <div class="flex items-center">
-                  <span class="w-[120px]">Version</span>
-                  <span class="mr-2">:</span>
-                  <input v-model="form.statusVersion" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
-                </div>
-
-                <div class="flex items-center">
-                  <span class="w-[120px]">Revision</span>
-                  <span class="mr-2">:</span>
-                  <input v-model="form.statusRevision" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
-                </div>
-
-                <div class="flex items-center">
-                  <span class="w-[120px]">Effectivity Date</span>
-                  <span class="mr-2">:</span>
-                  <input v-model="form.effectivityDate" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  <input v-model="form.dcrNo" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
                 </div>
 
                 <div class="col-span-2 flex items-center">
-                  <span class="w-[160px]">Date Updated in the IDS</span>
+                  <span class="w-[70px]">TO/FOR</span>
                   <span class="mr-2">:</span>
-                  <input v-model="form.idsDateUpdated" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  <input v-model="form.toFor" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
                 </div>
 
                 <div class="col-span-2 flex items-center">
-                  <span class="w-[120px]">Updated by</span>
+                  <span class="w-[70px]">FROM</span>
                   <span class="mr-2">:</span>
-                  <input v-model="form.updatedBy" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  <input v-model="form.from" type="text" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
                 </div>
               </div>
-            </div>
 
-            <div class="mt-6 border-t border-black pt-2 text-[9pt]">
-              F-QMS-001 Rev. 1 (01-05-26)
+              <!-- Document Type -->
+              <div class="mt-5 text-[10pt]">
+                <div class="flex flex-wrap gap-6">
+                  <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="form.amend"
+                      @change="pickOnlyOne('amend')"
+                      class="hidden"
+                    />
+                    <span>Amend document</span>
+                    <span>{{ form.amend ? '[✔]' : '[ ]' }}</span>
+                  </label>
+
+                  <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="form.newDoc"
+                      @change="pickOnlyOne('newDoc')"
+                      class="hidden"
+                    />
+                    <span>New document</span>
+                    <span>{{ form.newDoc ? '[✔]' : '[ ]' }}</span>
+                  </label>
+
+                  <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      :checked="form.deleteDoc"
+                      @change="pickOnlyOne('deleteDoc')"
+                      class="hidden"
+                    />
+                    <span>Delete document</span>
+                    <span>{{ form.deleteDoc ? '[✔]' : '[ ]' }}</span>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Section 1 -->
+              <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+                <h3 class="mb-3 font-bold">1. DETAILS OF DOCUMENT</h3>
+
+                <div class="space-y-3">
+                  <div class="flex items-center">
+                    <span class="w-[140px]">Document Number</span>
+                    <span class="mr-2">:</span>
+                    <input v-model="form.documentNumber" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  </div>
+
+                  <div class="flex items-center">
+                    <span class="w-[140px]">Document Title</span>
+                    <span class="mr-2">:</span>
+                    <input v-model="form.documentTitle" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  </div>
+
+                  <div class="flex items-center">
+                    <span class="w-[140px]">Revision Status</span>
+                    <span class="mr-2">:</span>
+                    <input v-model="form.revisionStatus" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  </div>
+
+                  <p class="text-[9pt] italic">Note: Please attach draft copy of the document.</p>
+                </div>
+              </div>
+
+              <!-- Section 2 -->
+              <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+                <h3 class="mb-3 font-bold">2. CHANGE(S) REQUESTED</h3>
+                <textarea
+                  v-model="form.changesRequested"
+                  rows="5"
+                  class="w-full resize-none border border-black bg-transparent p-2 outline-none"
+                ></textarea>
+
+                <h3 class="mb-3 mt-4 font-bold">REASON FOR THE CHANGE</h3>
+                <textarea
+                  v-model="form.reason"
+                  rows="5"
+                  class="w-full resize-none border border-black bg-transparent p-2 outline-none"
+                ></textarea>
+
+                <div class="mt-4 grid grid-cols-2 gap-6">
+                  <div class="flex flex-col">
+                    <input v-model="form.requestedBy" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                    <label class="mt-1 text-center text-[9pt]">Requested by</label>
+                  </div>
+
+                  <div class="flex flex-col">
+                    <input v-model="form.deptUnitHead" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                    <label class="mt-1 text-center text-[9pt]">Department/Unit Head</label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 3 -->
+              <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+                <h3 class="mb-3 font-bold">3. INTEGRATED MANAGEMENT REPRESENTATIVE’S COMMENTS</h3>
+
+                <div class="flex flex-wrap items-center gap-6">
+                  <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input type="radio" v-model="form.requestDecision" value="DENIED" />
+                    <span>Request Denied</span>
+                  </label>
+
+                  <label class="inline-flex items-center gap-2 cursor-pointer">
+                    <input type="radio" v-model="form.requestDecision" value="ACCEPTED" />
+                    <span>Request Accepted</span>
+                  </label>
+                </div>
+
+                <div class="mt-4 flex items-center">
+                  <span class="w-[120px]">Signature/Date</span>
+                  <span class="mr-2">:</span>
+                  <input v-model="form.imrSigDate" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                </div>
+              </div>
+
+              <!-- Section 4 -->
+              <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+                <h3 class="mb-3 font-bold">4. APPROVING AUTHORITY</h3>
+
+                <div class="grid grid-cols-2 gap-6">
+                  <div class="flex flex-col">
+                    <input v-model="form.approvingSigName" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                    <label class="mt-1 text-center text-[9pt]">Signature Over Printed Name</label>
+                  </div>
+
+                  <div class="flex flex-col">
+                    <input v-model="form.approvingDate" class="border-0 border-b border-black bg-transparent text-center outline-none" />
+                    <label class="mt-1 text-center text-[9pt]">Date</label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Section 5 -->
+              <div class="mt-5 border-t border-black pt-3 text-[10pt]">
+                <h3 class="mb-3 font-bold">5. DOCUMENT STATUS</h3>
+
+                <div class="grid grid-cols-2 gap-x-10 gap-y-3">
+                  <div class="flex items-center">
+                    <span class="w-[120px]">No.</span>
+                    <span class="mr-2">:</span>
+                    <input v-model="form.statusNo" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  </div>
+
+                  <div class="flex items-center">
+                    <span class="w-[120px]">Version</span>
+                    <span class="mr-2">:</span>
+                    <input v-model="form.statusVersion" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  </div>
+
+                  <div class="flex items-center">
+                    <span class="w-[120px]">Revision</span>
+                    <span class="mr-2">:</span>
+                    <input v-model="form.statusRevision" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  </div>
+
+                  <div class="flex items-center">
+                    <span class="w-[120px]">Effectivity Date</span>
+                    <span class="mr-2">:</span>
+                    <input v-model="form.effectivityDate" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  </div>
+
+                  <div class="col-span-2 flex items-center">
+                    <span class="w-[160px]">Date Updated in the IDS</span>
+                    <span class="mr-2">:</span>
+                    <input v-model="form.idsDateUpdated" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  </div>
+
+                  <div class="col-span-2 flex items-center">
+                    <span class="w-[120px]">Updated by</span>
+                    <span class="mr-2">:</span>
+                    <input v-model="form.updatedBy" class="flex-1 border-0 border-b border-black bg-transparent outline-none" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-6 border-t border-black pt-2 text-[9pt]">
+                F-QMS-001 Rev. 1 (01-05-26)
+              </div>
             </div>
           </div>
+
+          <!-- NEW: Right-side Additional Fields Panel -->
+          <aside class="w-[340px] shrink-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
+            <div class="border-b border-slate-200 pb-4">
+              <h2 class="text-lg font-semibold text-slate-900">Additional Fields</h2>
+              <p class="mt-1 text-sm text-slate-500">
+                Fill extra DCR fields configured in System Settings.
+              </p>
+            </div>
+
+            <div v-if="isLoadingDynamicFields" class="py-6 text-sm text-slate-500">
+              Loading additional fields...
+            </div>
+
+            <div v-else-if="!dynamicFields.length" class="py-6 text-sm text-slate-400">
+              No additional fields configured for DCR.
+            </div>
+
+            <div v-else class="mt-5 space-y-4" :class="{ 'pointer-events-none opacity-70': isFormLocked }">
+              <div
+                v-for="field in dynamicFields"
+                :key="field.id"
+                class="space-y-1.5"
+              >
+                <label class="block text-sm font-medium text-slate-700">
+                  {{ field.label }}
+                  <span v-if="field.is_required" class="text-rose-500">*</span>
+                </label>
+
+                <input
+                  v-if="field.field_type === 'text'"
+                  v-model="form.dynamic[field.field_key]"
+                  type="text"
+                  class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                  :placeholder="`Enter ${field.label}`"
+                />
+
+                <textarea
+                  v-else-if="field.field_type === 'textarea'"
+                  v-model="form.dynamic[field.field_key]"
+                  rows="4"
+                  class="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                  :placeholder="`Enter ${field.label}`"
+                ></textarea>
+
+                <input
+                  v-else-if="field.field_type === 'date'"
+                  v-model="form.dynamic[field.field_key]"
+                  type="date"
+                  class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                />
+
+                <input
+                  v-else
+                  v-model="form.dynamic[field.field_key]"
+                  type="text"
+                  class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                  :placeholder="`Enter ${field.label}`"
+                />
+
+                <p class="text-xs text-slate-400">
+  Placeholder: ${'{'}{{ field.field_key }}{{ '}' }}
+</p>
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
     </div>

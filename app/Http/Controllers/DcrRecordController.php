@@ -7,16 +7,20 @@ use App\Models\DocumentType;
 use App\Models\DocumentUpload;
 use App\Services\ActivityLogService;
 use App\Services\DCRFormGenerator;
+use App\Services\DcrDynamicFieldValidator;
+use App\Services\QmsTemplateResolver;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Inertia\Inertia;
+use Illuminate\Validation\ValidationException;
 
 class DcrRecordController extends Controller
 {
     public function __construct(
-        protected ActivityLogService $activityLogService
+        protected ActivityLogService $activityLogService,
+        protected QmsTemplateResolver $templateResolver,
+        protected DcrDynamicFieldValidator $dynamicFieldValidator
     ) {
     }
 
@@ -29,17 +33,6 @@ class DcrRecordController extends Controller
         }
 
         return (int) $id;
-    }
-
-    private function templatePath(): string
-    {
-        $path = config('qms_templates.dcr.path');
-
-        if (!is_string($path) || $path === '' || !file_exists($path)) {
-            abort(500, 'DCR template file not found.');
-        }
-
-        return $path;
     }
 
     private function ensureTmpDir(): string
@@ -76,8 +69,14 @@ class DcrRecordController extends Controller
 
     private function generateDocxToPath(DcrRecord $dcrRecord, string $outputPath): void
     {
-        $generator = new DCRFormGenerator($this->templatePath());
-        $generator->generate($dcrRecord->data ?? [], $outputPath);
+        $data = is_array($dcrRecord->data) ? $dcrRecord->data : [];
+
+        $this->dynamicFieldValidator->validateRequiredFields($data);
+
+        $templatePath = $this->templateResolver->getActiveDcrTemplatePath();
+
+        $generator = new DCRFormGenerator($templatePath);
+        $generator->generate($data, $outputPath);
     }
 
     private function publishRecordDocument(
@@ -91,7 +90,8 @@ class DcrRecordController extends Controller
             ->first();
 
         $tmpDir = $this->ensureTmpDir();
-        $disk = Storage::disk('public');
+        $storageDisk = 'private';
+        $disk = Storage::disk($storageDisk);
 
         if ($existingUpload) {
             $fileName = $existingUpload->file_name
@@ -100,14 +100,15 @@ class DcrRecordController extends Controller
             $tmpPath = $tmpDir . '/' . uniqid('dcr_republish_', true) . '_' . $fileName;
             $this->generateDocxToPath($dcrRecord, $tmpPath);
 
-            $publicPath = $existingUpload->file_path ?: ('documents/dcr/' . $fileName);
-            $disk->put($publicPath, file_get_contents($tmpPath));
+            $storedPath = $existingUpload->file_path ?: ('documents/dcr/' . $fileName);
+            $disk->put($storedPath, file_get_contents($tmpPath));
 
             $existingUpload->update([
                 'document_type_id' => $this->rQms013TypeId(),
                 'uploaded_by' => auth()->id(),
                 'file_name' => $fileName,
-                'file_path' => $publicPath,
+                'file_path' => $storedPath,
+                'storage_disk' => $storageDisk,
                 'remarks' => $remarks ?? $existingUpload->remarks,
             ]);
 
@@ -118,17 +119,17 @@ class DcrRecordController extends Controller
 
         $baseName = $this->sanitizeBaseFileName($requestedFileName, $dcrRecord);
         $fileName = "{$baseName}.docx";
-        $publicPath = 'documents/dcr/' . $fileName;
+        $storedPath = 'documents/dcr/' . $fileName;
 
-        if ($disk->exists($publicPath)) {
+        if ($disk->exists($storedPath)) {
             $fileName = "{$baseName}_" . now()->format('His') . '.docx';
-            $publicPath = 'documents/dcr/' . $fileName;
+            $storedPath = 'documents/dcr/' . $fileName;
         }
 
         $tmpPath = $tmpDir . '/' . uniqid('dcr_publish_', true) . '_' . $fileName;
         $this->generateDocxToPath($dcrRecord, $tmpPath);
 
-        $disk->put($publicPath, file_get_contents($tmpPath));
+        $disk->put($storedPath, file_get_contents($tmpPath));
 
         $upload = DocumentUpload::create([
             'document_type_id' => $this->rQms013TypeId(),
@@ -137,7 +138,8 @@ class DcrRecordController extends Controller
             'revision' => null,
             'status' => null,
             'file_name' => $fileName,
-            'file_path' => $publicPath,
+            'file_path' => $storedPath,
+            'storage_disk' => $storageDisk,
             'remarks' => $remarks,
         ]);
 
@@ -157,7 +159,8 @@ class DcrRecordController extends Controller
             return;
         }
 
-        $disk = Storage::disk('public');
+        $storageDisk = 'private';
+        $disk = Storage::disk($storageDisk);
         $tmpDir = $this->ensureTmpDir();
 
         /** @var DocumentUpload $upload */
@@ -167,12 +170,13 @@ class DcrRecordController extends Controller
 
             $this->generateDocxToPath($dcrRecord, $tmpPath);
 
-            $publicPath = $upload->file_path ?: ('documents/dcr/' . $fileName);
-            $disk->put($publicPath, file_get_contents($tmpPath));
+            $storedPath = $upload->file_path ?: ('documents/dcr/' . $fileName);
+            $disk->put($storedPath, file_get_contents($tmpPath));
 
             $upload->update([
                 'file_name' => $fileName,
-                'file_path' => $publicPath,
+                'file_path' => $storedPath,
+                'storage_disk' => $storageDisk,
             ]);
 
             @unlink($tmpPath);
@@ -338,6 +342,10 @@ class DcrRecordController extends Controller
             $payload = $request->all();
             $safeStatus = $this->resolveSafeStatusForSave($dcrRecord, $payload['status'] ?? null);
 
+            if ($safeStatus === 'submitted') {
+                $this->dynamicFieldValidator->validateRequiredFields($payload);
+            }
+
             $dcrRecord->update([
                 'dcr_no' => $payload['dcrNo'] ?? $dcrRecord->dcr_no,
                 'to_for' => $payload['toFor'] ?? $dcrRecord->to_for,
@@ -357,6 +365,8 @@ class DcrRecordController extends Controller
                 'workflow_status' => $fresh->workflow_status,
                 'resolution_status' => $fresh->resolution_status,
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to update DCR draft.',
@@ -394,6 +404,8 @@ class DcrRecordController extends Controller
                 'message' => 'This DCR record is already submitted for approval.',
             ], 422);
         }
+
+        $this->dynamicFieldValidator->validateRequiredFields(is_array($dcrRecord->data) ? $dcrRecord->data : []);
 
         $isResubmission = $dcrRecord->workflow_status === 'rejected';
 
@@ -467,6 +479,8 @@ class DcrRecordController extends Controller
                 $payload = (array) $request->input('data', []);
 
                 if ($this->canEditRecordContent($dcrRecord)) {
+                    $this->dynamicFieldValidator->validateRequiredFields($payload);
+
                     $safeStatus = $this->resolveSafeStatusForSave(
                         $dcrRecord,
                         $request->input('status', $dcrRecord->status)
@@ -484,6 +498,7 @@ class DcrRecordController extends Controller
             }
 
             $dcrRecord = $dcrRecord->fresh();
+            $this->dynamicFieldValidator->validateRequiredFields(is_array($dcrRecord->data) ? $dcrRecord->data : []);
 
             $upload = $this->publishRecordDocument(
                 $dcrRecord,
@@ -515,6 +530,8 @@ class DcrRecordController extends Controller
                 'workflow_status' => $dcrRecord->workflow_status,
                 'resolution_status' => $dcrRecord->resolution_status,
             ]);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             return response()->json([
                 'message' => 'Failed to publish DCR.',
@@ -532,6 +549,8 @@ class DcrRecordController extends Controller
         if ($dcrRecord->status !== 'submitted' || $dcrRecord->workflow_status !== 'pending') {
             return back()->with('error', 'Only submitted pending DCR records can be approved.');
         }
+
+        $this->dynamicFieldValidator->validateRequiredFields(is_array($dcrRecord->data) ? $dcrRecord->data : []);
 
         DB::transaction(function () use ($dcrRecord) {
             $dcrRecord->update([
@@ -611,7 +630,6 @@ class DcrRecordController extends Controller
         return back()->with('success', 'DCR rejected and returned for correction.');
     }
 
-
     public function myRecords(Request $request)
     {
         $status = $request->input('workflow_status', 'all');
@@ -662,7 +680,7 @@ class DcrRecordController extends Controller
                 ->count(),
         ];
 
-        return Inertia::render('Inbox/MyDCRRecords', [
+        return \Inertia\Inertia::render('Inbox/MyDCRRecords', [
             'records' => $records,
             'filters' => [
                 'workflow_status' => $status,
