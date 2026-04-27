@@ -260,6 +260,110 @@ class DcrDynamicFieldsTest extends TestCase
         ]);
     }
 
+    public function test_dcr_status_only_update_preserves_saved_form_data(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'dcrstatusonly',
+            'role' => 'user',
+        ]);
+
+        QmsDynamicField::query()->create([
+            'module' => 'DCR',
+            'label' => 'Office Code',
+            'field_key' => 'officeCode',
+            'field_type' => 'text',
+            'is_required' => true,
+            'is_active' => true,
+            'sort_order' => 1,
+        ]);
+
+        $record = DcrRecord::query()->create([
+            'document_type_id' => null,
+            'dcr_no' => 'DCR-STATUS-001',
+            'to_for' => 'Original Office',
+            'from' => 'Origin Office',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => [
+                'dcrNo' => 'DCR-STATUS-001',
+                'toFor' => 'Original Office',
+                'from' => 'Origin Office',
+                'changesRequested' => 'Keep this saved change.',
+                'dynamic' => [
+                    'officeCode' => 'QMS-DCR',
+                ],
+            ],
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->putJson(route('dcr.records.update', $record), [
+                'status' => 'submitted',
+            ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('status', 'submitted');
+
+        $record->refresh();
+
+        $this->assertSame('submitted', $record->status);
+        $this->assertSame('DCR-STATUS-001', $record->data['dcrNo'] ?? null);
+        $this->assertSame('Original Office', $record->data['toFor'] ?? null);
+        $this->assertSame('Keep this saved change.', $record->data['changesRequested'] ?? null);
+        $this->assertSame('QMS-DCR', $record->data['dynamic']['officeCode'] ?? null);
+    }
+
+    public function test_dcr_partial_update_preserves_saved_dynamic_fields(): void
+    {
+        $user = User::factory()->create([
+            'username' => 'dcrpartial',
+            'role' => 'user',
+        ]);
+
+        $record = DcrRecord::query()->create([
+            'document_type_id' => null,
+            'dcr_no' => 'DCR-PARTIAL-001',
+            'to_for' => 'Original Office',
+            'from' => 'Origin Office',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => [
+                'dcrNo' => 'DCR-PARTIAL-001',
+                'toFor' => 'Original Office',
+                'from' => 'Origin Office',
+                'reason' => 'Preserve existing reason.',
+                'dynamic' => [
+                    'officeCode' => 'QMS-DCR',
+                    'priorityDate' => '2026-04-15',
+                ],
+            ],
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->putJson(route('dcr.records.update', $record), [
+                'toFor' => 'Updated Office',
+            ]);
+
+        $response->assertOk();
+
+        $record->refresh();
+
+        $this->assertSame('Updated Office', $record->to_for);
+        $this->assertSame('Updated Office', $record->data['toFor'] ?? null);
+        $this->assertSame('DCR-PARTIAL-001', $record->data['dcrNo'] ?? null);
+        $this->assertSame('Origin Office', $record->data['from'] ?? null);
+        $this->assertSame('Preserve existing reason.', $record->data['reason'] ?? null);
+        $this->assertSame('QMS-DCR', $record->data['dynamic']['officeCode'] ?? null);
+        $this->assertSame('2026-04-15', $record->data['dynamic']['priorityDate'] ?? null);
+    }
+
     public function test_published_dcr_document_upload_is_stored_on_private_disk(): void
     {
         Storage::fake('private');

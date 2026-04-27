@@ -7,14 +7,20 @@ use PhpOffice\PhpWord\TemplateProcessor;
 class DCRFormGenerator
 {
     private TemplateProcessor $template;
+    private QmsDynamicPlaceholderNormalizer $dynamicPlaceholderNormalizer;
 
-    public function __construct(string $templatePath)
+    public function __construct(
+        string $templatePath,
+        ?QmsDynamicPlaceholderNormalizer $dynamicPlaceholderNormalizer = null
+    )
     {
         if (!file_exists($templatePath)) {
             throw new \InvalidArgumentException("Template not found: {$templatePath}");
         }
 
         $this->template = new TemplateProcessor($templatePath);
+        $this->dynamicPlaceholderNormalizer = $dynamicPlaceholderNormalizer
+            ?? new QmsDynamicPlaceholderNormalizer();
     }
 
     public function generate(array $data, string $outputPath): void
@@ -81,44 +87,8 @@ class DCRFormGenerator
             'updatedBy' => $d('updatedBy'),
         ];
 
-        $dynamicValues = $this->normalizeDynamicValues($d('dynamic', []));
+        $dynamicValues = $this->dynamicPlaceholderNormalizer->normalize($d('dynamic', []));
 
         return array_merge($dynamicValues, $baseValues);
-    }
-
-    private function normalizeDynamicValues(mixed $dynamic): array
-    {
-        if (!is_array($dynamic)) {
-            return [];
-        }
-
-        $normalized = [];
-
-        foreach ($dynamic as $key => $value) {
-            $placeholder = trim((string) $key);
-
-            if ($placeholder === '') {
-                continue;
-            }
-
-            // Keep placeholder names safe and predictable
-            if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $placeholder)) {
-                continue;
-            }
-
-            if (is_bool($value)) {
-                $normalized[$placeholder] = $value ? '✔' : '';
-                continue;
-            }
-
-            if (is_array($value) || is_object($value)) {
-                $normalized[$placeholder] = '';
-                continue;
-            }
-
-            $normalized[$placeholder] = (string) ($value ?? '');
-        }
-
-        return $normalized;
     }
 }

@@ -339,8 +339,30 @@ class DcrRecordController extends Controller
         $this->ensureCanEditRecordContent($dcrRecord);
 
         try {
-            $payload = $request->all();
-            $safeStatus = $this->resolveSafeStatusForSave($dcrRecord, $payload['status'] ?? null);
+            $incomingPayload = $request->all();
+            $existingPayload = is_array($dcrRecord->data) ? $dcrRecord->data : [];
+            $formPayload = $incomingPayload;
+            unset($formPayload['status']);
+
+            $payload = $existingPayload;
+
+            if ($formPayload !== []) {
+                $payload = array_replace($existingPayload, $formPayload);
+
+                if (array_key_exists('dynamic', $formPayload)) {
+                    $existingDynamic = $existingPayload['dynamic'] ?? [];
+                    $incomingDynamic = is_array($formPayload['dynamic'])
+                        ? $formPayload['dynamic']
+                        : [];
+
+                    $payload['dynamic'] = array_replace(
+                        is_array($existingDynamic) ? $existingDynamic : [],
+                        $incomingDynamic
+                    );
+                }
+            }
+
+            $safeStatus = $this->resolveSafeStatusForSave($dcrRecord, $incomingPayload['status'] ?? null);
 
             if ($safeStatus === 'submitted') {
                 $this->dynamicFieldValidator->validateRequiredFields($payload);

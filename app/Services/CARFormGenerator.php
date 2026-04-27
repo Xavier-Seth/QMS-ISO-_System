@@ -7,14 +7,19 @@ use PhpOffice\PhpWord\TemplateProcessor;
 class CARFormGenerator
 {
     private string $templatePath;
+    private QmsDynamicPlaceholderNormalizer $dynamicPlaceholderNormalizer;
 
-    public function __construct(string $templatePath)
-    {
+    public function __construct(
+        string $templatePath,
+        ?QmsDynamicPlaceholderNormalizer $dynamicPlaceholderNormalizer = null
+    ) {
         if (!file_exists($templatePath)) {
             throw new \InvalidArgumentException("Template not found: {$templatePath}");
         }
 
         $this->templatePath = $templatePath;
+        $this->dynamicPlaceholderNormalizer = $dynamicPlaceholderNormalizer
+            ?? new QmsDynamicPlaceholderNormalizer();
     }
 
     /**
@@ -66,7 +71,7 @@ class CARFormGenerator
         $imsNo = $check($d('imsNo', false) || $imsUpdate === 'NO');
         $imsYes = $check($d('imsYes', false) || $imsUpdate === 'YES');
 
-        return array_merge([
+        $baseValues = array_merge([
             // Header
             'deptSection' => $d('deptSection'),
             'refNo' => $d('refNo'),
@@ -131,5 +136,9 @@ class CARFormGenerator
             'causeOthers' => $d('causeOthers'),
             'effectProblem' => $d('effectProblem'),
         ], $rows);
+
+        $dynamicValues = $this->dynamicPlaceholderNormalizer->normalize($d('dynamic', []));
+
+        return array_merge($dynamicValues, $baseValues);
     }
 }

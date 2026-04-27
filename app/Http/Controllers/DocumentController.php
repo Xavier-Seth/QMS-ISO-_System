@@ -1103,8 +1103,7 @@ class DocumentController extends Controller
 
         abort_unless($upload->ofiRecord, 404, 'Linked OFI record not found.');
 
-        $templatePath = config('qms_templates.ofi.path');
-        abort_unless(is_string($templatePath) && file_exists($templatePath), 500, 'OFI template file not found.');
+        $templatePath = $this->qmsTemplateResolver->getActiveOfiTemplatePath();
 
         $tmpDir = storage_path('app/ofi_forms_tmp');
         if (!is_dir($tmpDir)) {
@@ -1222,8 +1221,7 @@ class DocumentController extends Controller
 
         abort_unless($upload->carRecord, 404, 'Linked CAR record not found.');
 
-        $templatePath = config('qms_templates.car.path');
-        abort_unless(is_string($templatePath) && file_exists($templatePath), 500, 'CAR template file not found.');
+        $templatePath = $this->qmsTemplateResolver->getActiveCarTemplatePath();
 
         $tmpDir = storage_path('app/car_forms_tmp');
         if (!is_dir($tmpDir)) {

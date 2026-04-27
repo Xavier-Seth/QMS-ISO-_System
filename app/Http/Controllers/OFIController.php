@@ -4,13 +4,19 @@ namespace App\Http\Controllers;
 
 use App\Services\ActivityLogService;
 use App\Services\OFIFormGenerator;
+use App\Services\QmsDynamicFieldValidator;
+use App\Services\QmsTemplateResolver;
+use App\Support\QmsTemplateModules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use RuntimeException;
 
 class OFIController extends Controller
 {
     public function __construct(
-        protected ActivityLogService $activityLogService
+        protected ActivityLogService $activityLogService,
+        protected QmsTemplateResolver $templateResolver,
+        protected QmsDynamicFieldValidator $dynamicFieldValidator
     ) {
     }
 
@@ -24,11 +30,17 @@ class OFIController extends Controller
             'ofiNo' => 'nullable|string',
             'from' => 'nullable|string',
             'followSig' => 'nullable|string',
+            'dynamic' => 'nullable|array',
         ]);
 
         if ($validator->fails()) {
             return response()->json(['errors' => $validator->errors()], 422);
         }
+
+        $this->dynamicFieldValidator->validateRequiredFields(
+            QmsTemplateModules::OFI,
+            $request->all()
+        );
 
         // 2. Build the data array from the request
         $data = [
@@ -81,14 +93,12 @@ class OFIController extends Controller
             'imrSig' => $request->input('imrSig', ''),
             'caseClosedDate' => $request->input('caseClosedDate', ''),
             'notedBy' => $request->input('notedBy', ''),
+
+            // Additional fields configured in System Settings
+            'dynamic' => $request->input('dynamic', []),
         ];
 
         // 3. Define paths
-        $templatePath = config('qms_templates.ofi.path');
-
-if (!is_string($templatePath) || $templatePath === '' || !file_exists($templatePath)) {
-    return response()->json(['error' => 'OFI template file not found.'], 500);
-}
         $outputDir = storage_path('app/ofi_forms');
         $recordLabel = $request->input('ofiNo', '');
         $fileName = 'OFI_' . now()->format('Ymd_His') . '.docx';
@@ -101,8 +111,14 @@ if (!is_string($templatePath) || $templatePath === '' || !file_exists($templateP
 
         // 5. Generate the DOCX
         try {
+            $templatePath = $this->templateResolver->getActiveOfiTemplatePath();
+
             $generator = new OFIFormGenerator($templatePath);
             $generator->generate($data, $outputPath);
+        } catch (RuntimeException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json(['error' => 'Failed to generate document: ' . $e->getMessage()], 500);
         }

@@ -21,6 +21,9 @@ const isPublishing = ref(false)
 const isSubmitting = ref(false)
 const isLoadingRecord = ref(false)
 const isUpdatingResolution = ref(false)
+const isLoadingDynamicFields = ref(false)
+const dynamicFields = ref([])
+const isAdditionalFieldsOpen = ref(true)
 
 // workflow / resolution states
 const recordStatus = ref('draft')
@@ -109,6 +112,7 @@ function emptyForm() {
     imrSig: '',
     caseClosedDate: '',
     notedBy: '',
+    dynamic: {},
   }
 }
 
@@ -166,6 +170,57 @@ async function runTask(flagRef, loadingMessage, task) {
   }
 }
 
+function ensureDynamicKeys() {
+  if (!form.dynamic || typeof form.dynamic !== 'object' || Array.isArray(form.dynamic)) {
+    form.dynamic = {}
+  }
+
+  dynamicFields.value.forEach((field) => {
+    if (form.dynamic[field.field_key] === undefined || form.dynamic[field.field_key] === null) {
+      form.dynamic[field.field_key] = ''
+    }
+  })
+}
+
+function firstMissingRequiredDynamicField() {
+  ensureDynamicKeys()
+
+  return dynamicFields.value.find((field) => {
+    if (!field.is_required) return false
+
+    const value = form.dynamic[field.field_key]
+
+    return value === undefined || value === null || String(value).trim() === ''
+  })
+}
+
+function validateRequiredDynamicFields() {
+  const missingField = firstMissingRequiredDynamicField()
+
+  if (!missingField) {
+    return true
+  }
+
+  isAdditionalFieldsOpen.value = true
+  toast.error(`${missingField.label} is required.`)
+  return false
+}
+
+async function loadDynamicFields() {
+  isLoadingDynamicFields.value = true
+
+  try {
+    const res = await axios.get('/ofi/dynamic-fields')
+    dynamicFields.value = res.data.fields || []
+    ensureDynamicKeys()
+  } catch (err) {
+    console.error(err)
+    toast.error('Failed to load additional OFI fields.')
+  } finally {
+    isLoadingDynamicFields.value = false
+  }
+}
+
 /* =========================
    RESET HELPERS
 ========================= */
@@ -190,6 +245,8 @@ function resetFormState() {
     suggestionBox.value.innerText = ''
   }
 
+  ensureDynamicKeys()
+
   const url = new URL(window.location.href)
   url.searchParams.delete('record')
   window.history.replaceState({}, '', url)
@@ -202,8 +259,13 @@ function resetFormState() {
 function applyDataToForm(data) {
   Object.keys(form).forEach((k) => {
     if (k === 'followUp') return
+    if (k === 'dynamic') return
     if (data?.[k] !== undefined) form[k] = data[k]
   })
+
+  form.dynamic = (data?.dynamic && typeof data.dynamic === 'object' && !Array.isArray(data.dynamic))
+    ? { ...data.dynamic }
+    : {}
 
   if (Array.isArray(data?.followUp)) {
     for (let i = 0; i < 4; i++) {
@@ -219,6 +281,8 @@ function applyDataToForm(data) {
   if (suggestionBox.value) {
     suggestionBox.value.innerText = form.suggestion || ''
   }
+
+  ensureDynamicKeys()
 
   if (!publishFileName.value && (data?.ofiNo || form.ofiNo)) {
     publishFileName.value = `OFI_${data?.ofiNo || form.ofiNo}`
@@ -259,6 +323,8 @@ async function loadRecord(id) {
 ========================= */
 
 async function upsertRecord(requestedStatus = null) {
+  ensureDynamicKeys()
+
   let safeStatus = requestedStatus
 
   if (recordId.value) {
@@ -352,6 +418,10 @@ async function submitToAdmin() {
     return
   }
 
+  if (!validateRequiredDynamicFields()) {
+    return
+  }
+
   await runTask(isSubmitting, 'Submitting OFI to admin...', async () => {
     await ensureDraftSaved()
 
@@ -374,6 +444,10 @@ async function submitToAdmin() {
 }
 
 async function downloadDocx() {
+  if (!validateRequiredDynamicFields()) {
+    return
+  }
+
   await runTask(isGenerating, 'Generating document...', async () => {
     await ensureDraftSaved()
 
@@ -399,6 +473,10 @@ async function downloadDocx() {
 async function publishToUploads() {
   if (!recordId.value) {
     toast.error('Save the record first before publishing.')
+    return
+  }
+
+  if (!validateRequiredDynamicFields()) {
     return
   }
 
@@ -504,16 +582,20 @@ function onKeydown(e) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
 
   if (suggestionBox.value && form.suggestion) {
     suggestionBox.value.innerText = form.suggestion
   }
 
+  await loadDynamicFields()
+
   const id = getRecordIdFromUrl()
   if (id) {
-    loadRecord(id)
+    await loadRecord(id)
+  } else {
+    ensureDynamicKeys()
   }
 })
 
@@ -705,14 +787,15 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div
-          class="flex flex-1 items-start justify-center overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
-        >
+        <div class="flex flex-1 gap-6 overflow-hidden">
           <div
-            class="flex w-[210mm] flex-col border-2 border-black bg-white text-black transition"
-            :class="{ 'pointer-events-none opacity-70': isFormLocked }"
-            style="font-family: Arial, Helvetica, sans-serif;"
+            class="flex flex-1 items-start justify-center overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
           >
+            <div
+              class="flex w-[210mm] flex-col border-2 border-black bg-white text-black transition"
+              :class="{ 'pointer-events-none opacity-70': isFormLocked }"
+              style="font-family: Arial, Helvetica, sans-serif;"
+            >
             <header class="flex items-center border-b-2 border-black px-2 py-[2px]">
               <div class="mr-2 flex h-[0.57in] w-[0.57in]">
                 <img :src="logo" alt="LNU Logo" class="h-full w-full object-contain" />
@@ -1088,8 +1171,93 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <footer class="border-t-2 border-black px-2.5 py-1 text-[9px]">F-QMS-007 Rev. 1 (11-23-22)</footer>
+              <footer class="border-t-2 border-black px-2.5 py-1 text-[9px]">F-QMS-007 Rev. 1 (11-23-22)</footer>
+            </div>
           </div>
+
+          <aside
+            class="shrink-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition-all duration-200"
+            :class="isAdditionalFieldsOpen ? 'w-[340px] p-5' : 'w-[88px] p-3'"
+          >
+            <div class="border-b border-slate-200 pb-4" :class="{ 'border-transparent pb-0': !isAdditionalFieldsOpen }">
+              <div class="flex items-start justify-between gap-3" :class="{ 'justify-center': !isAdditionalFieldsOpen }">
+                <div v-show="isAdditionalFieldsOpen">
+                  <h2 class="text-lg font-semibold text-slate-900">Additional Fields</h2>
+                  <p class="mt-1 text-sm text-slate-500">
+                    Fill extra OFI fields configured in System Settings.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                  :aria-expanded="isAdditionalFieldsOpen.toString()"
+                  aria-controls="ofi-additional-fields-panel"
+                  @click="isAdditionalFieldsOpen = !isAdditionalFieldsOpen"
+                >
+                  {{ isAdditionalFieldsOpen ? 'Hide' : 'Show' }}
+                </button>
+              </div>
+            </div>
+
+            <div v-show="isAdditionalFieldsOpen" id="ofi-additional-fields-panel">
+              <div v-if="isLoadingDynamicFields" class="py-6 text-sm text-slate-500">
+                Loading additional fields...
+              </div>
+
+              <div v-else-if="!dynamicFields.length" class="py-6 text-sm text-slate-400">
+                No additional fields configured for OFI.
+              </div>
+
+              <div v-else class="mt-5 space-y-4" :class="{ 'pointer-events-none opacity-70': isFormLocked }">
+                <div
+                  v-for="field in dynamicFields"
+                  :key="field.id"
+                  class="space-y-1.5"
+                >
+                  <label class="block text-sm font-medium text-slate-700">
+                    {{ field.label }}
+                    <span v-if="field.is_required" class="text-rose-500">*</span>
+                  </label>
+
+                  <input
+                    v-if="field.field_type === 'text'"
+                    v-model="form.dynamic[field.field_key]"
+                    type="text"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                    :placeholder="`Enter ${field.label}`"
+                  />
+
+                  <textarea
+                    v-else-if="field.field_type === 'textarea'"
+                    v-model="form.dynamic[field.field_key]"
+                    rows="4"
+                    class="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                    :placeholder="`Enter ${field.label}`"
+                  ></textarea>
+
+                  <input
+                    v-else-if="field.field_type === 'date'"
+                    v-model="form.dynamic[field.field_key]"
+                    type="date"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                  />
+
+                  <input
+                    v-else
+                    v-model="form.dynamic[field.field_key]"
+                    type="text"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                    :placeholder="`Enter ${field.label}`"
+                  />
+
+                  <p class="text-xs text-slate-400">
+                    Placeholder: ${'{'}{{ field.field_key }}{{ '}' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
     </div>

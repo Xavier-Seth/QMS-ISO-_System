@@ -13,10 +13,29 @@ const loading = ref(false);
 const uploadingTemplate = ref(false);
 const savingField = ref(false);
 const templateInput = ref(null);
+const selectedModule = ref("DCR");
 
 const activeTemplate = ref(null);
 const templateHistory = ref([]);
 const dynamicFields = ref([]);
+
+const qmsModules = [
+    {
+        code: "DCR",
+        name: "DCR",
+        description: "Document Change Request",
+    },
+    {
+        code: "OFI",
+        name: "OFI",
+        description: "Opportunity for Improvement",
+    },
+    {
+        code: "CAR",
+        name: "CAR",
+        description: "Corrective Action Request",
+    },
+];
 
 const newField = reactive({
     label: "",
@@ -30,37 +49,63 @@ const newField = reactive({
 const editingFieldId = ref(null);
 
 const hasFields = computed(() => dynamicFields.value.length > 0);
+const selectedModuleConfig = computed(
+    () =>
+        qmsModules.find((module) => module.code === selectedModule.value) ??
+        qmsModules[0]
+);
 
-async function loadDcrSettings() {
+function qmsTemplateSettingsUrl(path = "") {
+    const suffix = path ? `/${path}` : "";
+
+    return `/settings/qms-templates/${selectedModule.value}${suffix}`;
+}
+
+function mapDynamicFields(fields) {
+    return fields.map((field) => ({
+        id: field.id,
+        module: field.module,
+        label: field.label,
+        field_key: field.field_key,
+        field_type: field.field_type,
+        is_required: !!field.is_required,
+        is_active: !!field.is_active,
+        sort_order: Number(field.sort_order ?? 0),
+        isEditing: false,
+        isSaving: false,
+        isDeleting: false,
+    }));
+}
+
+async function loadQmsTemplateSettings() {
     loading.value = true;
 
     try {
-        const { data } = await axios.get("/settings/dcr-template");
+        const { data } = await axios.get(qmsTemplateSettingsUrl());
 
         activeTemplate.value = data.active_template ?? null;
         templateHistory.value = data.templates ?? [];
-        dynamicFields.value = (data.fields ?? []).map((field) => ({
-            id: field.id,
-            module: field.module,
-            label: field.label,
-            field_key: field.field_key,
-            field_type: field.field_type,
-            is_required: !!field.is_required,
-            is_active: !!field.is_active,
-            sort_order: Number(field.sort_order ?? 0),
-            isEditing: false,
-            isSaving: false,
-            isDeleting: false,
-        }));
+        dynamicFields.value = mapDynamicFields(data.fields ?? []);
     } catch (error) {
-        console.error("Failed to load DCR settings:", error);
+        console.error("Failed to load QMS template settings:", error);
         alert(
             error?.response?.data?.message ||
-                "Failed to load DCR template settings."
+                `Failed to load ${selectedModule.value} template settings.`
         );
     } finally {
         loading.value = false;
     }
+}
+
+async function selectModule(moduleCode) {
+    if (selectedModule.value === moduleCode || loading.value) {
+        return;
+    }
+
+    selectedModule.value = moduleCode;
+    editingFieldId.value = null;
+    resetNewField();
+    await loadQmsTemplateSettings();
 }
 
 function triggerTemplateUpload() {
@@ -80,19 +125,19 @@ async function handleTemplateSelected(event) {
     uploadingTemplate.value = true;
 
     try {
-        await axios.post("/settings/dcr-template/upload", formData, {
+        await axios.post(qmsTemplateSettingsUrl("upload"), formData, {
             headers: {
                 "Content-Type": "multipart/form-data",
             },
         });
 
-        await loadDcrSettings();
-        alert("DCR template uploaded successfully.");
+        await loadQmsTemplateSettings();
+        alert(`${selectedModule.value} template uploaded successfully.`);
     } catch (error) {
         console.error("Failed to upload template:", error);
         alert(
             error?.response?.data?.message ||
-                "Failed to upload DCR template."
+                `Failed to upload ${selectedModule.value} template.`
         );
     } finally {
         uploadingTemplate.value = false;
@@ -107,14 +152,14 @@ async function activateTemplate(templateId) {
     if (!templateId) return;
 
     try {
-        await axios.patch(`/settings/dcr-template/${templateId}/activate`);
-        await loadDcrSettings();
-        alert("Active DCR template updated successfully.");
+        await axios.patch(qmsTemplateSettingsUrl(`${templateId}/activate`));
+        await loadQmsTemplateSettings();
+        alert(`Active ${selectedModule.value} template updated successfully.`);
     } catch (error) {
         console.error("Failed to activate template:", error);
         alert(
             error?.response?.data?.message ||
-                "Failed to activate DCR template."
+                `Failed to activate ${selectedModule.value} template.`
         );
     }
 }
@@ -132,7 +177,7 @@ async function createField() {
     savingField.value = true;
 
     try {
-        await axios.post("/settings/dcr-template/fields", {
+        await axios.post(qmsTemplateSettingsUrl("fields"), {
             label: newField.label,
             field_key: newField.field_key || null,
             field_type: newField.field_type,
@@ -142,8 +187,8 @@ async function createField() {
         });
 
         resetNewField();
-        await loadDcrSettings();
-        alert("DCR field created successfully.");
+        await loadQmsTemplateSettings();
+        alert(`${selectedModule.value} field created successfully.`);
     } catch (error) {
         console.error("Failed to create field:", error);
 
@@ -154,7 +199,7 @@ async function createField() {
         } else {
             alert(
                 error?.response?.data?.message ||
-                    "Failed to create DCR field."
+                    `Failed to create ${selectedModule.value} field.`
             );
         }
     } finally {
@@ -170,14 +215,14 @@ function editField(field) {
 function cancelEditField(field) {
     field.isEditing = false;
     editingFieldId.value = null;
-    loadDcrSettings();
+    loadQmsTemplateSettings();
 }
 
 async function updateField(field) {
     field.isSaving = true;
 
     try {
-        await axios.put(`/settings/dcr-template/fields/${field.id}`, {
+        await axios.put(qmsTemplateSettingsUrl(`fields/${field.id}`), {
             label: field.label,
             field_key: field.field_key,
             field_type: field.field_type,
@@ -187,8 +232,8 @@ async function updateField(field) {
         });
 
         editingFieldId.value = null;
-        await loadDcrSettings();
-        alert("DCR field updated successfully.");
+        await loadQmsTemplateSettings();
+        alert(`${selectedModule.value} field updated successfully.`);
     } catch (error) {
         console.error("Failed to update field:", error);
 
@@ -199,7 +244,7 @@ async function updateField(field) {
         } else {
             alert(
                 error?.response?.data?.message ||
-                    "Failed to update DCR field."
+                    `Failed to update ${selectedModule.value} field.`
             );
         }
     } finally {
@@ -217,14 +262,14 @@ async function deleteField(field) {
     field.isDeleting = true;
 
     try {
-        await axios.delete(`/settings/dcr-template/fields/${field.id}`);
-        await loadDcrSettings();
-        alert("DCR field deleted successfully.");
+        await axios.delete(qmsTemplateSettingsUrl(`fields/${field.id}`));
+        await loadQmsTemplateSettings();
+        alert(`${selectedModule.value} field deleted successfully.`);
     } catch (error) {
         console.error("Failed to delete field:", error);
         alert(
             error?.response?.data?.message ||
-                "Failed to delete DCR field."
+                `Failed to delete ${selectedModule.value} field.`
         );
     } finally {
         field.isDeleting = false;
@@ -232,7 +277,7 @@ async function deleteField(field) {
 }
 
 onMounted(() => {
-    loadDcrSettings();
+    loadQmsTemplateSettings();
 });
 </script>
 
@@ -351,10 +396,11 @@ onMounted(() => {
             <div class="flex items-center justify-between gap-4 mb-4">
                 <div>
                     <h3 class="text-lg font-semibold text-slate-900">
-                        DCR Template Management
+                        {{ selectedModuleConfig.name }} Template Management
                     </h3>
                     <p class="text-sm text-slate-500 mt-1">
-                        Upload and manage the active DOCX template for the DCR module
+                        Upload and manage the active DOCX template for the
+                        {{ selectedModuleConfig.description }} module
                     </p>
                 </div>
 
@@ -378,14 +424,44 @@ onMounted(() => {
                 </div>
             </div>
 
+            <div class="mb-6 grid grid-cols-1 gap-3 md:grid-cols-3">
+                <button
+                    v-for="module in qmsModules"
+                    :key="module.code"
+                    type="button"
+                    @click="selectModule(module.code)"
+                    :disabled="loading || uploadingTemplate || savingField"
+                    class="rounded-xl border px-4 py-3 text-left transition disabled:opacity-60"
+                    :class="
+                        selectedModule === module.code
+                            ? 'border-slate-900 bg-slate-900 text-white shadow-sm'
+                            : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                    "
+                >
+                    <span class="block text-sm font-semibold">
+                        {{ module.name }}
+                    </span>
+                    <span
+                        class="mt-1 block text-xs"
+                        :class="
+                            selectedModule === module.code
+                                ? 'text-slate-200'
+                                : 'text-slate-500'
+                        "
+                    >
+                        {{ module.description }}
+                    </span>
+                </button>
+            </div>
+
             <div v-if="loading" class="text-sm text-slate-500">
-                Loading DCR template settings...
+                Loading {{ selectedModule }} template settings...
             </div>
 
             <div v-else class="space-y-4">
                 <div class="border rounded-xl p-4 bg-slate-50">
                     <p class="text-sm font-semibold text-slate-800">
-                        Active DCR Template
+                        Active {{ selectedModule }} Template
                     </p>
                     <p class="text-sm text-slate-500 mt-1">
                         {{ activeTemplate?.original_file_name || "No active template uploaded yet" }}
@@ -434,7 +510,7 @@ onMounted(() => {
                     </div>
 
                     <div v-else class="text-sm text-slate-400">
-                        No DCR templates uploaded yet.
+                        No {{ selectedModule }} templates uploaded yet.
                     </div>
                 </div>
             </div>
@@ -444,7 +520,7 @@ onMounted(() => {
         <div class="mt-8 bg-white border border-slate-200 rounded-2xl p-6 shadow-sm">
             <div class="mb-4">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    DCR Additional Fields Setup
+                    {{ selectedModule }} Additional Fields Setup
                 </h3>
                 <p class="text-sm text-slate-500 mt-1">
                     Add optional placeholders that must match the uploaded Word template
@@ -525,7 +601,7 @@ onMounted(() => {
 
             <!-- FIELD LIST -->
             <div v-if="loading" class="text-sm text-slate-500">
-                Loading DCR fields...
+                Loading {{ selectedModule }} fields...
             </div>
 
             <div v-else-if="hasFields" class="space-y-4">
@@ -640,7 +716,7 @@ onMounted(() => {
             </div>
 
             <div v-else class="text-sm text-slate-400">
-                No additional DCR fields yet.
+                No additional {{ selectedModule }} fields yet.
             </div>
 
             <div class="mt-4 text-xs text-amber-600">
@@ -653,10 +729,10 @@ onMounted(() => {
         <div class="mt-10">
             <button
                 type="button"
-                @click="loadDcrSettings"
+                @click="loadQmsTemplateSettings"
                 class="px-6 py-2 bg-slate-800 text-white rounded-lg text-sm hover:bg-slate-900"
             >
-                Refresh DCR Settings
+                Refresh {{ selectedModule }} Settings
             </button>
         </div>
     </div>

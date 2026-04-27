@@ -25,6 +25,7 @@ const showPublishRenameModal = ref(false)
 
 // dynamic field definitions
 const dynamicFields = ref([])
+const isAdditionalFieldsOpen = ref(true)
 
 // workflow states
 const recordStatus = ref('draft')
@@ -180,6 +181,7 @@ function validateRequiredDynamicFields() {
     return true
   }
 
+  isAdditionalFieldsOpen.value = true
   toast.error(`${missingField.label} is required.`)
   return false
 }
@@ -870,67 +872,86 @@ onBeforeUnmount(() => {
           </div>
 
           <!-- NEW: Right-side Additional Fields Panel -->
-          <aside class="w-[340px] shrink-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_2px_12px_rgba(0,0,0,0.06)]">
-            <div class="border-b border-slate-200 pb-4">
-              <h2 class="text-lg font-semibold text-slate-900">Additional Fields</h2>
-              <p class="mt-1 text-sm text-slate-500">
-                Fill extra DCR fields configured in System Settings.
-              </p>
+          <aside
+            class="shrink-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition-all duration-200"
+            :class="isAdditionalFieldsOpen ? 'w-[340px] p-5' : 'w-[88px] p-3'"
+          >
+            <div class="border-b border-slate-200 pb-4" :class="{ 'border-transparent pb-0': !isAdditionalFieldsOpen }">
+              <div class="flex items-start justify-between gap-3" :class="{ 'justify-center': !isAdditionalFieldsOpen }">
+                <div v-show="isAdditionalFieldsOpen">
+                  <h2 class="text-lg font-semibold text-slate-900">Additional Fields</h2>
+                  <p class="mt-1 text-sm text-slate-500">
+                    Fill extra DCR fields configured in System Settings.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                  :aria-expanded="isAdditionalFieldsOpen.toString()"
+                  aria-controls="dcr-additional-fields-panel"
+                  @click="isAdditionalFieldsOpen = !isAdditionalFieldsOpen"
+                >
+                  {{ isAdditionalFieldsOpen ? 'Hide' : 'Show' }}
+                </button>
+              </div>
             </div>
 
-            <div v-if="isLoadingDynamicFields" class="py-6 text-sm text-slate-500">
-              Loading additional fields...
-            </div>
+            <div v-show="isAdditionalFieldsOpen" id="dcr-additional-fields-panel">
+              <div v-if="isLoadingDynamicFields" class="py-6 text-sm text-slate-500">
+                Loading additional fields...
+              </div>
 
-            <div v-else-if="!dynamicFields.length" class="py-6 text-sm text-slate-400">
-              No additional fields configured for DCR.
-            </div>
+              <div v-else-if="!dynamicFields.length" class="py-6 text-sm text-slate-400">
+                No additional fields configured for DCR.
+              </div>
 
-            <div v-else class="mt-5 space-y-4" :class="{ 'pointer-events-none opacity-70': isFormLocked }">
-              <div
-                v-for="field in dynamicFields"
-                :key="field.id"
-                class="space-y-1.5"
-              >
-                <label class="block text-sm font-medium text-slate-700">
-                  {{ field.label }}
-                  <span v-if="field.is_required" class="text-rose-500">*</span>
-                </label>
+              <div v-else class="mt-5 space-y-4" :class="{ 'pointer-events-none opacity-70': isFormLocked }">
+                <div
+                  v-for="field in dynamicFields"
+                  :key="field.id"
+                  class="space-y-1.5"
+                >
+                  <label class="block text-sm font-medium text-slate-700">
+                    {{ field.label }}
+                    <span v-if="field.is_required" class="text-rose-500">*</span>
+                  </label>
 
-                <input
-                  v-if="field.field_type === 'text'"
-                  v-model="form.dynamic[field.field_key]"
-                  type="text"
-                  class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                  :placeholder="`Enter ${field.label}`"
-                />
+                  <input
+                    v-if="field.field_type === 'text'"
+                    v-model="form.dynamic[field.field_key]"
+                    type="text"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                    :placeholder="`Enter ${field.label}`"
+                  />
 
-                <textarea
-                  v-else-if="field.field_type === 'textarea'"
-                  v-model="form.dynamic[field.field_key]"
-                  rows="4"
-                  class="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                  :placeholder="`Enter ${field.label}`"
-                ></textarea>
+                  <textarea
+                    v-else-if="field.field_type === 'textarea'"
+                    v-model="form.dynamic[field.field_key]"
+                    rows="4"
+                    class="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                    :placeholder="`Enter ${field.label}`"
+                  ></textarea>
 
-                <input
-                  v-else-if="field.field_type === 'date'"
-                  v-model="form.dynamic[field.field_key]"
-                  type="date"
-                  class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                />
+                  <input
+                    v-else-if="field.field_type === 'date'"
+                    v-model="form.dynamic[field.field_key]"
+                    type="date"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                  />
 
-                <input
-                  v-else
-                  v-model="form.dynamic[field.field_key]"
-                  type="text"
-                  class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                  :placeholder="`Enter ${field.label}`"
-                />
+                  <input
+                    v-else
+                    v-model="form.dynamic[field.field_key]"
+                    type="text"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                    :placeholder="`Enter ${field.label}`"
+                  />
 
-                <p class="text-xs text-slate-400">
-  Placeholder: ${'{'}{{ field.field_key }}{{ '}' }}
-</p>
+                  <p class="text-xs text-slate-400">
+                    Placeholder: ${'{'}{{ field.field_key }}{{ '}' }}
+                  </p>
+                </div>
               </div>
             </div>
           </aside>
