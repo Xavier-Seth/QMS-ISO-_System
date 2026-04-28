@@ -7,6 +7,9 @@ use App\Models\DocumentUpload;
 use App\Models\OfiRecord;
 use App\Services\ActivityLogService;
 use App\Services\OFIFormGenerator;
+use App\Services\QmsDynamicFieldValidator;
+use App\Services\QmsTemplateResolver;
+use App\Support\QmsTemplateModules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -15,7 +18,9 @@ use Inertia\Inertia;
 class OfiRecordController extends Controller
 {
     public function __construct(
-        protected ActivityLogService $activityLogService
+        protected ActivityLogService $activityLogService,
+        protected QmsTemplateResolver $templateResolver,
+        protected QmsDynamicFieldValidator $dynamicFieldValidator
     ) {
     }
 
@@ -27,13 +32,7 @@ class OfiRecordController extends Controller
 
     private function templatePath(): string
     {
-        $path = base_path('templates/F-QMS-007_template_fixed_v6.docx');
-
-        if (!file_exists($path)) {
-            abort(500, 'OFI template file not found.');
-        }
-
-        return $path;
+        return $this->templateResolver->getActiveOfiTemplatePath();
     }
 
     private function ensureTmpDir(): string
@@ -70,8 +69,15 @@ class OfiRecordController extends Controller
 
     private function generateDocxToPath(OfiRecord $ofiRecord, string $outputPath): void
     {
+        $data = is_array($ofiRecord->data) ? $ofiRecord->data : [];
+
+        $this->dynamicFieldValidator->validateRequiredFields(
+            QmsTemplateModules::OFI,
+            $data
+        );
+
         $generator = new OFIFormGenerator($this->templatePath());
-        $generator->generate($ofiRecord->data ?? [], $outputPath);
+        $generator->generate($data, $outputPath);
     }
 
     private function isAdminUser(): bool
@@ -169,7 +175,8 @@ class OfiRecordController extends Controller
             ->first();
 
         $tmpDir = $this->ensureTmpDir();
-        $disk = Storage::disk('public');
+        $storageDisk = 'private';
+        $disk = Storage::disk($storageDisk);
 
         if ($existingUpload) {
             $fileName = $existingUpload->file_name
@@ -178,35 +185,71 @@ class OfiRecordController extends Controller
             $tmpPath = $tmpDir . '/' . uniqid('ofi_republish_', true) . '_' . $fileName;
             $this->generateDocxToPath($ofiRecord, $tmpPath);
 
-            $publicPath = $existingUpload->file_path ?: ('documents/ofi/' . $fileName);
-            $disk->put($publicPath, file_get_contents($tmpPath));
+            $oldDisk = $existingUpload->getStorageDiskName();
+            $oldPath = $existingUpload->file_path;
+            $storedPath = $existingUpload->file_path ?: ('documents/ofi/' . $fileName);
+
+            $written = $disk->put($storedPath, file_get_contents($tmpPath));
+
+            if ($written === false) {
+                @unlink($tmpPath);
+                throw new \RuntimeException("Failed to write file to storage: {$storedPath}");
+            }
+
+            if ($existingUpload->hasPreviewCache()) {
+                $previewDisk = $existingUpload->getPreviewDiskName();
+
+                if (
+                    $previewDisk &&
+                    $existingUpload->preview_path &&
+                    Storage::disk($previewDisk)->exists($existingUpload->preview_path)
+                ) {
+                    Storage::disk($previewDisk)->delete($existingUpload->preview_path);
+                }
+
+                $existingUpload->clearPreviewCacheMeta();
+            }
 
             $existingUpload->update([
                 'document_type_id' => $this->rQms018TypeId(),
                 'uploaded_by' => auth()->id(),
                 'file_name' => $fileName,
-                'file_path' => $publicPath,
+                'file_path' => $storedPath,
+                'storage_disk' => $storageDisk,
                 'remarks' => $remarks ?? $existingUpload->remarks,
             ]);
 
             @unlink($tmpPath);
+
+            if (
+                $oldPath &&
+                ($oldDisk !== $storageDisk || $oldPath !== $storedPath) &&
+                Storage::disk($oldDisk)->exists($oldPath)
+            ) {
+                Storage::disk($oldDisk)->delete($oldPath);
+            }
 
             return $existingUpload->fresh();
         }
 
         $baseName = $this->sanitizeBaseFileName($requestedFileName, $ofiRecord);
         $fileName = "{$baseName}.docx";
-        $publicPath = 'documents/ofi/' . $fileName;
+        $storedPath = 'documents/ofi/' . $fileName;
 
-        if ($disk->exists($publicPath)) {
+        if ($disk->exists($storedPath)) {
             $fileName = "{$baseName}_" . now()->format('His') . '.docx';
-            $publicPath = 'documents/ofi/' . $fileName;
+            $storedPath = 'documents/ofi/' . $fileName;
         }
 
         $tmpPath = $tmpDir . '/' . uniqid('ofi_publish_', true) . '_' . $fileName;
         $this->generateDocxToPath($ofiRecord, $tmpPath);
 
-        $disk->put($publicPath, file_get_contents($tmpPath));
+        $written = $disk->put($storedPath, file_get_contents($tmpPath));
+
+        if ($written === false) {
+            @unlink($tmpPath);
+            throw new \RuntimeException("Failed to write file to storage: {$storedPath}");
+        }
 
         $upload = DocumentUpload::create([
             'document_type_id' => $this->rQms018TypeId(),
@@ -215,7 +258,8 @@ class OfiRecordController extends Controller
             'revision' => null,
             'status' => null,
             'file_name' => $fileName,
-            'file_path' => $publicPath,
+            'file_path' => $storedPath,
+            'storage_disk' => $storageDisk,
             'remarks' => $remarks,
         ]);
 
@@ -278,8 +322,37 @@ class OfiRecordController extends Controller
         $this->ensureCanManageRecord($ofiRecord);
         $this->ensureCanEditRecordContent($ofiRecord);
 
-        $payload = $request->all();
-        $safeStatus = $this->resolveSafeStatusForSave($ofiRecord, $payload['status'] ?? null);
+        $incomingPayload = $request->all();
+        $existingPayload = is_array($ofiRecord->data) ? $ofiRecord->data : [];
+        $formPayload = $incomingPayload;
+        unset($formPayload['status']);
+
+        $payload = $existingPayload;
+
+        if ($formPayload !== []) {
+            $payload = array_replace($existingPayload, $formPayload);
+
+            if (array_key_exists('dynamic', $formPayload)) {
+                $existingDynamic = $existingPayload['dynamic'] ?? [];
+                $incomingDynamic = is_array($formPayload['dynamic'])
+                    ? $formPayload['dynamic']
+                    : [];
+
+                $payload['dynamic'] = array_replace(
+                    is_array($existingDynamic) ? $existingDynamic : [],
+                    $incomingDynamic
+                );
+            }
+        }
+
+        $safeStatus = $this->resolveSafeStatusForSave($ofiRecord, $incomingPayload['status'] ?? null);
+
+        if ($safeStatus === 'submitted') {
+            $this->dynamicFieldValidator->validateRequiredFields(
+                QmsTemplateModules::OFI,
+                $payload
+            );
+        }
 
         $ofiRecord->update([
             'ofi_no' => $payload['ofiNo'] ?? $ofiRecord->ofi_no,
@@ -327,6 +400,11 @@ class OfiRecordController extends Controller
                 'message' => 'This OFI record is already submitted for approval.',
             ], 422);
         }
+
+        $this->dynamicFieldValidator->validateRequiredFields(
+            QmsTemplateModules::OFI,
+            is_array($ofiRecord->data) ? $ofiRecord->data : []
+        );
 
         $isResubmission = $ofiRecord->workflow_status === 'rejected';
 
@@ -387,6 +465,11 @@ class OfiRecordController extends Controller
             $payload = (array) $request->input('data', []);
 
             if ($this->canEditRecordContent($ofiRecord)) {
+                $this->dynamicFieldValidator->validateRequiredFields(
+                    QmsTemplateModules::OFI,
+                    $payload
+                );
+
                 $safeStatus = $this->resolveSafeStatusForSave(
                     $ofiRecord,
                     $request->input('status', $ofiRecord->status)
@@ -404,6 +487,11 @@ class OfiRecordController extends Controller
         }
 
         $ofiRecord = $ofiRecord->fresh();
+
+        $this->dynamicFieldValidator->validateRequiredFields(
+            QmsTemplateModules::OFI,
+            is_array($ofiRecord->data) ? $ofiRecord->data : []
+        );
 
         $upload = $this->publishRecordDocument(
             $ofiRecord,
@@ -445,6 +533,11 @@ class OfiRecordController extends Controller
         if ($ofiRecord->status !== 'submitted' || $ofiRecord->workflow_status !== 'pending') {
             return back()->with('error', 'Only submitted pending OFI records can be approved.');
         }
+
+        $this->dynamicFieldValidator->validateRequiredFields(
+            QmsTemplateModules::OFI,
+            is_array($ofiRecord->data) ? $ofiRecord->data : []
+        );
 
         DB::transaction(function () use ($ofiRecord) {
             $ofiRecord->update([

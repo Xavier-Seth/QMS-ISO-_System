@@ -7,6 +7,9 @@ use App\Models\DocumentType;
 use App\Models\DocumentUpload;
 use App\Services\ActivityLogService;
 use App\Services\CARFormGenerator;
+use App\Services\QmsDynamicFieldValidator;
+use App\Services\QmsTemplateResolver;
+use App\Support\QmsTemplateModules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -15,7 +18,9 @@ use Inertia\Inertia;
 class CarRecordController extends Controller
 {
     public function __construct(
-        protected ActivityLogService $activityLogService
+        protected ActivityLogService $activityLogService,
+        protected QmsTemplateResolver $templateResolver,
+        protected QmsDynamicFieldValidator $dynamicFieldValidator
     ) {
     }
 
@@ -27,13 +32,7 @@ class CarRecordController extends Controller
 
     private function templatePath(): string
     {
-        $path = config('qms_templates.car.path');
-
-        if (!is_string($path) || $path === '' || !file_exists($path)) {
-            abort(500, 'CAR template file not found.');
-        }
-
-        return $path;
+        return $this->templateResolver->getActiveCarTemplatePath();
     }
 
     private function ensureTmpDir(): string
@@ -70,8 +69,15 @@ class CarRecordController extends Controller
 
     private function generateDocxToPath(CarRecord $carRecord, string $outputPath): void
     {
+        $data = is_array($carRecord->data) ? $carRecord->data : [];
+
+        $this->dynamicFieldValidator->validateRequiredFields(
+            QmsTemplateModules::CAR,
+            $data
+        );
+
         $generator = new CARFormGenerator($this->templatePath());
-        $generator->generate($carRecord->data ?? [], $outputPath);
+        $generator->generate($data, $outputPath);
     }
 
     private function isAdminUser(): bool
@@ -169,7 +175,8 @@ class CarRecordController extends Controller
             ->first();
 
         $tmpDir = $this->ensureTmpDir();
-        $disk = Storage::disk('public');
+        $storageDisk = 'private';
+        $disk = Storage::disk($storageDisk);
 
         if ($existingUpload) {
             $fileName = $existingUpload->file_name
@@ -178,36 +185,71 @@ class CarRecordController extends Controller
             $tmpPath = $tmpDir . '/' . uniqid('car_republish_', true) . '_' . $fileName;
             $this->generateDocxToPath($carRecord, $tmpPath);
 
-            $publicPath = $existingUpload->file_path ?: ('documents/car/' . $fileName);
-            $disk->put($publicPath, file_get_contents($tmpPath));
+            $oldDisk = $existingUpload->getStorageDiskName();
+            $oldPath = $existingUpload->file_path;
+            $storedPath = $existingUpload->file_path ?: ('documents/car/' . $fileName);
+
+            $written = $disk->put($storedPath, file_get_contents($tmpPath));
+
+            if ($written === false) {
+                @unlink($tmpPath);
+                throw new \RuntimeException("Failed to write file to storage: {$storedPath}");
+            }
+
+            if ($existingUpload->hasPreviewCache()) {
+                $previewDisk = $existingUpload->getPreviewDiskName();
+
+                if (
+                    $previewDisk &&
+                    $existingUpload->preview_path &&
+                    Storage::disk($previewDisk)->exists($existingUpload->preview_path)
+                ) {
+                    Storage::disk($previewDisk)->delete($existingUpload->preview_path);
+                }
+
+                $existingUpload->clearPreviewCacheMeta();
+            }
 
             $existingUpload->update([
                 'document_type_id' => $this->rQms017TypeId(),
                 'uploaded_by' => auth()->id(),
                 'file_name' => $fileName,
-                'file_path' => $publicPath,
-                'storage_disk' => 'public',
+                'file_path' => $storedPath,
+                'storage_disk' => $storageDisk,
                 'remarks' => $remarks ?? $existingUpload->remarks,
             ]);
 
             @unlink($tmpPath);
+
+            if (
+                $oldPath &&
+                ($oldDisk !== $storageDisk || $oldPath !== $storedPath) &&
+                Storage::disk($oldDisk)->exists($oldPath)
+            ) {
+                Storage::disk($oldDisk)->delete($oldPath);
+            }
 
             return $existingUpload->fresh();
         }
 
         $baseName = $this->sanitizeBaseFileName($requestedFileName, $carRecord);
         $fileName = "{$baseName}.docx";
-        $publicPath = 'documents/car/' . $fileName;
+        $storedPath = 'documents/car/' . $fileName;
 
-        if ($disk->exists($publicPath)) {
+        if ($disk->exists($storedPath)) {
             $fileName = "{$baseName}_" . now()->format('His') . '.docx';
-            $publicPath = 'documents/car/' . $fileName;
+            $storedPath = 'documents/car/' . $fileName;
         }
 
         $tmpPath = $tmpDir . '/' . uniqid('car_publish_', true) . '_' . $fileName;
         $this->generateDocxToPath($carRecord, $tmpPath);
 
-        $disk->put($publicPath, file_get_contents($tmpPath));
+        $written = $disk->put($storedPath, file_get_contents($tmpPath));
+
+        if ($written === false) {
+            @unlink($tmpPath);
+            throw new \RuntimeException("Failed to write file to storage: {$storedPath}");
+        }
 
         $upload = DocumentUpload::create([
             'document_type_id' => $this->rQms017TypeId(),
@@ -216,8 +258,8 @@ class CarRecordController extends Controller
             'revision' => null,
             'status' => null,
             'file_name' => $fileName,
-            'file_path' => $publicPath,
-            'storage_disk' => 'public',
+            'file_path' => $storedPath,
+            'storage_disk' => $storageDisk,
             'remarks' => $remarks,
         ]);
 
@@ -331,7 +373,18 @@ class CarRecordController extends Controller
         ]);
 
         $payload = (array) ($validated['data'] ?? []);
+        if ($payload === [] && is_array($carRecord->data)) {
+            $payload = $carRecord->data;
+        }
+
         $safeStatus = $this->resolveSafeStatusForSave($carRecord, $validated['status'] ?? null);
+
+        if ($safeStatus === 'submitted') {
+            $this->dynamicFieldValidator->validateRequiredFields(
+                QmsTemplateModules::CAR,
+                $payload
+            );
+        }
 
         $carRecord->update([
             'car_no' => $payload['carNo'] ?? $carRecord->car_no,
@@ -380,6 +433,11 @@ class CarRecordController extends Controller
                 'message' => 'This CAR record is already submitted for approval.',
             ], 422);
         }
+
+        $this->dynamicFieldValidator->validateRequiredFields(
+            QmsTemplateModules::CAR,
+            is_array($carRecord->data) ? $carRecord->data : []
+        );
 
         $isResubmission = $carRecord->workflow_status === 'rejected';
 
@@ -452,6 +510,11 @@ class CarRecordController extends Controller
             $payload = (array) $request->input('data', []);
 
             if ($this->canEditRecordContent($carRecord)) {
+                $this->dynamicFieldValidator->validateRequiredFields(
+                    QmsTemplateModules::CAR,
+                    $payload
+                );
+
                 $safeStatus = $this->resolveSafeStatusForSave(
                     $carRecord,
                     $request->input('status', $carRecord->status)
@@ -470,6 +533,11 @@ class CarRecordController extends Controller
         }
 
         $carRecord = $carRecord->fresh();
+
+        $this->dynamicFieldValidator->validateRequiredFields(
+            QmsTemplateModules::CAR,
+            is_array($carRecord->data) ? $carRecord->data : []
+        );
 
         $upload = $this->publishRecordDocument(
             $carRecord,
@@ -510,6 +578,11 @@ class CarRecordController extends Controller
         if ($carRecord->status !== 'submitted' || $carRecord->workflow_status !== 'pending') {
             return back()->with('error', 'Only submitted pending CAR records can be approved.');
         }
+
+        $this->dynamicFieldValidator->validateRequiredFields(
+            QmsTemplateModules::CAR,
+            is_array($carRecord->data) ? $carRecord->data : []
+        );
 
         DB::transaction(function () use ($carRecord) {
             $carRecord->update([

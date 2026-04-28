@@ -23,6 +23,9 @@ const isGenerating = ref(false)
 const isPublishing = ref(false)
 const isLoadingRecord = ref(false)
 const isUpdatingResolution = ref(false)
+const isLoadingDynamicFields = ref(false)
+const dynamicFields = ref([])
+const isAdditionalFieldsOpen = ref(true)
 
 const recordStatus = ref(props.record?.status ?? 'draft')
 const workflowStatus = ref(props.record?.workflow_status ?? null)
@@ -143,6 +146,7 @@ function emptyForm() {
     causeMaterial: '',
     causeMethod: '',
     causeOthers: '',
+    dynamic: {},
   }
 }
 
@@ -153,10 +157,15 @@ function applyRecordData(data = {}) {
 
   Object.keys(fresh).forEach((key) => {
     if (key === 'followUp') return
+    if (key === 'dynamic') return
     if (data[key] !== undefined) {
       form[key] = data[key]
     }
   })
+
+  form.dynamic = (data?.dynamic && typeof data.dynamic === 'object' && !Array.isArray(data.dynamic))
+    ? { ...data.dynamic }
+    : {}
 
   if (Array.isArray(data.followUp)) {
     for (let i = 0; i < 10; i++) {
@@ -172,6 +181,8 @@ function applyRecordData(data = {}) {
   if (!publishFileName.value && (data.carNo || form.carNo)) {
     publishFileName.value = `CAR_${data.carNo || form.carNo}`
   }
+
+  ensureDynamicKeys()
 }
 
 if (props.record?.data) {
@@ -242,6 +253,7 @@ const payloadData = computed(() => ({
   causeMaterial: form.causeMaterial,
   causeMethod: form.causeMethod,
   causeOthers: form.causeOthers,
+  dynamic: form.dynamic,
 }))
 
 const suggestedPublishName = computed(() => `CAR_${form.carNo || recordId.value || 'record'}`)
@@ -299,6 +311,57 @@ async function runTask(flagRef, message, task) {
   }
 }
 
+function ensureDynamicKeys() {
+  if (!form.dynamic || typeof form.dynamic !== 'object' || Array.isArray(form.dynamic)) {
+    form.dynamic = {}
+  }
+
+  dynamicFields.value.forEach((field) => {
+    if (form.dynamic[field.field_key] === undefined || form.dynamic[field.field_key] === null) {
+      form.dynamic[field.field_key] = ''
+    }
+  })
+}
+
+function firstMissingRequiredDynamicField() {
+  ensureDynamicKeys()
+
+  return dynamicFields.value.find((field) => {
+    if (!field.is_required) return false
+
+    const value = form.dynamic[field.field_key]
+
+    return value === undefined || value === null || String(value).trim() === ''
+  })
+}
+
+function validateRequiredDynamicFields() {
+  const missingField = firstMissingRequiredDynamicField()
+
+  if (!missingField) {
+    return true
+  }
+
+  isAdditionalFieldsOpen.value = true
+  toast.error(`${missingField.label} is required.`)
+  return false
+}
+
+async function loadDynamicFields() {
+  isLoadingDynamicFields.value = true
+
+  try {
+    const res = await axios.get('/car/dynamic-fields')
+    dynamicFields.value = res.data.fields || []
+    ensureDynamicKeys()
+  } catch (err) {
+    console.error(err)
+    toast.error('Failed to load additional CAR fields.')
+  } finally {
+    isLoadingDynamicFields.value = false
+  }
+}
+
 function resetFormState() {
   const fresh = emptyForm()
 
@@ -314,6 +377,8 @@ function resetFormState() {
   publishFileName.value = ''
   showPublishRenameModal.value = false
   isUpdatingResolution.value = false
+
+  ensureDynamicKeys()
 
   const url = new URL(window.location.href)
   url.searchParams.delete('record')
@@ -350,6 +415,8 @@ async function loadRecord(id) {
 }
 
 async function upsertRecord(requestedStatus = null) {
+  ensureDynamicKeys()
+
   const payload = {
     document_type_id: props.record?.document_type_id ?? props.documentTypeId,
     data: payloadData.value,
@@ -431,6 +498,10 @@ async function submitToAdmin() {
     return
   }
 
+  if (!validateRequiredDynamicFields()) {
+    return
+  }
+
   await runTask(isSubmitting, 'Submitting CAR to admin...', async () => {
     await ensureDraftSaved()
 
@@ -451,6 +522,10 @@ async function submitToAdmin() {
 }
 
 async function downloadDocx() {
+  if (!validateRequiredDynamicFields()) {
+    return
+  }
+
   try {
     await runTask(isGenerating, 'Generating CAR document...', async () => {
       await ensureDraftSaved()
@@ -537,6 +612,10 @@ async function publishToUploads() {
     return
   }
 
+  if (!validateRequiredDynamicFields()) {
+    return
+  }
+
   await runTask(isPublishing, 'Publishing CAR...', async () => {
     const id = await ensureDraftSaved()
 
@@ -572,12 +651,16 @@ function onKeydown(event) {
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   window.addEventListener('keydown', onKeydown)
+
+  await loadDynamicFields()
 
   const id = getRecordIdFromUrl()
   if (id) {
-    loadRecord(id)
+    await loadRecord(id)
+  } else {
+    ensureDynamicKeys()
   }
 })
 
@@ -775,14 +858,15 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div
-          class="flex flex-1 items-start justify-center overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
-        >
+        <div class="flex flex-1 gap-6 overflow-hidden">
           <div
-            class="flex w-[210mm] flex-col border-2 border-black bg-white text-black transition"
-            :class="{ 'pointer-events-none opacity-70': isFormLocked }"
-            style="font-family: Arial, Helvetica, sans-serif;"
+            class="flex flex-1 items-start justify-center overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
           >
+            <div
+              class="flex w-[210mm] flex-col border-2 border-black bg-white text-black transition"
+              :class="{ 'pointer-events-none opacity-70': isFormLocked }"
+              style="font-family: Arial, Helvetica, sans-serif;"
+            >
             <header class="flex items-center border-b-2 border-black px-2 py-[4px]">
               <div class="mr-2 flex h-[0.57in] w-[0.57in]">
                 <img :src="logo" alt="LNU Logo" class="h-full w-full object-contain" />
@@ -1227,10 +1311,95 @@ onBeforeUnmount(() => {
               </div>
             </section>
 
-            <footer class="border-t-2 border-black px-2.5 py-1 text-[9px]">
-              F-QMS-006 Rev. 1 (02-02-26)
-            </footer>
+              <footer class="border-t-2 border-black px-2.5 py-1 text-[9px]">
+                F-QMS-006 Rev. 1 (02-02-26)
+              </footer>
+            </div>
           </div>
+
+          <aside
+            class="shrink-0 overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-[0_2px_12px_rgba(0,0,0,0.06)] transition-all duration-200"
+            :class="isAdditionalFieldsOpen ? 'w-[340px] p-5' : 'w-[88px] p-3'"
+          >
+            <div class="border-b border-slate-200 pb-4" :class="{ 'border-transparent pb-0': !isAdditionalFieldsOpen }">
+              <div class="flex items-start justify-between gap-3" :class="{ 'justify-center': !isAdditionalFieldsOpen }">
+                <div v-show="isAdditionalFieldsOpen">
+                  <h2 class="text-lg font-semibold text-slate-900">Additional Fields</h2>
+                  <p class="mt-1 text-sm text-slate-500">
+                    Fill extra CAR fields configured in System Settings.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  class="rounded-full border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50"
+                  :aria-expanded="isAdditionalFieldsOpen.toString()"
+                  aria-controls="car-additional-fields-panel"
+                  @click="isAdditionalFieldsOpen = !isAdditionalFieldsOpen"
+                >
+                  {{ isAdditionalFieldsOpen ? 'Hide' : 'Show' }}
+                </button>
+              </div>
+            </div>
+
+            <div v-show="isAdditionalFieldsOpen" id="car-additional-fields-panel">
+              <div v-if="isLoadingDynamicFields" class="py-6 text-sm text-slate-500">
+                Loading additional fields...
+              </div>
+
+              <div v-else-if="!dynamicFields.length" class="py-6 text-sm text-slate-400">
+                No additional fields configured for CAR.
+              </div>
+
+              <div v-else class="mt-5 space-y-4" :class="{ 'pointer-events-none opacity-70': isFormLocked }">
+                <div
+                  v-for="field in dynamicFields"
+                  :key="field.id"
+                  class="space-y-1.5"
+                >
+                  <label class="block text-sm font-medium text-slate-700">
+                    {{ field.label }}
+                    <span v-if="field.is_required" class="text-rose-500">*</span>
+                  </label>
+
+                  <input
+                    v-if="field.field_type === 'text'"
+                    v-model="form.dynamic[field.field_key]"
+                    type="text"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                    :placeholder="`Enter ${field.label}`"
+                  />
+
+                  <textarea
+                    v-else-if="field.field_type === 'textarea'"
+                    v-model="form.dynamic[field.field_key]"
+                    rows="4"
+                    class="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                    :placeholder="`Enter ${field.label}`"
+                  ></textarea>
+
+                  <input
+                    v-else-if="field.field_type === 'date'"
+                    v-model="form.dynamic[field.field_key]"
+                    type="date"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                  />
+
+                  <input
+                    v-else
+                    v-model="form.dynamic[field.field_key]"
+                    type="text"
+                    class="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                    :placeholder="`Enter ${field.label}`"
+                  />
+
+                  <p class="text-xs text-slate-400">
+                    Placeholder: ${'{'}{{ field.field_key }}{{ '}' }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </aside>
         </div>
       </div>
     </div>

@@ -1041,6 +1041,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                       </Link>
 
                       <a
+                        v-if="doc.can_preview !== false"
                         :href="doc.preview_url"
                         target="_blank"
                         rel="noopener"
@@ -1214,6 +1215,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                       </Link>
 
                       <a
+                        v-if="doc.can_preview !== false"
                         :href="doc.preview_url"
                         target="_blank"
                         rel="noopener"

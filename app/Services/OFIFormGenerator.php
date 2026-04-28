@@ -7,14 +7,19 @@ use PhpOffice\PhpWord\TemplateProcessor;
 class OFIFormGenerator
 {
     private string $templatePath;
+    private QmsDynamicPlaceholderNormalizer $dynamicPlaceholderNormalizer;
 
-    public function __construct(string $templatePath)
-    {
+    public function __construct(
+        string $templatePath,
+        ?QmsDynamicPlaceholderNormalizer $dynamicPlaceholderNormalizer = null
+    ) {
         if (!file_exists($templatePath)) {
             throw new \InvalidArgumentException("Template not found: {$templatePath}");
         }
 
         $this->templatePath = $templatePath;
+        $this->dynamicPlaceholderNormalizer = $dynamicPlaceholderNormalizer
+            ?? new QmsDynamicPlaceholderNormalizer();
     }
 
     /**
@@ -94,7 +99,7 @@ class OFIFormGenerator
         // Support either controller-style 'dcrUpdated' or saved JSON 'dcrNo'
         $dcrUpdated = $d('dcrUpdated', $d('dcrNo'));
 
-        return array_merge([
+        $baseValues = array_merge([
             // Header
             'date' => $d('date'),
             'refNo' => $d('refNo'),
@@ -144,5 +149,9 @@ class OFIFormGenerator
             'caseClosedDate' => $d('caseClosedDate'),
             'notedBy' => $d('notedBy'),
         ], $rows);
+
+        $dynamicValues = $this->dynamicPlaceholderNormalizer->normalize($d('dynamic', []));
+
+        return array_merge($dynamicValues, $baseValues);
     }
 }

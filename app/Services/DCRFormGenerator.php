@@ -7,21 +7,22 @@ use PhpOffice\PhpWord\TemplateProcessor;
 class DCRFormGenerator
 {
     private TemplateProcessor $template;
+    private QmsDynamicPlaceholderNormalizer $dynamicPlaceholderNormalizer;
 
-    public function __construct(string $templatePath)
+    public function __construct(
+        string $templatePath,
+        ?QmsDynamicPlaceholderNormalizer $dynamicPlaceholderNormalizer = null
+    )
     {
         if (!file_exists($templatePath)) {
             throw new \InvalidArgumentException("Template not found: {$templatePath}");
         }
 
         $this->template = new TemplateProcessor($templatePath);
+        $this->dynamicPlaceholderNormalizer = $dynamicPlaceholderNormalizer
+            ?? new QmsDynamicPlaceholderNormalizer();
     }
 
-    /**
-     * IMPORTANT:
-     * This generator requires template placeholders like ${fieldName}.
-     * Templates without placeholders will NOT work.
-     */
     public function generate(array $data, string $outputPath): void
     {
         $values = $this->buildValues($data);
@@ -41,7 +42,7 @@ class DCRFormGenerator
         $d = fn(string $key, mixed $default = '') => $data[$key] ?? $default;
         $check = fn(mixed $value): string => $value ? '✔' : '';
 
-        return [
+        $baseValues = [
             // Header
             'date' => $d('date'),
             'dcrNo' => $d('dcrNo'),
@@ -85,5 +86,9 @@ class DCRFormGenerator
             'idsDateUpdated' => $d('idsDateUpdated'),
             'updatedBy' => $d('updatedBy'),
         ];
+
+        $dynamicValues = $this->dynamicPlaceholderNormalizer->normalize($d('dynamic', []));
+
+        return array_merge($dynamicValues, $baseValues);
     }
 }

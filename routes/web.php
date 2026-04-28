@@ -4,6 +4,7 @@ use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CarRecordController;
 use App\Http\Controllers\DCRController;
 use App\Http\Controllers\DcrRecordController;
+use App\Http\Controllers\DcrTemplateSettingsController;
 use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\LogsController;
@@ -11,6 +12,8 @@ use App\Http\Controllers\ManualController;
 use App\Http\Controllers\OFIController;
 use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\PerformanceController;
+use App\Http\Controllers\QmsDynamicFieldController;
+use App\Http\Controllers\QmsTemplateSettingsController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UsersController;
 use App\Models\DocumentType;
@@ -49,6 +52,10 @@ Route::middleware('auth')->group(function () {
     | OFI
     |--------------------------------------------------------------------------
     */
+    Route::get('/ofi/dynamic-fields', [QmsDynamicFieldController::class, 'index'])
+        ->defaults('module', 'OFI')
+        ->name('ofi.dynamic-fields');
+
     Route::post('/ofi/generate', [OFIController::class, 'generate'])->name('ofi.generate');
 
     Route::post('/ofi/records', [OfiRecordController::class, 'store'])->name('ofi.records.store');
@@ -69,6 +76,9 @@ Route::middleware('auth')->group(function () {
     | DCR
     |--------------------------------------------------------------------------
     */
+    Route::get('/dcr/dynamic-fields', [QmsDynamicFieldController::class, 'dcr'])
+        ->name('dcr.dynamic-fields');
+
     Route::post('/dcr/generate', [DCRController::class, 'generate'])->name('dcr.generate');
 
     Route::post('/dcr/records', [DcrRecordController::class, 'store'])->name('dcr.records.store');
@@ -89,6 +99,10 @@ Route::middleware('auth')->group(function () {
     | CAR
     |--------------------------------------------------------------------------
     */
+    Route::get('/car/dynamic-fields', [QmsDynamicFieldController::class, 'index'])
+        ->defaults('module', 'CAR')
+        ->name('car.dynamic-fields');
+
     Route::post('/car/records', [CarRecordController::class, 'store'])->name('car.records.store');
     Route::get('/car/records/{carRecord}', [CarRecordController::class, 'show'])->name('car.records.show');
     Route::put('/car/records/{carRecord}', [CarRecordController::class, 'update'])->name('car.records.update');
@@ -97,6 +111,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/car/records/{carRecord}/publish', [CarRecordController::class, 'publish'])->name('car.records.publish');
     Route::patch('/car/records/{carRecord}/resolution-status', [CarRecordController::class, 'updateResolutionStatus'])
         ->name('car.records.resolution-status');
+
     /*
     |--------------------------------------------------------------------------
     | My Records (Unified User Inbox)
@@ -138,6 +153,52 @@ Route::middleware('auth')->group(function () {
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
         Route::post('/users', [UsersController::class, 'store'])->name('users.store');
         Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Generic QMS Template Settings
+        |--------------------------------------------------------------------------
+        */
+        Route::get('/settings/qms-templates/{module}', [QmsTemplateSettingsController::class, 'index'])
+            ->name('settings.qms-templates.index');
+
+        Route::post('/settings/qms-templates/{module}/upload', [QmsTemplateSettingsController::class, 'uploadTemplate'])
+            ->name('settings.qms-templates.upload');
+
+        Route::patch('/settings/qms-templates/{module}/{template}/activate', [QmsTemplateSettingsController::class, 'setActiveTemplate'])
+            ->name('settings.qms-templates.activate');
+
+        Route::post('/settings/qms-templates/{module}/fields', [QmsTemplateSettingsController::class, 'storeField'])
+            ->name('settings.qms-templates.fields.store');
+
+        Route::put('/settings/qms-templates/{module}/fields/{field}', [QmsTemplateSettingsController::class, 'updateField'])
+            ->name('settings.qms-templates.fields.update');
+
+        Route::delete('/settings/qms-templates/{module}/fields/{field}', [QmsTemplateSettingsController::class, 'destroyField'])
+            ->name('settings.qms-templates.fields.destroy');
+
+        /*
+        |--------------------------------------------------------------------------
+        | DCR Template Settings
+        |--------------------------------------------------------------------------
+        */
+        Route::get('/settings/dcr-template', [DcrTemplateSettingsController::class, 'index'])
+            ->name('settings.dcr-template.index');
+
+        Route::post('/settings/dcr-template/upload', [DcrTemplateSettingsController::class, 'uploadTemplate'])
+            ->name('settings.dcr-template.upload');
+
+        Route::patch('/settings/dcr-template/{template}/activate', [DcrTemplateSettingsController::class, 'setActiveTemplate'])
+            ->name('settings.dcr-template.activate');
+
+        Route::post('/settings/dcr-template/fields', [DcrTemplateSettingsController::class, 'storeField'])
+            ->name('settings.dcr-template.fields.store');
+
+        Route::put('/settings/dcr-template/fields/{field}', [DcrTemplateSettingsController::class, 'updateField'])
+            ->name('settings.dcr-template.fields.update');
+
+        Route::delete('/settings/dcr-template/fields/{field}', [DcrTemplateSettingsController::class, 'destroyField'])
+            ->name('settings.dcr-template.fields.destroy');
 
         /*
         |--------------------------------------------------------------------------

@@ -12,10 +12,12 @@ use App\Services\DocumentPreview\DocumentDownloadService;
 use App\Services\DocumentPreview\DocumentPreviewService;
 use App\Services\DocumentPreview\OfficeToPdfConverter;
 use App\Services\OFIFormGenerator;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use App\Services\QmsTemplateResolver;
 use Inertia\Inertia;
 use App\Services\CARFormGenerator;
 use RuntimeException;
@@ -28,6 +30,7 @@ class DocumentController extends Controller
         protected DocumentDownloadService $documentDownloadService,
         protected OfficeToPdfConverter $officeToPdfConverter,
         protected ActivityLogService $activityLogService,
+        protected QmsTemplateResolver $qmsTemplateResolver,
     ) {
     }
 
@@ -172,38 +175,49 @@ class DocumentController extends Controller
             'storage.required' => 'Storage / file type is required.',
         ]);
 
-        $series = DocumentSeries::query()->findOrFail($data['series_id']);
+        $generatedCode = null;
 
-        if (strtoupper((string) $series->code_prefix) === 'MANUAL') {
-            throw ValidationException::withMessages([
-                'series_id' => 'Manual series cannot be created from the Documents module.',
-            ]);
+        try {
+            $documentType = DB::transaction(function () use ($data, &$generatedCode) {
+                $series = DocumentSeries::query()
+                    ->whereKey($data['series_id'])
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                if (strtoupper((string) $series->code_prefix) === 'MANUAL') {
+                    throw ValidationException::withMessages([
+                        'series_id' => 'Manual series cannot be created from the Documents module.',
+                    ]);
+                }
+
+                $generatedCode = $this->buildDocumentTypeCode(
+                    (string) $series->code_prefix,
+                    (int) $data['document_no']
+                );
+
+                $this->ensureDocumentTypeCodeIsAvailable($generatedCode);
+
+                return DocumentType::create([
+                    'series_id' => $series->id,
+                    'code' => $generatedCode,
+                    'title' => trim($data['title']),
+                    'storage' => trim($data['storage']),
+                    'status' => 'Active',
+                    'status_note' => filled($data['status_note'] ?? null)
+                        ? trim($data['status_note'])
+                        : null,
+                    'requires_revision' => (bool) ($data['requires_revision'] ?? false),
+                ]);
+            });
+        } catch (QueryException $e) {
+            if ($generatedCode !== null && $this->isDuplicateDocumentTypeCodeException($e)) {
+                throw ValidationException::withMessages([
+                    'document_no' => "The generated code {$generatedCode} already exists.",
+                ]);
+            }
+
+            throw $e;
         }
-
-        $documentNo = (int) $data['document_no'];
-        $generatedCode = strtoupper($series->code_prefix) . '-' . str_pad((string) $documentNo, 3, '0', STR_PAD_LEFT);
-
-        $existing = DocumentType::query()
-            ->whereRaw('LOWER(code) = ?', [strtolower($generatedCode)])
-            ->exists();
-
-        if ($existing) {
-            throw ValidationException::withMessages([
-                'document_no' => "The generated code {$generatedCode} already exists.",
-            ]);
-        }
-
-        $documentType = DocumentType::create([
-            'series_id' => $series->id,
-            'code' => $generatedCode,
-            'title' => trim($data['title']),
-            'storage' => trim($data['storage']),
-            'status' => 'Active',
-            'status_note' => filled($data['status_note'] ?? null)
-                ? trim($data['status_note'])
-                : null,
-            'requires_revision' => (bool) ($data['requires_revision'] ?? false),
-        ]);
 
         $this->activityLogService->log([
             'module' => 'documents',
@@ -278,6 +292,16 @@ class DocumentController extends Controller
         if ($hasDcrReferences) {
             return back()->withErrors([
                 'delete' => "Cannot delete {$code} because it is still referenced by DCR records.",
+            ]);
+        }
+
+        $hasCarReferences = DB::table('car_records')
+            ->where('document_type_id', $documentType->id)
+            ->exists();
+
+        if ($hasCarReferences) {
+            return back()->withErrors([
+                'delete' => "Cannot delete {$code} because it is still referenced by CAR records.",
             ]);
         }
 
@@ -581,9 +605,9 @@ class DocumentController extends Controller
                     'car_record_id' => $d->car_record_id,
                     'ofi_workflow_status' => $d->ofiRecord?->workflow_status,
                     'ofi_resolution_status' => $d->ofiRecord?->resolution_status,
+                    'can_preview' => $this->canPreviewUpload($d),
                     'preview_url' => route('documents.uploads.preview', $d->id),
                     'download_url' => route('documents.uploads.download', $d->id),
-                    'file_url' => $d->file_path ? Storage::url($d->file_path) : null,
                 ])->values();
             }
 
@@ -685,9 +709,9 @@ class DocumentController extends Controller
                 'car_record_id' => $d->car_record_id,
                 'ofi_workflow_status' => $d->ofiRecord?->workflow_status,
                 'ofi_resolution_status' => $d->ofiRecord?->resolution_status,
+                'can_preview' => $this->canPreviewUpload($d),
                 'preview_url' => route('documents.uploads.preview', $d->id),
                 'download_url' => route('documents.uploads.download', $d->id),
-                'file_url' => $d->file_path ? Storage::url($d->file_path) : null,
             ]);
 
         return Inertia::render('Documents/Show', [
@@ -730,7 +754,7 @@ class DocumentController extends Controller
 
         $rules = [
             'files' => ['required', 'array', 'min:1'],
-            'files.*' => ['file', 'max:20480'],
+            'files.*' => ['file', 'mimes:pdf,doc,docx,xls,xlsx,png,jpg,jpeg', 'max:20480'],
             'remarks' => ['nullable', 'string', 'max:1000'],
         ];
 
@@ -753,6 +777,7 @@ class DocumentController extends Controller
             'year.max' => 'Year must not be greater than 2100.',
             'period.required' => 'Period is required for performance forms.',
             'period.in' => 'Period must be either January–June or July–December.',
+            'files.*.mimes' => 'Files must be PDF, Word, Excel, PNG, or JPG/JPEG.',
         ]);
 
         $files = $request->file('files', []);
@@ -778,16 +803,11 @@ class DocumentController extends Controller
             $storePath = $isPerformanceForm
                 ? "qms/{$performanceCategory}/{$performanceRecordType}/{$year}/{$period}"
                 : "qms/{$documentType->code}";
+            $storageDisk = 'private';
 
-            $path = $file->store($storePath, 'public');
+            $path = $file->store($storePath, $storageDisk);
 
-            if ($isRevisionControlled && !$isPerformanceForm) {
-                DocumentUpload::where('document_type_id', $documentType->id)
-                    ->where('status', 'Active')
-                    ->update(['status' => 'Obsolete']);
-            }
-
-            DocumentUpload::create([
+            $uploadAttributes = [
                 'document_type_id' => $documentType->id,
                 'uploaded_by' => $request->user()->id,
                 'revision' => ($isRevisionControlled && !$isPerformanceForm)
@@ -800,9 +820,33 @@ class DocumentController extends Controller
                 'status' => ($isRevisionControlled && !$isPerformanceForm) ? 'Active' : null,
                 'file_name' => $file->getClientOriginalName(),
                 'file_path' => $path,
-                'storage_disk' => 'public',
+                'storage_disk' => $storageDisk,
                 'remarks' => $data['remarks'] ?? null,
-            ]);
+            ];
+
+            try {
+                if ($isRevisionControlled && !$isPerformanceForm) {
+                    DB::transaction(function () use ($documentType, $uploadAttributes) {
+                        DocumentType::query()
+                            ->whereKey($documentType->id)
+                            ->lockForUpdate()
+                            ->first();
+
+                        DocumentUpload::query()
+                            ->where('document_type_id', $documentType->id)
+                            ->where('status', 'Active')
+                            ->update(['status' => 'Obsolete']);
+
+                        DocumentUpload::create($uploadAttributes);
+                    });
+                } else {
+                    DocumentUpload::create($uploadAttributes);
+                }
+            } catch (\Throwable $e) {
+                Storage::disk($storageDisk)->delete($path);
+
+                throw $e;
+            }
 
             $created++;
         }
@@ -986,6 +1030,49 @@ class DocumentController extends Controller
             ?: 'Upload #' . $upload->id;
     }
 
+    private function buildDocumentTypeCode(string $seriesCodePrefix, int $documentNo): string
+    {
+        return strtoupper($seriesCodePrefix) . '-' . str_pad((string) $documentNo, 3, '0', STR_PAD_LEFT);
+    }
+
+    private function ensureDocumentTypeCodeIsAvailable(string $generatedCode): void
+    {
+        $existing = DocumentType::query()
+            ->whereRaw('LOWER(code) = ?', [strtolower($generatedCode)])
+            ->exists();
+
+        if ($existing) {
+            throw ValidationException::withMessages([
+                'document_no' => "The generated code {$generatedCode} already exists.",
+            ]);
+        }
+    }
+
+    private function isDuplicateDocumentTypeCodeException(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+        $message = strtolower($exception->getMessage());
+
+        return in_array($sqlState, ['23000', '23505'], true)
+            || str_contains($message, 'document_types.code')
+            || str_contains($message, 'document_types_code_unique')
+            || str_contains($message, 'unique constraint')
+            || str_contains($message, 'duplicate');
+    }
+
+    private function canPreviewUpload(DocumentUpload $upload): bool
+    {
+        if (
+            ($upload->ofi_record_id && $upload->ofiRecord) ||
+            ($upload->dcr_record_id && $upload->dcrRecord) ||
+            ($upload->car_record_id && $upload->carRecord)
+        ) {
+            return true;
+        }
+
+        return $this->documentPreviewService->canPreview($upload);
+    }
+
     private function downloadLatestOfiDocx(DocumentUpload $upload)
     {
         [$outputPath, $fileName] = $this->generateLatestOfiTempFile($upload);
@@ -1016,8 +1103,7 @@ class DocumentController extends Controller
 
         abort_unless($upload->ofiRecord, 404, 'Linked OFI record not found.');
 
-        $templatePath = config('qms_templates.ofi.path');
-        abort_unless(is_string($templatePath) && file_exists($templatePath), 500, 'OFI template file not found.');
+        $templatePath = $this->qmsTemplateResolver->getActiveOfiTemplatePath();
 
         $tmpDir = storage_path('app/ofi_forms_tmp');
         if (!is_dir($tmpDir)) {
@@ -1071,8 +1157,7 @@ class DocumentController extends Controller
 
         abort_unless($upload->dcrRecord, 404, 'Linked DCR record not found.');
 
-        $templatePath = config('qms_templates.dcr.path');
-        abort_unless(is_string($templatePath) && file_exists($templatePath), 500, 'DCR template file not found.');
+        $templatePath = $this->qmsTemplateResolver->getActiveDcrTemplatePath();
 
         $tmpDir = storage_path('app/dcr_forms_tmp');
         if (!is_dir($tmpDir)) {
@@ -1136,8 +1221,7 @@ class DocumentController extends Controller
 
         abort_unless($upload->carRecord, 404, 'Linked CAR record not found.');
 
-        $templatePath = config('qms_templates.car.path');
-        abort_unless(is_string($templatePath) && file_exists($templatePath), 500, 'CAR template file not found.');
+        $templatePath = $this->qmsTemplateResolver->getActiveCarTemplatePath();
 
         $tmpDir = storage_path('app/car_forms_tmp');
         if (!is_dir($tmpDir)) {
