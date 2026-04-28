@@ -48,17 +48,15 @@ const indicatorTransform = computed(() => {
 
 <template>
     <AdminLayout>
+        <template #headerLeft>
+            <div>
+                <p class="text-xs text-slate-400 leading-none">Account</p>
+                <p class="text-[22px] font-bold leading-[1.2] text-slate-900">Settings</p>
+            </div>
+        </template>
+
         <div class="w-full box-border px-10 pb-10">
-            <div class="-mt-1.5 bg-transparent">
-                <!-- PAGE HEADER -->
-                <div class="mb-3">
-                    <h1 class="m-0 text-[22px] font-bold leading-[1.2] text-slate-900">
-                        Settings
-                    </h1>
-                    <p class="mt-1.5 text-[15px] leading-[1.4] text-slate-500">
-                        Manage your account settings and preferences.
-                    </p>
-                </div>
+            <div class="mt-6 bg-transparent">
 
                 <!-- TABS -->
                 <div class="relative mb-4">
