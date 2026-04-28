@@ -234,16 +234,16 @@ Dynamic fields endpoints:
 
 - Document codes:
 
-    ```
+```text
     {SERIES}-{3 digit number}
     Example: F-QMS-001
-    ```
+```
 
 - Use uppercase for module identifiers:
 
-    ```
+```text
     DCR, OFI, CAR
-    ```
+```
 
 ---
 

@@ -4,17 +4,20 @@ namespace App\Http\Controllers;
 
 use App\Models\QmsDynamicField;
 use App\Models\QmsTemplate;
+use App\Services\ActivityLogService;
 use App\Services\QmsDynamicFieldValidator;
 use App\Support\QmsTemplateModules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 
 class QmsTemplateSettingsController extends Controller
 {
     public function __construct(
-        protected QmsDynamicFieldValidator $dynamicFieldValidator
+        protected QmsDynamicFieldValidator $dynamicFieldValidator,
+        protected ActivityLogService $activityLogService,
     ) {
     }
 
@@ -54,6 +57,8 @@ class QmsTemplateSettingsController extends Controller
 
     public function uploadTemplate(Request $request, string $module)
     {
+        abort_unless(auth()->user()?->role === 'admin', 403, 'Unauthorized.');
+
         $module = $this->resolveModule($module);
 
         $validated = $request->validate([
@@ -91,25 +96,44 @@ class QmsTemplateSettingsController extends Controller
             $storageDisk
         );
 
-        $template = DB::transaction(function () use ($module, $validated, $originalFileName, $storedFileName, $storedPath, $storageDisk, $setActive) {
-            if ($setActive) {
-                QmsTemplate::query()
-                    ->forModule($module)
-                    ->where('is_active', true)
-                    ->update(['is_active' => false]);
-            }
+        try {
+            $template = DB::transaction(function () use ($module, $validated, $originalFileName, $storedFileName, $storedPath, $storageDisk, $setActive) {
+                if ($setActive) {
+                    DB::table('qms_templates')
+                        ->where('module', $module)
+                        ->where('is_active', true)
+                        ->lockForUpdate()
+                        ->get();
 
-            return QmsTemplate::create([
-                'module' => $module,
-                'name' => $validated['name'] ?? $originalFileName,
-                'original_file_name' => $originalFileName,
-                'file_name' => $storedFileName,
-                'file_path' => $storedPath,
-                'storage_disk' => $storageDisk,
-                'is_active' => $setActive,
-                'uploaded_by' => auth()->id(),
-            ]);
-        });
+                    QmsTemplate::query()
+                        ->forModule($module)
+                        ->where('is_active', true)
+                        ->update(['is_active' => false]);
+                }
+
+                return QmsTemplate::create([
+                    'module' => $module,
+                    'name' => $validated['name'] ?? $originalFileName,
+                    'original_file_name' => $originalFileName,
+                    'file_name' => $storedFileName,
+                    'file_path' => $storedPath,
+                    'storage_disk' => $storageDisk,
+                    'is_active' => $setActive,
+                    'uploaded_by' => auth()->id(),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            Storage::disk($storageDisk)->delete($storedPath);
+            throw $e;
+        }
+
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'uploaded',
+            'record_label' => $template->name,
+            'file_type' => 'docx',
+            'description' => "Uploaded {$module} template: {$template->name}",
+        ]);
 
         return response()->json([
             'message' => "{$module} template uploaded successfully.",
@@ -119,6 +143,8 @@ class QmsTemplateSettingsController extends Controller
 
     public function setActiveTemplate(string $module, QmsTemplate $template)
     {
+        abort_unless(auth()->user()?->role === 'admin', 403, 'Unauthorized.');
+
         $module = $this->resolveModule($module);
 
         abort_unless(
@@ -128,6 +154,12 @@ class QmsTemplateSettingsController extends Controller
         );
 
         DB::transaction(function () use ($module, $template) {
+            DB::table('qms_templates')
+                ->where('module', $module)
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->get();
+
             QmsTemplate::query()
                 ->forModule($module)
                 ->where('is_active', true)
@@ -138,6 +170,13 @@ class QmsTemplateSettingsController extends Controller
             ]);
         });
 
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'updated',
+            'record_label' => $template->name,
+            'description' => "Set active {$module} template to: {$template->name}",
+        ]);
+
         return response()->json([
             'message' => "{$module} active template updated successfully.",
             'template_id' => $template->id,
@@ -146,6 +185,8 @@ class QmsTemplateSettingsController extends Controller
 
     public function storeField(Request $request, string $module)
     {
+        abort_unless(auth()->user()?->role === 'admin', 403, 'Unauthorized.');
+
         $module = $this->resolveModule($module);
 
         $validated = $request->validate([
@@ -177,6 +218,13 @@ class QmsTemplateSettingsController extends Controller
             'sort_order' => $validated['sort_order'] ?? 0,
         ]);
 
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'created',
+            'record_label' => $field->label,
+            'description' => "Created {$module} dynamic field: {$field->label} ({$field->field_key})",
+        ]);
+
         return response()->json([
             'message' => "{$module} dynamic field created successfully.",
             'field' => $this->serializeField($field),
@@ -185,6 +233,8 @@ class QmsTemplateSettingsController extends Controller
 
     public function updateField(Request $request, string $module, QmsDynamicField $field)
     {
+        abort_unless(auth()->user()?->role === 'admin', 403, 'Unauthorized.');
+
         $module = $this->resolveModule($module);
 
         abort_unless(
@@ -219,6 +269,13 @@ class QmsTemplateSettingsController extends Controller
             'sort_order' => $validated['sort_order'] ?? 0,
         ]);
 
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'updated',
+            'record_label' => $field->label,
+            'description' => "Updated {$module} dynamic field: {$field->label} ({$field->field_key})",
+        ]);
+
         return response()->json([
             'message' => "{$module} dynamic field updated successfully.",
             'field' => $this->serializeField($field),
@@ -227,6 +284,8 @@ class QmsTemplateSettingsController extends Controller
 
     public function destroyField(string $module, QmsDynamicField $field)
     {
+        abort_unless(auth()->user()?->role === 'admin', 403, 'Unauthorized.');
+
         $module = $this->resolveModule($module);
 
         abort_unless(
@@ -236,6 +295,13 @@ class QmsTemplateSettingsController extends Controller
         );
 
         $field->delete();
+
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'deleted',
+            'record_label' => $field->label,
+            'description' => "Deleted {$module} dynamic field: {$field->label} ({$field->field_key})",
+        ]);
 
         return response()->json([
             'message' => "{$module} dynamic field deleted successfully.",

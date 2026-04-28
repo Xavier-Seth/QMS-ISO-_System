@@ -189,7 +189,12 @@ class OfiRecordController extends Controller
             $oldPath = $existingUpload->file_path;
             $storedPath = $existingUpload->file_path ?: ('documents/ofi/' . $fileName);
 
-            $disk->put($storedPath, file_get_contents($tmpPath));
+            $written = $disk->put($storedPath, file_get_contents($tmpPath));
+
+            if ($written === false) {
+                @unlink($tmpPath);
+                throw new \RuntimeException("Failed to write file to storage: {$storedPath}");
+            }
 
             if ($existingUpload->hasPreviewCache()) {
                 $previewDisk = $existingUpload->getPreviewDiskName();
@@ -239,7 +244,12 @@ class OfiRecordController extends Controller
         $tmpPath = $tmpDir . '/' . uniqid('ofi_publish_', true) . '_' . $fileName;
         $this->generateDocxToPath($ofiRecord, $tmpPath);
 
-        $disk->put($storedPath, file_get_contents($tmpPath));
+        $written = $disk->put($storedPath, file_get_contents($tmpPath));
+
+        if ($written === false) {
+            @unlink($tmpPath);
+            throw new \RuntimeException("Failed to write file to storage: {$storedPath}");
+        }
 
         $upload = DocumentUpload::create([
             'document_type_id' => $this->rQms018TypeId(),

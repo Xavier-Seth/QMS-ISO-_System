@@ -208,6 +208,15 @@ async function createField() {
 }
 
 function editField(field) {
+    if (editingFieldId.value !== null) {
+        const currentlyEditing = dynamicFields.value.find(
+            (f) => f.id === editingFieldId.value
+        );
+        if (currentlyEditing) {
+            currentlyEditing.isEditing = false;
+        }
+    }
+
     editingFieldId.value = field.id;
     field.isEditing = true;
 }

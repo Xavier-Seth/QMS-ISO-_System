@@ -622,7 +622,7 @@ class CarDynamicFieldsTest extends TestCase
             'code' => 'R-QMS-017',
             'title' => 'Corrective Action Request Records',
             'storage' => 'Electronic',
-            'status' => 'Active',
+            'status' => 'active',
         ]);
     }
 

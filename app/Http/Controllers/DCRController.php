@@ -139,8 +139,14 @@ class DCRController extends Controller
                 'message' => $e->getMessage(),
             ], 422);
         } catch (\Throwable $e) {
+            \Log::error('DCRController@generate failed', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+
             return response()->json([
-                'error' => 'Failed to generate document: ' . $e->getMessage(),
+                'error' => 'Failed to generate document. Please try again or contact support.',
             ], 500);
         }
 

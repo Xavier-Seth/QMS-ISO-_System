@@ -101,7 +101,13 @@ class DcrRecordController extends Controller
             $this->generateDocxToPath($dcrRecord, $tmpPath);
 
             $storedPath = $existingUpload->file_path ?: ('documents/dcr/' . $fileName);
-            $disk->put($storedPath, file_get_contents($tmpPath));
+
+            $written = $disk->put($storedPath, file_get_contents($tmpPath));
+
+            if ($written === false) {
+                @unlink($tmpPath);
+                throw new \RuntimeException("Failed to write file to storage: {$storedPath}");
+            }
 
             $existingUpload->update([
                 'document_type_id' => $this->rQms013TypeId(),
@@ -129,7 +135,12 @@ class DcrRecordController extends Controller
         $tmpPath = $tmpDir . '/' . uniqid('dcr_publish_', true) . '_' . $fileName;
         $this->generateDocxToPath($dcrRecord, $tmpPath);
 
-        $disk->put($storedPath, file_get_contents($tmpPath));
+        $written = $disk->put($storedPath, file_get_contents($tmpPath));
+
+        if ($written === false) {
+            @unlink($tmpPath);
+            throw new \RuntimeException("Failed to write file to storage: {$storedPath}");
+        }
 
         $upload = DocumentUpload::create([
             'document_type_id' => $this->rQms013TypeId(),
@@ -390,11 +401,14 @@ class DcrRecordController extends Controller
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
+            \Log::error('DcrRecordController@update failed', [
+                'message' => $e->getMessage(),
+                'file'    => $e->getFile(),
+                'line'    => $e->getLine(),
+            ]);
+
             return response()->json([
-                'message' => 'Failed to update DCR draft.',
-                'error' => $e->getMessage(),
-                'line' => $e->getLine(),
-                'file' => $e->getFile(),
+                'error' => 'Failed to update DCR draft. Please try again or contact support.',
             ], 500);
         }
     }
