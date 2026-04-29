@@ -18,8 +18,7 @@ class QmsTemplateSettingsController extends Controller
     public function __construct(
         protected QmsDynamicFieldValidator $dynamicFieldValidator,
         protected ActivityLogService $activityLogService,
-    ) {
-    }
+    ) {}
 
     public function index(string $module)
     {
@@ -35,14 +34,14 @@ class QmsTemplateSettingsController extends Controller
             ->forModule($module)
             ->latestFirst()
             ->get()
-            ->map(fn(QmsTemplate $template) => $this->serializeTemplate($template))
+            ->map(fn (QmsTemplate $template) => $this->serializeTemplate($template))
             ->values();
 
         $fields = QmsDynamicField::query()
             ->forModule($module)
             ->sorted()
             ->get()
-            ->map(fn(QmsDynamicField $field) => $this->serializeField($field))
+            ->map(fn (QmsDynamicField $field) => $this->serializeField($field))
             ->values();
 
         return response()->json([
@@ -72,6 +71,14 @@ class QmsTemplateSettingsController extends Controller
             'set_active' => ['nullable', 'boolean'],
         ]);
 
+        $templateCount = QmsTemplate::query()->forModule($module)->count();
+
+        if ($templateCount >= 3) {
+            return response()->json([
+                'message' => 'Template limit reached (3/3). Delete a template first.',
+            ], 422);
+        }
+
         $file = $request->file('template_file');
         $setActive = $request->boolean('set_active', true);
 
@@ -88,10 +95,10 @@ class QmsTemplateSettingsController extends Controller
             $safeBaseName = "{$module} Template";
         }
 
-        $storedFileName = now()->format('Ymd_His') . '_' . Str::slug($safeBaseName, '_') . '.docx';
+        $storedFileName = now()->format('Ymd_His').'_'.Str::slug($safeBaseName, '_').'.docx';
         $storageDisk = $this->templateStorageDisk();
         $storedPath = $file->storeAs(
-            'qms/templates/' . strtolower($module),
+            'qms/templates/'.strtolower($module),
             $storedFileName,
             $storageDisk
         );
@@ -183,6 +190,39 @@ class QmsTemplateSettingsController extends Controller
         ]);
     }
 
+    public function destroyTemplate(string $module, QmsTemplate $template)
+    {
+        abort_unless(auth()->user()?->role === 'admin', 403, 'Unauthorized.');
+
+        $module = $this->resolveModule($module);
+
+        abort_unless(
+            $template->isForModule($module),
+            404,
+            "{$module} template not found."
+        );
+
+        $storageDisk = $template->getStorageDiskName();
+
+        if ($template->file_path && Storage::disk($storageDisk)->exists($template->file_path)) {
+            Storage::disk($storageDisk)->delete($template->file_path);
+        }
+
+        $templateName = $template->name;
+        $template->delete();
+
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'deleted',
+            'record_label' => $templateName,
+            'description' => "Deleted {$module} template: {$templateName}",
+        ]);
+
+        return response()->json([
+            'message' => "{$module} template deleted successfully.",
+        ]);
+    }
+
     public function storeField(Request $request, string $module)
     {
         abort_unless(auth()->user()?->role === 'admin', 403, 'Unauthorized.');
@@ -196,7 +236,7 @@ class QmsTemplateSettingsController extends Controller
                 'string',
                 'max:255',
                 'regex:/^[A-Za-z][A-Za-z0-9_]*$/',
-                'unique:qms_dynamic_fields,field_key,NULL,id,module,' . $module,
+                'unique:qms_dynamic_fields,field_key,NULL,id,module,'.$module,
             ],
             'field_type' => ['required', 'string', 'in:text,textarea,date'],
             'is_required' => ['nullable', 'boolean'],
@@ -250,7 +290,7 @@ class QmsTemplateSettingsController extends Controller
                 'string',
                 'max:255',
                 'regex:/^[A-Za-z][A-Za-z0-9_]*$/',
-                'unique:qms_dynamic_fields,field_key,' . $field->id . ',id,module,' . $module,
+                'unique:qms_dynamic_fields,field_key,'.$field->id.',id,module,'.$module,
             ],
             'field_type' => ['required', 'string', 'in:text,textarea,date'],
             'is_required' => ['nullable', 'boolean'],
@@ -335,8 +375,8 @@ class QmsTemplateSettingsController extends Controller
             $key = 'customField';
         }
 
-        if (!preg_match('/^[A-Za-z]/', $key)) {
-            $key = 'field' . ucfirst($key);
+        if (! preg_match('/^[A-Za-z]/', $key)) {
+            $key = 'field'.ucfirst($key);
         }
 
         $originalKey = $key;
@@ -348,7 +388,7 @@ class QmsTemplateSettingsController extends Controller
                 ->where('field_key', $key)
                 ->exists()
         ) {
-            $key = $originalKey . $counter;
+            $key = $originalKey.$counter;
             $counter++;
         }
 

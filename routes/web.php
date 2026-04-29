@@ -21,7 +21,7 @@ use App\Models\DocumentType;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', fn() => Inertia::render('Home'));
+Route::get('/', fn () => Inertia::render('Home'));
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'show'])->name('login');
@@ -33,8 +33,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard'); // <-- updated
 
-    Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
-    Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
+    Route::get('/dcr', fn () => Inertia::render('DCR'))->name('dcr');
+    Route::get('/ofi-form', fn () => Inertia::render('OFIForm'))->name('ofi.form');
 
     Route::get('/car', function () {
         $carType = DocumentType::where('code', 'F-QMS-006')->first();
@@ -44,7 +44,7 @@ Route::middleware('auth')->group(function () {
         ]);
     })->name('car.form');
 
-    Route::get('/settings', fn() => Inertia::render('Settings/Index'))->name('settings');
+    Route::get('/settings', fn () => Inertia::render('Settings/Index'))->name('settings');
 
     Route::post('/settings/profile', [SettingsController::class, 'updateProfile'])
         ->name('settings.profile.update');
@@ -170,6 +170,9 @@ Route::middleware('auth')->group(function () {
         Route::patch('/settings/qms-templates/{module}/{template}/activate', [QmsTemplateSettingsController::class, 'setActiveTemplate'])
             ->name('settings.qms-templates.activate');
 
+        Route::delete('/settings/qms-templates/{module}/{template}', [QmsTemplateSettingsController::class, 'destroyTemplate'])
+            ->name('settings.qms-templates.destroy');
+
         Route::post('/settings/qms-templates/{module}/fields', [QmsTemplateSettingsController::class, 'storeField'])
             ->name('settings.qms-templates.fields.store');
 
@@ -243,7 +246,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/performance/uploads/{upload}/download', [PerformanceController::class, 'download'])
             ->name('performance.uploads.download');
 
-        Route::get('/upload', fn() => Inertia::render('Upload'))->name('upload');
+        Route::get('/upload', fn () => Inertia::render('Upload'))->name('upload');
 
         /*
         |--------------------------------------------------------------------------
