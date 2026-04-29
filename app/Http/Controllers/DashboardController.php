@@ -8,6 +8,8 @@ use App\Models\DocumentSeries;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
 use App\Models\OfiRecord;
+use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
@@ -105,124 +107,85 @@ class DashboardController extends Controller
             ->values();
 
         // ── Recent QMS form activity (last 5 records across OFI / DCR / CAR) ─
-        $recentOfi = OfiRecord::query()
-            ->with('creator:id,name')
+        $activityRows = DB::table('ofi_records')
+            ->selectRaw("'OFI' as type, id, ofi_no as record_no_raw, created_by, workflow_status, updated_at")
             ->whereNotNull('workflow_status')
+            ->unionAll(
+                DB::table('dcr_records')
+                    ->selectRaw("'DCR' as type, id, dcr_no as record_no_raw, created_by, workflow_status, updated_at")
+                    ->whereNotNull('workflow_status')
+            )
+            ->unionAll(
+                DB::table('car_records')
+                    ->selectRaw("'CAR' as type, id, car_no as record_no_raw, created_by, workflow_status, updated_at")
+                    ->whereNotNull('workflow_status')
+            )
             ->orderByDesc('updated_at')
             ->limit(5)
-            ->get()
-            ->map(fn(OfiRecord $r) => [
-                'type' => 'OFI',
-                'record_no' => $r->ofi_no ?: ('OFI #' . $r->id),
-                'actor' => $r->creator?->name ?? '—',
-                'workflow_status' => $r->workflow_status,
-                'updated_at' => $r->updated_at?->diffForHumans(),
-                'sort_ts' => $r->updated_at?->timestamp ?? 0,
-            ]);
+            ->get();
 
-        $recentDcr = DcrRecord::query()
-            ->with('creator:id,name')
-            ->whereNotNull('workflow_status')
-            ->orderByDesc('updated_at')
-            ->limit(5)
-            ->get()
-            ->map(fn(DcrRecord $r) => [
-                'type' => 'DCR',
-                'record_no' => $r->dcr_no ?: ('DCR #' . $r->id),
-                'actor' => $r->creator?->name ?? '—',
-                'workflow_status' => $r->workflow_status,
-                'updated_at' => $r->updated_at?->diffForHumans(),
-                'sort_ts' => $r->updated_at?->timestamp ?? 0,
-            ]);
+        $creators = User::whereIn('id', $activityRows->pluck('created_by')->filter()->unique()->values()->all())
+            ->pluck('name', 'id');
 
-        $recentCar = CarRecord::query()
-            ->with('creator:id,name')
-            ->whereNotNull('workflow_status')
-            ->orderByDesc('updated_at')
-            ->limit(5)
-            ->get()
-            ->map(fn(CarRecord $r) => [
-                'type' => 'CAR',
-                'record_no' => $r->car_no ?: ('CAR #' . $r->id),
-                'actor' => $r->creator?->name ?? '—',
-                'workflow_status' => $r->workflow_status,
-                'updated_at' => $r->updated_at?->diffForHumans(),
-                'sort_ts' => $r->updated_at?->timestamp ?? 0,
-            ]);
-
-        $recentActivity = $recentOfi
-            ->concat($recentDcr)
-            ->concat($recentCar)
-            ->sortByDesc('sort_ts')
-            ->take(5)
-            ->map(fn($item) => collect($item)->except('sort_ts')->all())
-            ->values();
+        $recentActivity = $activityRows->map(fn($row) => [
+            'type' => $row->type,
+            'record_no' => $row->record_no_raw ?: ($row->type . ' #' . $row->id),
+            'actor' => $creators->get($row->created_by) ?? '—',
+            'workflow_status' => $row->workflow_status,
+            'updated_at' => Carbon::parse($row->updated_at)->diffForHumans(),
+        ])->values();
 
         // ── Yearly Statistics (OFI / DCR / CAR) ──────────────────────────────
         // "Closed" = workflow_status = 'approved'
-        // Three lightweight selectRaw+groupBy queries, merged in PHP
-
-        $ofiYearly = DB::table('ofi_records')
-            ->selectRaw("YEAR(created_at) as year, COUNT(*) as total, SUM(workflow_status = 'approved') as closed")
+        $yearlyStats = DB::table('ofi_records')
+            ->selectRaw("'OFI' as type, YEAR(created_at) as year, COUNT(*) as total, SUM(workflow_status = 'approved') as closed")
             ->groupByRaw('YEAR(created_at)')
-            ->orderByRaw('YEAR(created_at)')
+            ->unionAll(
+                DB::table('dcr_records')
+                    ->selectRaw("'DCR' as type, YEAR(created_at) as year, COUNT(*) as total, SUM(workflow_status = 'approved') as closed")
+                    ->groupByRaw('YEAR(created_at)')
+            )
+            ->unionAll(
+                DB::table('car_records')
+                    ->selectRaw("'CAR' as type, YEAR(created_at) as year, COUNT(*) as total, SUM(workflow_status = 'approved') as closed")
+                    ->groupByRaw('YEAR(created_at)')
+            )
             ->get()
-            ->keyBy('year');
+            ->groupBy('year')
+            ->map(function ($rows, $year) {
+                $byType = collect($rows)->keyBy('type');
+                $ofi = $byType->get('OFI');
+                $dcr = $byType->get('DCR');
+                $car = $byType->get('CAR');
 
-        $dcrYearly = DB::table('dcr_records')
-            ->selectRaw("YEAR(created_at) as year, COUNT(*) as total, SUM(workflow_status = 'approved') as closed")
-            ->groupByRaw('YEAR(created_at)')
-            ->orderByRaw('YEAR(created_at)')
-            ->get()
-            ->keyBy('year');
+                $ofiTotal = (int) ($ofi->total ?? 0);
+                $ofiClosed = (int) ($ofi->closed ?? 0);
+                $dcrTotal = (int) ($dcr->total ?? 0);
+                $dcrClosed = (int) ($dcr->closed ?? 0);
+                $carTotal = (int) ($car->total ?? 0);
+                $carClosed = (int) ($car->closed ?? 0);
 
-        $carYearly = DB::table('car_records')
-            ->selectRaw("YEAR(created_at) as year, COUNT(*) as total, SUM(workflow_status = 'approved') as closed")
-            ->groupByRaw('YEAR(created_at)')
-            ->orderByRaw('YEAR(created_at)')
-            ->get()
-            ->keyBy('year');
+                $grandTotal = $ofiTotal + $dcrTotal + $carTotal;
+                $grandClosed = $ofiClosed + $dcrClosed + $carClosed;
 
-        // Collect all unique years across all three
-        $allYears = collect()
-            ->merge($ofiYearly->keys())
-            ->merge($dcrYearly->keys())
-            ->merge($carYearly->keys())
-            ->unique()
-            ->sort()
+                return [
+                    'year' => (int) $year,
+                    'ofi_total' => $ofiTotal,
+                    'ofi_closed' => $ofiClosed,
+                    'dcr_total' => $dcrTotal,
+                    'dcr_closed' => $dcrClosed,
+                    'car_total' => $carTotal,
+                    'car_closed' => $carClosed,
+                    'grand_total' => $grandTotal,
+                    'grand_closed' => $grandClosed,
+                    // close rate as integer percent (0–100) for the bar fill
+                    'close_rate' => $grandTotal > 0
+                        ? (int) round($grandClosed / $grandTotal * 100)
+                        : 0,
+                ];
+            })
+            ->sortKeys()
             ->values();
-
-        $yearlyStats = $allYears->map(function ($year) use ($ofiYearly, $dcrYearly, $carYearly) {
-            $ofi = $ofiYearly->get($year);
-            $dcr = $dcrYearly->get($year);
-            $car = $carYearly->get($year);
-
-            $ofiTotal = (int) ($ofi->total ?? 0);
-            $ofiClosed = (int) ($ofi->closed ?? 0);
-            $dcrTotal = (int) ($dcr->total ?? 0);
-            $dcrClosed = (int) ($dcr->closed ?? 0);
-            $carTotal = (int) ($car->total ?? 0);
-            $carClosed = (int) ($car->closed ?? 0);
-
-            $grandTotal = $ofiTotal + $dcrTotal + $carTotal;
-            $grandClosed = $ofiClosed + $dcrClosed + $carClosed;
-
-            return [
-                'year' => (int) $year,
-                'ofi_total' => $ofiTotal,
-                'ofi_closed' => $ofiClosed,
-                'dcr_total' => $dcrTotal,
-                'dcr_closed' => $dcrClosed,
-                'car_total' => $carTotal,
-                'car_closed' => $carClosed,
-                'grand_total' => $grandTotal,
-                'grand_closed' => $grandClosed,
-                // close rate as integer percent (0–100) for the bar fill
-                'close_rate' => $grandTotal > 0
-                    ? (int) round($grandClosed / $grandTotal * 100)
-                    : 0,
-            ];
-        })->values();
 
         return Inertia::render('Dashboard', [
             'summary' => [

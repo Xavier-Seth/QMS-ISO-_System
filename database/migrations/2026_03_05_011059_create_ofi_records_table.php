@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('ofi_records', function (Blueprint $table) {
@@ -18,7 +19,7 @@ return new class extends Migration {
             $table->string('ref_no')->nullable()->index();
             $table->string('to')->nullable()->index();
 
-            $table->enum('status', ['draft', 'final', 'closed'])->default('draft');
+            $table->enum('status', ['draft', 'submitted'])->default('draft');
 
             // store EVERYTHING here (same shape as your Vue form)
             $table->json('data');
