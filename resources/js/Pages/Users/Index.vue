@@ -67,23 +67,28 @@ const closeCreate = () => {
 const submitCreate = () => {
   loading.open("Creating user...");
 
-  createForm.post("/users", {
-    preserveScroll: true,
-    onSuccess: () => {
-      showCreate.value = false;
-      createForm.reset();
+  try {
+    createForm.post("/users", {
+      preserveScroll: true,
+      onSuccess: () => {
+        showCreate.value = false;
+        createForm.reset();
 
-      router.reload({
-        preserveScroll: true,
-      });
-    },
-    onError: () => {
-      toast.error("Failed to create user. Please check the form and try again.");
-    },
-    onFinish: () => {
-      loading.close();
-    },
-  });
+        router.reload({
+          preserveScroll: true,
+        });
+      },
+      onError: () => {
+        loading.close();
+        toast.error("Failed to create user. Please check the form and try again.");
+      },
+      onFinish: () => {
+        loading.close();
+      },
+    });
+  } catch {
+    loading.close();
+  }
 };
 
 const deleteUser = async (user) => {
@@ -99,20 +104,25 @@ const deleteUser = async (user) => {
 
   loading.open("Deleting user...");
 
-  router.delete(`/users/${user.id}`, {
-    preserveScroll: true,
-    onSuccess: () => {
-      router.reload({
-        preserveScroll: true,
-      });
-    },
-    onError: () => {
-      toast.error("Failed to delete user.");
-    },
-    onFinish: () => {
-      loading.close();
-    },
-  });
+  try {
+    router.delete(`/users/${user.id}`, {
+      preserveScroll: true,
+      onSuccess: () => {
+        router.reload({
+          preserveScroll: true,
+        });
+      },
+      onError: () => {
+        loading.close();
+        toast.error("Failed to delete user.");
+      },
+      onFinish: () => {
+        loading.close();
+      },
+    });
+  } catch {
+    loading.close();
+  }
 };
 </script>
 
