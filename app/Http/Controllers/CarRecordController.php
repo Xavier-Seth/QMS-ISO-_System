@@ -13,7 +13,6 @@ use App\Support\QmsTemplateModules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Inertia\Inertia;
 
 class CarRecordController extends Controller
 {
@@ -21,8 +20,7 @@ class CarRecordController extends Controller
         protected ActivityLogService $activityLogService,
         protected QmsTemplateResolver $templateResolver,
         protected QmsDynamicFieldValidator $dynamicFieldValidator
-    ) {
-    }
+    ) {}
 
     private function rQms017TypeId(): int
     {
@@ -39,7 +37,7 @@ class CarRecordController extends Controller
     {
         $tmpDir = storage_path('app/car_forms_tmp');
 
-        if (!is_dir($tmpDir)) {
+        if (! is_dir($tmpDir)) {
             mkdir($tmpDir, 0755, true);
         }
 
@@ -142,7 +140,7 @@ class CarRecordController extends Controller
             $requestedStatus = 'draft';
         }
 
-        if (!in_array($requestedStatus, $allowedStatuses, true)) {
+        if (! in_array($requestedStatus, $allowedStatuses, true)) {
             return $currentStatus;
         }
 
@@ -180,14 +178,14 @@ class CarRecordController extends Controller
 
         if ($existingUpload) {
             $fileName = $existingUpload->file_name
-                ?: ($this->sanitizeBaseFileName($requestedFileName, $carRecord) . '.docx');
+                ?: ($this->sanitizeBaseFileName($requestedFileName, $carRecord).'.docx');
 
-            $tmpPath = $tmpDir . '/' . uniqid('car_republish_', true) . '_' . $fileName;
+            $tmpPath = $tmpDir.'/'.uniqid('car_republish_', true).'_'.$fileName;
             $this->generateDocxToPath($carRecord, $tmpPath);
 
             $oldDisk = $existingUpload->getStorageDiskName();
             $oldPath = $existingUpload->file_path;
-            $storedPath = $existingUpload->file_path ?: ('documents/car/' . $fileName);
+            $storedPath = $existingUpload->file_path ?: ('documents/car/'.$fileName);
 
             $written = $disk->put($storedPath, file_get_contents($tmpPath));
 
@@ -234,14 +232,14 @@ class CarRecordController extends Controller
 
         $baseName = $this->sanitizeBaseFileName($requestedFileName, $carRecord);
         $fileName = "{$baseName}.docx";
-        $storedPath = 'documents/car/' . $fileName;
+        $storedPath = 'documents/car/'.$fileName;
 
         if ($disk->exists($storedPath)) {
-            $fileName = "{$baseName}_" . now()->format('His') . '.docx';
-            $storedPath = 'documents/car/' . $fileName;
+            $fileName = "{$baseName}_".now()->format('His').'.docx';
+            $storedPath = 'documents/car/'.$fileName;
         }
 
-        $tmpPath = $tmpDir . '/' . uniqid('car_publish_', true) . '_' . $fileName;
+        $tmpPath = $tmpDir.'/'.uniqid('car_publish_', true).'_'.$fileName;
         $this->generateDocxToPath($carRecord, $tmpPath);
 
         $written = $disk->put($storedPath, file_get_contents($tmpPath));
@@ -300,6 +298,7 @@ class CarRecordController extends Controller
             'resolution_status' => $record->resolution_status,
         ]);
     }
+
     public function updateResolutionStatus(Request $request, CarRecord $carRecord)
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can update CAR resolution status.');
@@ -323,7 +322,7 @@ class CarRecordController extends Controller
             'closed' => ['closed'],
         ];
 
-        if (!in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)) {
+        if (! in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)) {
             return response()->json([
                 'message' => "Invalid resolution status transition from {$currentStatus} to {$newStatus}.",
             ], 422);
@@ -339,6 +338,7 @@ class CarRecordController extends Controller
             'resolution_status' => $carRecord->resolution_status,
         ]);
     }
+
     public function show(CarRecord $carRecord)
     {
         $this->ensureCanManageRecord($carRecord);
@@ -416,7 +416,7 @@ class CarRecordController extends Controller
             ], 422);
         }
 
-        if (!$this->canEditRecordContent($carRecord)) {
+        if (! $this->canEditRecordContent($carRecord)) {
             return response()->json([
                 'message' => 'This CAR record can no longer be submitted from its current state.',
             ], 422);
@@ -455,7 +455,7 @@ class CarRecordController extends Controller
             'action' => 'submitted',
             'entity_type' => CarRecord::class,
             'entity_id' => $carRecord->id,
-            'record_label' => $carRecord->car_no ?: 'CAR #' . $carRecord->id,
+            'record_label' => $carRecord->car_no ?: 'CAR #'.$carRecord->id,
             'file_type' => null,
             'description' => $isResubmission
                 ? 'CAR corrected and resubmitted to admin.'
@@ -477,8 +477,8 @@ class CarRecordController extends Controller
 
         $tmpDir = $this->ensureTmpDir();
 
-        $fileName = 'CAR_' . ($carRecord->car_no ?: now()->format('Ymd_His')) . '.docx';
-        $outputPath = $tmpDir . '/' . uniqid('car_download_', true) . '_' . $fileName;
+        $fileName = 'CAR_'.($carRecord->car_no ?: now()->format('Ymd_His')).'.docx';
+        $outputPath = $tmpDir.'/'.uniqid('car_download_', true).'_'.$fileName;
 
         $this->generateDocxToPath($carRecord, $outputPath);
 
@@ -487,9 +487,9 @@ class CarRecordController extends Controller
             'action' => 'downloaded',
             'entity_type' => CarRecord::class,
             'entity_id' => $carRecord->id,
-            'record_label' => $carRecord->car_no ?: 'CAR #' . $carRecord->id,
+            'record_label' => $carRecord->car_no ?: 'CAR #'.$carRecord->id,
             'file_type' => 'docx',
-            'description' => 'Downloaded generated CAR form ' . ($carRecord->car_no ?: 'CAR #' . $carRecord->id),
+            'description' => 'Downloaded generated CAR form '.($carRecord->car_no ?: 'CAR #'.$carRecord->id),
         ]);
 
         return response()->download($outputPath, $fileName, [
@@ -550,9 +550,9 @@ class CarRecordController extends Controller
             'action' => 'published',
             'entity_type' => CarRecord::class,
             'entity_id' => $carRecord->id,
-            'record_label' => $carRecord->car_no ?: 'CAR #' . $carRecord->id,
+            'record_label' => $carRecord->car_no ?: 'CAR #'.$carRecord->id,
             'file_type' => 'docx',
-            'description' => 'Published CAR record ' . ($carRecord->car_no ?: 'CAR #' . $carRecord->id) . ' as document ' . $upload->file_name,
+            'description' => 'Published CAR record '.($carRecord->car_no ?: 'CAR #'.$carRecord->id).' as document '.$upload->file_name,
             'new_values' => [
                 'upload_id' => $upload->id,
                 'file_name' => $upload->file_name,
@@ -588,6 +588,9 @@ class CarRecordController extends Controller
             $carRecord->update([
                 'workflow_status' => 'approved',
                 'resolution_status' => $carRecord->resolution_status ?: 'open',
+                'rejection_reason' => null,
+                'rejected_at' => null,
+                'rejected_by' => null,
                 'updated_by' => auth()->id(),
             ]);
 
@@ -607,9 +610,9 @@ class CarRecordController extends Controller
                     'action' => 'approved',
                     'entity_type' => CarRecord::class,
                     'entity_id' => $fresh->id,
-                    'record_label' => $fresh->car_no ?: 'CAR #' . $fresh->id,
+                    'record_label' => $fresh->car_no ?: 'CAR #'.$fresh->id,
                     'file_type' => 'docx',
-                    'description' => 'Approved CAR and published document ' . $upload->file_name,
+                    'description' => 'Approved CAR and published document '.$upload->file_name,
                     'new_values' => [
                         'workflow_status' => $fresh->workflow_status,
                         'resolution_status' => $fresh->resolution_status,
@@ -647,7 +650,7 @@ class CarRecordController extends Controller
             'action' => 'rejected',
             'entity_type' => CarRecord::class,
             'entity_id' => $carRecord->id,
-            'record_label' => $carRecord->car_no ?: 'CAR #' . $carRecord->id,
+            'record_label' => $carRecord->car_no ?: 'CAR #'.$carRecord->id,
             'file_type' => null,
             'description' => 'Rejected CAR and returned it for correction.',
             'new_values' => [
