@@ -8,58 +8,68 @@ return new class extends Migration
 {
     public function up(): void
     {
-        // car_records: created_by and updated_by were restrictOnDelete — standardize to nullOnDelete
+        $carFks = array_column(Schema::getForeignKeys('car_records'), 'name');
+
+        Schema::table('car_records', function (Blueprint $table) use ($carFks) {
+            if (in_array('car_records_created_by_foreign', $carFks)) {
+                $table->dropForeign('car_records_created_by_foreign');
+            }
+            if (in_array('car_records_updated_by_foreign', $carFks)) {
+                $table->dropForeign('car_records_updated_by_foreign');
+            }
+        });
+
         Schema::table('car_records', function (Blueprint $table) {
-            try {
-                $table->dropForeign(['created_by']);
-            } catch (\Throwable $e) {
-            }
-
-            try {
-                $table->dropForeign(['updated_by']);
-            } catch (\Throwable $e) {
-            }
-
+            $table->unsignedBigInteger('created_by')->nullable()->change();
+            $table->unsignedBigInteger('updated_by')->nullable()->change();
             $table->foreign('created_by')->references('id')->on('users')->nullOnDelete();
             $table->foreign('updated_by')->references('id')->on('users')->nullOnDelete();
         });
 
-        // document_uploads: uploaded_by was cascadeOnDelete — standardize to nullOnDelete
-        Schema::table('document_uploads', function (Blueprint $table) {
-            try {
-                $table->dropForeign(['uploaded_by']);
-            } catch (\Throwable $e) {
-            }
+        $uploadFks = array_column(Schema::getForeignKeys('document_uploads'), 'name');
 
+        Schema::table('document_uploads', function (Blueprint $table) use ($uploadFks) {
+            if (in_array('document_uploads_uploaded_by_foreign', $uploadFks)) {
+                $table->dropForeign('document_uploads_uploaded_by_foreign');
+            }
+        });
+
+        Schema::table('document_uploads', function (Blueprint $table) {
+            $table->unsignedBigInteger('uploaded_by')->nullable()->change();
             $table->foreign('uploaded_by')->references('id')->on('users')->nullOnDelete();
         });
     }
 
     public function down(): void
     {
-        // Restore car_records to original restrictOnDelete behavior
+        $carFks = array_column(Schema::getForeignKeys('car_records'), 'name');
+
+        Schema::table('car_records', function (Blueprint $table) use ($carFks) {
+            if (in_array('car_records_created_by_foreign', $carFks)) {
+                $table->dropForeign('car_records_created_by_foreign');
+            }
+            if (in_array('car_records_updated_by_foreign', $carFks)) {
+                $table->dropForeign('car_records_updated_by_foreign');
+            }
+        });
+
         Schema::table('car_records', function (Blueprint $table) {
-            try {
-                $table->dropForeign(['created_by']);
-            } catch (\Throwable $e) {
-            }
-
-            try {
-                $table->dropForeign(['updated_by']);
-            } catch (\Throwable $e) {
-            }
-
+            $table->unsignedBigInteger('created_by')->nullable(false)->change();
+            $table->unsignedBigInteger('updated_by')->nullable(false)->change();
             $table->foreign('created_by')->references('id')->on('users')->restrictOnDelete();
             $table->foreign('updated_by')->references('id')->on('users')->restrictOnDelete();
         });
 
-        // Restore document_uploads to original cascadeOnDelete behavior
-        Schema::table('document_uploads', function (Blueprint $table) {
-            try {
-                $table->dropForeign(['uploaded_by']);
-            } catch (\Throwable $e) {
-            }
+        $uploadFks = array_column(Schema::getForeignKeys('document_uploads'), 'name');
 
+        Schema::table('document_uploads', function (Blueprint $table) use ($uploadFks) {
+            if (in_array('document_uploads_uploaded_by_foreign', $uploadFks)) {
+                $table->dropForeign('document_uploads_uploaded_by_foreign');
+            }
+        });
+
+        Schema::table('document_uploads', function (Blueprint $table) {
+            $table->unsignedBigInteger('uploaded_by')->nullable(false)->change();
             $table->foreign('uploaded_by')->references('id')->on('users')->cascadeOnDelete();
         });
     }
