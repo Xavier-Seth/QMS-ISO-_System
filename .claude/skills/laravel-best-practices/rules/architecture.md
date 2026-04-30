@@ -24,6 +24,7 @@ class CreateOrderAction
 Always use constructor injection. Avoid `app()` or `resolve()` inside classes.
 
 Incorrect:
+
 ```php
 class OrderController extends Controller
 {
@@ -37,6 +38,7 @@ class OrderController extends Controller
 ```
 
 Correct:
+
 ```php
 class OrderController extends Controller
 {
@@ -54,6 +56,7 @@ class OrderController extends Controller
 Depend on contracts at system boundaries (payment gateways, notification channels, external APIs) for testability and swappability.
 
 Incorrect (concrete dependency):
+
 ```php
 class OrderService
 {
@@ -62,6 +65,7 @@ class OrderService
 ```
 
 Correct (interface dependency):
+
 ```php
 interface PaymentGateway
 {
@@ -85,11 +89,13 @@ $this->app->bind(PaymentGateway::class, StripeGateway::class);
 When no explicit order is specified, sort by `id` or `created_at` descending. Without an explicit `ORDER BY`, row order is undefined.
 
 Incorrect:
+
 ```php
 $posts = Post::paginate();
 ```
 
 Correct:
+
 ```php
 $posts = Post::latest()->paginate();
 ```
@@ -99,12 +105,18 @@ $posts = Post::latest()->paginate();
 Prevent race conditions with `Cache::lock()` or `lockForUpdate()`.
 
 ```php
+// Cache-based lock (no DB transaction needed)
 Cache::lock('order-processing-'.$order->id, 10)->block(5, function () use ($order) {
     $order->process();
 });
 
-// Or at query level
-$product = Product::where('id', $id)->lockForUpdate()->first();
+// Query-level lock — MUST be inside a transaction.
+// Without DB::transaction(), autocommit releases the lock immediately
+// after the SELECT, leaving subsequent writes unprotected.
+DB::transaction(function () use ($id) {
+    $product = Product::where('id', $id)->lockForUpdate()->first();
+    // ... mutations here are protected
+});
 ```
 
 ## Use `mb_*` String Functions
@@ -112,12 +124,14 @@ $product = Product::where('id', $id)->lockForUpdate()->first();
 When no Laravel helper exists, prefer `mb_strlen`, `mb_strtolower`, etc. for UTF-8 safety. Standard PHP string functions count bytes, not characters.
 
 Incorrect:
+
 ```php
 strlen('José');          // 5 (bytes, not characters)
 strtolower('MÜNCHEN');  // 'mÜnchen' — fails on multibyte
 ```
 
 Correct:
+
 ```php
 mb_strlen('José');             // 4 (characters)
 mb_strtolower('MÜNCHEN');     // 'münchen'
@@ -132,11 +146,13 @@ Str::lower('MÜNCHEN');        // 'münchen'
 For lightweight tasks that don't need to survive a crash (logging, analytics, cleanup), use `defer()` instead of dispatching a job. The callback runs after the HTTP response is sent — no queue overhead.
 
 Incorrect (job overhead for trivial work):
+
 ```php
 dispatch(new LogPageView($page));
 ```
 
 Correct (runs after response, same process):
+
 ```php
 defer(fn () => PageView::create(['page_id' => $page->id, 'user_id' => auth()->id()]));
 ```
@@ -177,6 +193,7 @@ Each closure runs in a separate process with full Laravel access. Use for indepe
 Follow Laravel conventions. Don't override defaults unnecessarily.
 
 Incorrect:
+
 ```php
 class Customer extends Model
 {
@@ -191,6 +208,7 @@ class Customer extends Model
 ```
 
 Correct:
+
 ```php
 class Customer extends Model
 {

@@ -58,21 +58,43 @@ $feature->load('comments.user');
 $feature->comments->each->setRelation('feature', $feature);
 ```
 
-## Prefer `whereIn` + Subquery Over `whereHas`
+## `whereHas` vs `whereIn` — Know the Trade-offs
 
-`whereHas()` emits a correlated `EXISTS` subquery that re-executes per row. Using `whereIn()` with a `select('id')` subquery lets the database use an index lookup instead, without loading data into PHP memory.
+`whereHas()` emits a correlated `EXISTS` subquery. `whereIn()` with `select('id')`
+emits a non-correlated `IN` subquery. Which is faster depends on your database,
+version, indexes, and data selectivity — always verify with `EXPLAIN ANALYZE`.
 
-Incorrect (correlated EXISTS re-executes per row):
+**General guidance:**
+
+- `whereIn()` tends to win when the subquery returns a small, selective result set
+  and the FK column is indexed — the planner can use an index lookup per ID.
+- `whereHas()` can win (or tie) on modern optimizers (MySQL 8.0+, PostgreSQL 10+)
+  that rewrite correlated EXISTS into semijoins automatically.
+- `whereHas()` remains the idiomatic Laravel choice for relationship existence checks
+  with no filtering, or when the relationship condition is complex.
+- Neither loads data into PHP memory — both are pure SQL; the "PHP memory" concern
+  only applies to `->get()` followed by PHP-side filtering.
+
+**When `whereIn` is a reasonable optimization to try:**
 
 ```php
-$query->whereHas('company', fn ($q) => $q->where('name', 'like', $term));
-```
-
-Correct (index-friendly subquery, no PHP memory overhead):
-
-```php
+// Filtering on a related model attribute with high selectivity
 $query->whereIn('company_id', Company::where('name', 'like', $term)->select('id'));
 ```
+
+**When `whereHas` is fine or preferable:**
+
+```php
+// Simple existence check — idiomatic, optimizer handles it well
+$query->whereHas('company');
+
+// Complex nested conditions — cleaner and equally fast with proper indexes
+$query->whereHas('company', fn ($q) => $q->active()->where('region', $region));
+```
+
+**The real bottleneck is almost always a missing index**, not the subquery style.
+Before rewriting queries, check that FK columns (`company_id`) and filtered
+columns (`name`) are indexed, then use `EXPLAIN ANALYZE` on real data.
 
 ## Sometimes Two Simple Queries Beat One Complex Query
 
