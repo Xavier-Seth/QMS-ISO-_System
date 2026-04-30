@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
 use App\Models\OfiRecord;
+use App\Models\User;
+use App\Notifications\RecordDecisionNotification;
+use App\Notifications\RecordSubmittedNotification;
 use App\Services\ActivityLogService;
 use App\Services\OFIFormGenerator;
 use App\Services\QmsDynamicFieldValidator;
@@ -416,6 +419,9 @@ class OfiRecordController extends Controller
             'updated_by' => auth()->id(),
         ]);
 
+        User::where('role', 'admin')->get()
+            ->each->notify(new RecordSubmittedNotification($ofiRecord, 'ofi'));
+
         return response()->json([
             'message' => $isResubmission
                 ? 'OFI corrected and resubmitted to admin successfully.'
@@ -528,16 +534,22 @@ class OfiRecordController extends Controller
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can approve OFI records.');
 
-        if ($ofiRecord->status !== 'submitted' || $ofiRecord->workflow_status !== 'pending') {
-            return back()->with('error', 'Only submitted pending OFI records can be approved.');
-        }
+        $guardError = null;
 
-        $this->dynamicFieldValidator->validateRequiredFields(
-            QmsTemplateModules::OFI,
-            is_array($ofiRecord->data) ? $ofiRecord->data : []
-        );
+        DB::transaction(function () use ($ofiRecord, &$guardError) {
+            $ofiRecord = OfiRecord::lockForUpdate()->find($ofiRecord->id);
 
-        DB::transaction(function () use ($ofiRecord) {
+            if ($ofiRecord->status !== 'submitted' || $ofiRecord->workflow_status !== 'pending') {
+                $guardError = 'Only submitted pending OFI records can be approved.';
+
+                return;
+            }
+
+            $this->dynamicFieldValidator->validateRequiredFields(
+                QmsTemplateModules::OFI,
+                is_array($ofiRecord->data) ? $ofiRecord->data : []
+            );
+
             $ofiRecord->update([
                 'workflow_status' => 'approved',
                 'resolution_status' => $ofiRecord->resolution_status ?: 'open',
@@ -572,8 +584,14 @@ class OfiRecordController extends Controller
                         'upload_id' => $upload->id,
                     ],
                 ]);
+
+                $fresh->creator?->notify(new RecordDecisionNotification($fresh, 'ofi', 'approved'));
             });
         });
+
+        if ($guardError !== null) {
+            return back()->with('error', $guardError);
+        }
 
         return back()->with('success', 'OFI approved and published successfully.');
     }
@@ -597,6 +615,10 @@ class OfiRecordController extends Controller
             'rejected_by' => auth()->id(),
             'updated_by' => auth()->id(),
         ]);
+
+        $ofiRecord->creator?->notify(
+            new RecordDecisionNotification($ofiRecord, 'ofi', 'rejected', $validated['rejection_reason'])
+        );
 
         return back()->with('success', 'OFI rejected and returned for correction.');
     }

@@ -181,6 +181,15 @@ class RecordApprovalTest extends TestCase
             $table->text('user_agent')->nullable();
             $table->timestamp('created_at')->nullable();
         });
+
+        Schema::create('notifications', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('type');
+            $table->morphs('notifiable');
+            $table->text('data');
+            $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+        });
     }
 
     // --- Finding #4 ---

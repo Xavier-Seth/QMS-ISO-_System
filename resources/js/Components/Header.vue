@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { usePage } from "@inertiajs/vue3";
+import NotificationDropdown from "@/Components/NotificationDropdown.vue";
 
 const props = defineProps({
   showSearch: { type: Boolean, default: false },
@@ -20,8 +21,6 @@ watch(
 );
 
 const submit = () => emit("search", q.value);
-
-const hasNotif = true;
 
 /* ===============================
    Display Name (remove middle)
@@ -97,28 +96,7 @@ const displayName = computed(() => {
           </button>
 
           <!-- BELL ICON -->
-          <button
-            class="relative h-10 w-10 rounded-full bg-[#e7e7e7] flex items-center justify-center"
-            type="button"
-          >
-            <span
-              v-if="hasNotif"
-              class="absolute top-2 right-2 h-2 w-2 rounded-full bg-red-500"
-            />
-
-            <svg
-              class="w-5 h-5 text-[#1f2937]"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <path d="M18 8a6 6 0 10-12 0c0 7-3 7-3 7h18s-3 0-3-7" />
-              <path d="M13.73 21a2 2 0 01-3.46 0" />
-            </svg>
-          </button>
+          <NotificationDropdown />
 
           <!-- USER PROFILE -->
           <div class="flex items-center gap-3">

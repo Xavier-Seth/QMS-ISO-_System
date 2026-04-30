@@ -5,6 +5,9 @@ namespace App\Http\Controllers;
 use App\Models\DcrRecord;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
+use App\Models\User;
+use App\Notifications\RecordDecisionNotification;
+use App\Notifications\RecordSubmittedNotification;
 use App\Services\ActivityLogService;
 use App\Services\DcrDynamicFieldValidator;
 use App\Services\DCRFormGenerator;
@@ -481,6 +484,9 @@ class DcrRecordController extends Controller
                 : 'DCR submitted to admin for approval.',
         ]);
 
+        User::where('role', 'admin')->get()
+            ->each->notify(new RecordSubmittedNotification($dcrRecord, 'dcr'));
+
         return response()->json([
             'message' => $isResubmission
                 ? 'DCR corrected and resubmitted to admin successfully.'
@@ -597,13 +603,19 @@ class DcrRecordController extends Controller
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can approve DCR records.');
 
-        if ($dcrRecord->status !== 'submitted' || $dcrRecord->workflow_status !== 'pending') {
-            return back()->with('error', 'Only submitted pending DCR records can be approved.');
-        }
+        $guardError = null;
 
-        $this->dynamicFieldValidator->validateRequiredFields(is_array($dcrRecord->data) ? $dcrRecord->data : []);
+        DB::transaction(function () use ($dcrRecord, &$guardError) {
+            $dcrRecord = DcrRecord::lockForUpdate()->find($dcrRecord->id);
 
-        DB::transaction(function () use ($dcrRecord) {
+            if ($dcrRecord->status !== 'submitted' || $dcrRecord->workflow_status !== 'pending') {
+                $guardError = 'Only submitted pending DCR records can be approved.';
+
+                return;
+            }
+
+            $this->dynamicFieldValidator->validateRequiredFields(is_array($dcrRecord->data) ? $dcrRecord->data : []);
+
             $dcrRecord->update([
                 'workflow_status' => 'approved',
                 'resolution_status' => $dcrRecord->resolution_status ?: 'open',
@@ -638,8 +650,14 @@ class DcrRecordController extends Controller
                         'upload_id' => $upload->id,
                     ],
                 ]);
+
+                $fresh->creator?->notify(new RecordDecisionNotification($fresh, 'dcr', 'approved'));
             });
         });
+
+        if ($guardError !== null) {
+            return back()->with('error', $guardError);
+        }
 
         return back()->with('success', 'DCR approved and published successfully.');
     }
@@ -678,6 +696,10 @@ class DcrRecordController extends Controller
             ],
         ]);
 
+        $dcrRecord->creator?->notify(
+            new RecordDecisionNotification($dcrRecord, 'dcr', 'rejected', $validated['rejection_reason'])
+        );
+
         return back()->with('success', 'DCR rejected and returned for correction.');
     }
 
@@ -699,7 +721,7 @@ class DcrRecordController extends Controller
         $currentStatus = $dcrRecord->resolution_status ?: 'open';
 
         DB::transaction(function () use ($dcrRecord, $newStatus) {
-            $dcrRecord = $dcrRecord->lockForUpdate()->fresh();
+            $dcrRecord = DcrRecord::lockForUpdate()->find($dcrRecord->id);
             $currentStatus = $dcrRecord->resolution_status ?: 'open';
 
             $allowedTransitions = [

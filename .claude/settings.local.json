@@ -7,7 +7,9 @@
       "Bash(php artisan migrate --pretend*)",
       "Bash(php artisan test*)",
       "Bash(php artisan make:*)",
-      "mcp__laravel-boost__database-schema"
+      "mcp__laravel-boost__database-schema",
+      "Bash(php artisan *)",
+      "Bash(composer require *)"
     ]
   },
   "enableAllProjectMcpServers": false,
