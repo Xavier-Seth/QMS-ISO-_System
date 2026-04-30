@@ -698,26 +698,42 @@ class DcrRecordController extends Controller
         $newStatus = $validated['resolution_status'];
         $currentStatus = $dcrRecord->resolution_status ?: 'open';
 
-        $allowedTransitions = [
-            'open' => ['open', 'ongoing', 'closed'],
-            'ongoing' => ['ongoing', 'closed'],
-            'closed' => ['closed'],
-        ];
+        DB::transaction(function () use ($dcrRecord, $newStatus) {
+            $dcrRecord = $dcrRecord->lockForUpdate()->fresh();
+            $currentStatus = $dcrRecord->resolution_status ?: 'open';
 
-        if (! in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)) {
-            return response()->json([
-                'message' => "Invalid resolution status transition from {$currentStatus} to {$newStatus}.",
-            ], 422);
-        }
+            $allowedTransitions = [
+                'open' => ['open', 'ongoing', 'closed'],
+                'ongoing' => ['ongoing', 'closed'],
+                'closed' => ['closed'],
+            ];
 
-        $dcrRecord->update([
-            'resolution_status' => $newStatus,
-            'updated_by' => auth()->id(),
+            if (! in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)) {
+                throw ValidationException::withMessages([
+                    'resolution_status' => "Invalid transition from {$currentStatus} to {$newStatus}.",
+                ]);
+            }
+
+            $dcrRecord->update([
+                'resolution_status' => $newStatus,
+                'updated_by' => auth()->id(),
+            ]);
+        });
+
+        $this->activityLogService->log([
+            'module' => 'dcr',
+            'action' => 'resolution_status_changed',
+            'entity_type' => DcrRecord::class,
+            'entity_id' => $dcrRecord->id,
+            'record_label' => $dcrRecord->dcr_no ?: 'DCR #'.$dcrRecord->id,
+            'description' => "DCR resolution status changed from {$currentStatus} to {$newStatus}",
+            'old_values' => ['resolution_status' => $currentStatus],
+            'new_values' => ['resolution_status' => $newStatus],
         ]);
 
         return response()->json([
             'message' => 'DCR resolution status updated successfully.',
-            'resolution_status' => $dcrRecord->resolution_status,
+            'resolution_status' => $newStatus,
         ]);
     }
 
