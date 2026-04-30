@@ -45,6 +45,10 @@ const selectedRow = ref(null)
 const openActionMenuId = ref(null)
 const deletingType = ref(false)
 
+const userIsTyping = ref(false)
+let debounceTimer = null
+let typingTimer = null
+
 const createForm = useForm({
   series_id: '',
   document_no: '',
@@ -72,8 +76,6 @@ const performanceOptions = [
 ]
 
 const statusOptions = ['All', 'Active', 'Obsolete']
-
-let debounceTimer = null
 
 const selectedSeries = computed(() => {
   return props.seriesOptions.find((option) => String(option.id) === String(createForm.series_id)) || null
@@ -179,8 +181,16 @@ function applyFilters() {
 watch(q, () => {
   if (showPerformanceTypeDropdown.value) return
 
+  userIsTyping.value = true
   clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(applyFilters, 220)
+  clearTimeout(typingTimer)
+
+  debounceTimer = setTimeout(() => {
+    applyFilters()
+    typingTimer = setTimeout(() => {
+      userIsTyping.value = false
+    }, 500)
+  }, 220)
 })
 
 watch([sort, view], () => {
@@ -207,7 +217,9 @@ watch(status, () => {
 watch(
   () => props.filters,
   (newFilters) => {
-    q.value = newFilters?.q ?? ''
+    if (!userIsTyping.value) {
+      q.value = newFilters?.q ?? ''
+    }
     series.value = newFilters?.series ?? ''
     sort.value = newFilters?.sort ?? 'code_asc'
     view.value = newFilters?.view ?? 'group'
@@ -454,6 +466,8 @@ onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('click', handleGlobalClick)
   }
+  clearTimeout(debounceTimer)
+  clearTimeout(typingTimer)
 })
 </script>
 

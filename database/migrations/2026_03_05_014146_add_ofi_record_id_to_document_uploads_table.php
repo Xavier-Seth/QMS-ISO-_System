@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::table('document_uploads', function (Blueprint $table) {
@@ -13,8 +14,6 @@ return new class extends Migration {
                 ->after('uploaded_by')
                 ->constrained('ofi_records')
                 ->nullOnDelete();
-
-            $table->index('ofi_record_id');
         });
     }
 
@@ -22,7 +21,6 @@ return new class extends Migration {
     {
         Schema::table('document_uploads', function (Blueprint $table) {
             $table->dropForeign(['ofi_record_id']);
-            $table->dropIndex(['ofi_record_id']);
             $table->dropColumn('ofi_record_id');
         });
     }

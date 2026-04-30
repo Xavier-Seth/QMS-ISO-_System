@@ -13,7 +13,6 @@ use App\Support\QmsTemplateModules;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
-use Inertia\Inertia;
 
 class CarRecordController extends Controller
 {
@@ -300,6 +299,7 @@ class CarRecordController extends Controller
             'resolution_status' => $record->resolution_status,
         ]);
     }
+
     public function updateResolutionStatus(Request $request, CarRecord $carRecord)
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can update CAR resolution status.');
@@ -339,6 +339,7 @@ class CarRecordController extends Controller
             'resolution_status' => $carRecord->resolution_status,
         ]);
     }
+
     public function show(CarRecord $carRecord)
     {
         $this->ensureCanManageRecord($carRecord);
@@ -588,6 +589,9 @@ class CarRecordController extends Controller
             $carRecord->update([
                 'workflow_status' => 'approved',
                 'resolution_status' => $carRecord->resolution_status ?: 'open',
+                'rejection_reason' => null,
+                'rejected_at' => null,
+                'rejected_by' => null,
                 'updated_by' => auth()->id(),
             ]);
 
@@ -657,5 +661,64 @@ class CarRecordController extends Controller
         ]);
 
         return back()->with('success', 'CAR rejected and returned for correction.');
+    }
+
+    public function myRecords(Request $request)
+    {
+        $status = $request->input('workflow_status', 'all');
+        $allowed = ['all', 'pending', 'approved', 'rejected'];
+
+        if (!in_array($status, $allowed, true)) {
+            $status = 'all';
+        }
+
+        $query = CarRecord::query()
+            ->where('created_by', auth()->id());
+
+        if ($status !== 'all') {
+            $query->where('workflow_status', $status);
+        }
+
+        $records = $query
+            ->latest()
+            ->paginate(10)
+            ->withQueryString()
+            ->through(fn(CarRecord $record) => [
+                'id' => $record->id,
+                'car_no' => $record->car_no,
+                'ref_no' => $record->ref_no,
+                'dept_section' => $record->dept_section,
+                'status' => $record->status,
+                'workflow_status' => $record->workflow_status,
+                'resolution_status' => $record->resolution_status,
+                'rejection_reason' => $record->rejection_reason,
+                'created_at' => $record->created_at,
+            ]);
+
+        $counts = [
+            'all' => CarRecord::query()
+                ->where('created_by', auth()->id())
+                ->count(),
+            'pending' => CarRecord::query()
+                ->where('created_by', auth()->id())
+                ->where('workflow_status', 'pending')
+                ->count(),
+            'approved' => CarRecord::query()
+                ->where('created_by', auth()->id())
+                ->where('workflow_status', 'approved')
+                ->count(),
+            'rejected' => CarRecord::query()
+                ->where('created_by', auth()->id())
+                ->where('workflow_status', 'rejected')
+                ->count(),
+        ];
+
+        return \Inertia\Inertia::render('Inbox/MyCarRecords', [
+            'records' => $records,
+            'filters' => [
+                'workflow_status' => $status,
+            ],
+            'counts' => $counts,
+        ]);
     }
 }

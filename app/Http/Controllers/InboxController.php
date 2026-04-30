@@ -63,6 +63,11 @@ class InboxController extends Controller
             $request->query()
         );
 
+        // 3 grouped queries instead of 9 individual count() calls
+        $ofiCounts = $this->getAdminCountsGrouped(OfiRecord::class);
+        $carCounts = $this->getAdminCountsGrouped(CarRecord::class);
+        $dcrCounts = $this->getAdminCountsGrouped(DcrRecord::class);
+
         return Inertia::render('Inbox/Index', [
             'records' => $paginated,
             'filters' => [
@@ -71,24 +76,24 @@ class InboxController extends Controller
             ],
             'counts' => [
                 'all' => [
-                    'pending' => $this->getAdminOfiCount('pending') + $this->getAdminCarCount('pending') + $this->getAdminDcrCount('pending'),
-                    'approved' => $this->getAdminOfiCount('approved') + $this->getAdminCarCount('approved') + $this->getAdminDcrCount('approved'),
-                    'rejected' => $this->getAdminOfiCount('rejected') + $this->getAdminCarCount('rejected') + $this->getAdminDcrCount('rejected'),
+                    'pending' => ($ofiCounts['pending'] ?? 0) + ($carCounts['pending'] ?? 0) + ($dcrCounts['pending'] ?? 0),
+                    'approved' => ($ofiCounts['approved'] ?? 0) + ($carCounts['approved'] ?? 0) + ($dcrCounts['approved'] ?? 0),
+                    'rejected' => ($ofiCounts['rejected'] ?? 0) + ($carCounts['rejected'] ?? 0) + ($dcrCounts['rejected'] ?? 0),
                 ],
                 'ofi' => [
-                    'pending' => $this->getAdminOfiCount('pending'),
-                    'approved' => $this->getAdminOfiCount('approved'),
-                    'rejected' => $this->getAdminOfiCount('rejected'),
+                    'pending' => $ofiCounts['pending'] ?? 0,
+                    'approved' => $ofiCounts['approved'] ?? 0,
+                    'rejected' => $ofiCounts['rejected'] ?? 0,
                 ],
                 'car' => [
-                    'pending' => $this->getAdminCarCount('pending'),
-                    'approved' => $this->getAdminCarCount('approved'),
-                    'rejected' => $this->getAdminCarCount('rejected'),
+                    'pending' => $carCounts['pending'] ?? 0,
+                    'approved' => $carCounts['approved'] ?? 0,
+                    'rejected' => $carCounts['rejected'] ?? 0,
                 ],
                 'dcr' => [
-                    'pending' => $this->getAdminDcrCount('pending'),
-                    'approved' => $this->getAdminDcrCount('approved'),
-                    'rejected' => $this->getAdminDcrCount('rejected'),
+                    'pending' => $dcrCounts['pending'] ?? 0,
+                    'approved' => $dcrCounts['approved'] ?? 0,
+                    'rejected' => $dcrCounts['rejected'] ?? 0,
                 ],
             ],
         ]);
@@ -145,6 +150,15 @@ class InboxController extends Controller
             $request->query()
         );
 
+        // 3 grouped queries instead of 12 individual count() calls
+        $ofiCounts = $this->getUserCountsGrouped(OfiRecord::class);
+        $carCounts = $this->getUserCountsGrouped(CarRecord::class);
+        $dcrCounts = $this->getUserCountsGrouped(DcrRecord::class);
+
+        $ofiTotal = array_sum($ofiCounts);
+        $carTotal = array_sum($carCounts);
+        $dcrTotal = array_sum($dcrCounts);
+
         return Inertia::render('Inbox/MyRecords', [
             'records' => $paginated,
             'filters' => [
@@ -153,31 +167,68 @@ class InboxController extends Controller
             ],
             'counts' => [
                 'all' => [
-                    'all' => $this->getUserOfiCount() + $this->getUserCarCount() + $this->getUserDcrCount(),
-                    'pending' => $this->getUserOfiCount('pending') + $this->getUserCarCount('pending') + $this->getUserDcrCount('pending'),
-                    'approved' => $this->getUserOfiCount('approved') + $this->getUserCarCount('approved') + $this->getUserDcrCount('approved'),
-                    'rejected' => $this->getUserOfiCount('rejected') + $this->getUserCarCount('rejected') + $this->getUserDcrCount('rejected'),
+                    'all' => $ofiTotal + $carTotal + $dcrTotal,
+                    'pending' => ($ofiCounts['pending'] ?? 0) + ($carCounts['pending'] ?? 0) + ($dcrCounts['pending'] ?? 0),
+                    'approved' => ($ofiCounts['approved'] ?? 0) + ($carCounts['approved'] ?? 0) + ($dcrCounts['approved'] ?? 0),
+                    'rejected' => ($ofiCounts['rejected'] ?? 0) + ($carCounts['rejected'] ?? 0) + ($dcrCounts['rejected'] ?? 0),
                 ],
                 'ofi' => [
-                    'all' => $this->getUserOfiCount(),
-                    'pending' => $this->getUserOfiCount('pending'),
-                    'approved' => $this->getUserOfiCount('approved'),
-                    'rejected' => $this->getUserOfiCount('rejected'),
+                    'all' => $ofiTotal,
+                    'pending' => $ofiCounts['pending'] ?? 0,
+                    'approved' => $ofiCounts['approved'] ?? 0,
+                    'rejected' => $ofiCounts['rejected'] ?? 0,
                 ],
                 'car' => [
-                    'all' => $this->getUserCarCount(),
-                    'pending' => $this->getUserCarCount('pending'),
-                    'approved' => $this->getUserCarCount('approved'),
-                    'rejected' => $this->getUserCarCount('rejected'),
+                    'all' => $carTotal,
+                    'pending' => $carCounts['pending'] ?? 0,
+                    'approved' => $carCounts['approved'] ?? 0,
+                    'rejected' => $carCounts['rejected'] ?? 0,
                 ],
                 'dcr' => [
-                    'all' => $this->getUserDcrCount(),
-                    'pending' => $this->getUserDcrCount('pending'),
-                    'approved' => $this->getUserDcrCount('approved'),
-                    'rejected' => $this->getUserDcrCount('rejected'),
+                    'all' => $dcrTotal,
+                    'pending' => $dcrCounts['pending'] ?? 0,
+                    'approved' => $dcrCounts['approved'] ?? 0,
+                    'rejected' => $dcrCounts['rejected'] ?? 0,
                 ],
             ],
         ]);
+    }
+
+    /**
+     * Returns workflow_status => count for admin inbox (submitted, non-admin creators).
+     * 1 query per model replaces 3 separate count() calls.
+     *
+     * @param class-string $model
+     * @return array<string, int>
+     */
+    private function getAdminCountsGrouped(string $model): array
+    {
+        return $model::query()
+            ->selectRaw('workflow_status, COUNT(*) as total')
+            ->where('status', 'submitted')
+            ->whereHas('creator', fn($q) => $q->where('role', '!=', 'admin'))
+            ->groupBy('workflow_status')
+            ->pluck('total', 'workflow_status')
+            ->map(fn($v) => (int) $v)
+            ->toArray();
+    }
+
+    /**
+     * Returns workflow_status => count for the current user's records.
+     * 1 query per model replaces 4 separate count() calls.
+     *
+     * @param class-string $model
+     * @return array<string, int>
+     */
+    private function getUserCountsGrouped(string $model): array
+    {
+        return $model::query()
+            ->selectRaw('workflow_status, COUNT(*) as total')
+            ->where('created_by', auth()->id())
+            ->groupBy('workflow_status')
+            ->pluck('total', 'workflow_status')
+            ->map(fn($v) => (int) $v)
+            ->toArray();
     }
 
     private function getAdminOfiRecords(string $workflowStatus): Collection
@@ -436,57 +487,6 @@ class InboxController extends Controller
             'submitted_at_sort' => optional($record->created_at)?->toDateTimeString(),
             'view_url' => '/dcr?record=' . $record->id,
         ];
-    }
-
-    private function getAdminOfiCount(string $workflowStatus): int
-    {
-        return OfiRecord::query()
-            ->where('status', 'submitted')
-            ->where('workflow_status', $workflowStatus)
-            ->whereHas('creator', fn($query) => $query->where('role', '!=', 'admin'))
-            ->count();
-    }
-
-    private function getAdminCarCount(string $workflowStatus): int
-    {
-        return CarRecord::query()
-            ->where('status', 'submitted')
-            ->where('workflow_status', $workflowStatus)
-            ->whereHas('creator', fn($query) => $query->where('role', '!=', 'admin'))
-            ->count();
-    }
-
-    private function getAdminDcrCount(string $workflowStatus): int
-    {
-        return DcrRecord::query()
-            ->where('status', 'submitted')
-            ->where('workflow_status', $workflowStatus)
-            ->whereHas('creator', fn($query) => $query->where('role', '!=', 'admin'))
-            ->count();
-    }
-
-    private function getUserOfiCount(?string $workflowStatus = null): int
-    {
-        return OfiRecord::query()
-            ->where('created_by', auth()->id())
-            ->when($workflowStatus !== null, fn($query) => $query->where('workflow_status', $workflowStatus))
-            ->count();
-    }
-
-    private function getUserCarCount(?string $workflowStatus = null): int
-    {
-        return CarRecord::query()
-            ->where('created_by', auth()->id())
-            ->when($workflowStatus !== null, fn($query) => $query->where('workflow_status', $workflowStatus))
-            ->count();
-    }
-
-    private function getUserDcrCount(?string $workflowStatus = null): int
-    {
-        return DcrRecord::query()
-            ->where('created_by', auth()->id())
-            ->when($workflowStatus !== null, fn($query) => $query->where('workflow_status', $workflowStatus))
-            ->count();
     }
 
     private function paginateCollection(

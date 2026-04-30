@@ -6,8 +6,8 @@ use App\Models\DcrRecord;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
 use App\Services\ActivityLogService;
-use App\Services\DCRFormGenerator;
 use App\Services\DcrDynamicFieldValidator;
+use App\Services\DCRFormGenerator;
 use App\Services\QmsTemplateResolver;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
@@ -21,14 +21,13 @@ class DcrRecordController extends Controller
         protected ActivityLogService $activityLogService,
         protected QmsTemplateResolver $templateResolver,
         protected DcrDynamicFieldValidator $dynamicFieldValidator
-    ) {
-    }
+    ) {}
 
     private function rQms013TypeId(): int
     {
         $id = DocumentType::where('code', 'R-QMS-013')->value('id');
 
-        if (!$id) {
+        if (! $id) {
             abort(404, 'DocumentType R-QMS-013 not found.');
         }
 
@@ -39,7 +38,7 @@ class DcrRecordController extends Controller
     {
         $tmpDir = storage_path('app/dcr_forms_tmp');
 
-        if (!is_dir($tmpDir)) {
+        if (! is_dir($tmpDir)) {
             mkdir($tmpDir, 0755, true);
         }
 
@@ -95,18 +94,34 @@ class DcrRecordController extends Controller
 
         if ($existingUpload) {
             $fileName = $existingUpload->file_name
-                ?: ($this->sanitizeBaseFileName($requestedFileName, $dcrRecord) . '.docx');
+                ?: ($this->sanitizeBaseFileName($requestedFileName, $dcrRecord).'.docx');
 
-            $tmpPath = $tmpDir . '/' . uniqid('dcr_republish_', true) . '_' . $fileName;
+            $tmpPath = $tmpDir.'/'.uniqid('dcr_republish_', true).'_'.$fileName;
             $this->generateDocxToPath($dcrRecord, $tmpPath);
 
-            $storedPath = $existingUpload->file_path ?: ('documents/dcr/' . $fileName);
+            $oldDisk = $existingUpload->getStorageDiskName();
+            $oldPath = $existingUpload->file_path;
+            $storedPath = $existingUpload->file_path ?: ('documents/dcr/'.$fileName);
 
             $written = $disk->put($storedPath, file_get_contents($tmpPath));
 
             if ($written === false) {
                 @unlink($tmpPath);
                 throw new \RuntimeException("Failed to write file to storage: {$storedPath}");
+            }
+
+            if ($existingUpload->hasPreviewCache()) {
+                $previewDisk = $existingUpload->getPreviewDiskName();
+
+                if (
+                    $previewDisk &&
+                    $existingUpload->preview_path &&
+                    Storage::disk($previewDisk)->exists($existingUpload->preview_path)
+                ) {
+                    Storage::disk($previewDisk)->delete($existingUpload->preview_path);
+                }
+
+                $existingUpload->clearPreviewCacheMeta();
             }
 
             $existingUpload->update([
@@ -120,19 +135,27 @@ class DcrRecordController extends Controller
 
             @unlink($tmpPath);
 
+            if (
+                $oldPath &&
+                ($oldDisk !== $storageDisk || $oldPath !== $storedPath) &&
+                Storage::disk($oldDisk)->exists($oldPath)
+            ) {
+                Storage::disk($oldDisk)->delete($oldPath);
+            }
+
             return $existingUpload->fresh();
         }
 
         $baseName = $this->sanitizeBaseFileName($requestedFileName, $dcrRecord);
         $fileName = "{$baseName}.docx";
-        $storedPath = 'documents/dcr/' . $fileName;
+        $storedPath = 'documents/dcr/'.$fileName;
 
         if ($disk->exists($storedPath)) {
-            $fileName = "{$baseName}_" . now()->format('His') . '.docx';
-            $storedPath = 'documents/dcr/' . $fileName;
+            $fileName = "{$baseName}_".now()->format('His').'.docx';
+            $storedPath = 'documents/dcr/'.$fileName;
         }
 
-        $tmpPath = $tmpDir . '/' . uniqid('dcr_publish_', true) . '_' . $fileName;
+        $tmpPath = $tmpDir.'/'.uniqid('dcr_publish_', true).'_'.$fileName;
         $this->generateDocxToPath($dcrRecord, $tmpPath);
 
         $written = $disk->put($storedPath, file_get_contents($tmpPath));
@@ -176,12 +199,12 @@ class DcrRecordController extends Controller
 
         /** @var DocumentUpload $upload */
         foreach ($uploads as $upload) {
-            $fileName = $upload->file_name ?: ('DCR_' . ($dcrRecord->dcr_no ?: $dcrRecord->id) . '.docx');
-            $tmpPath = $tmpDir . '/' . uniqid('dcr_sync_', true) . '_' . $fileName;
+            $fileName = $upload->file_name ?: ('DCR_'.($dcrRecord->dcr_no ?: $dcrRecord->id).'.docx');
+            $tmpPath = $tmpDir.'/'.uniqid('dcr_sync_', true).'_'.$fileName;
 
             $this->generateDocxToPath($dcrRecord, $tmpPath);
 
-            $storedPath = $upload->file_path ?: ('documents/dcr/' . $fileName);
+            $storedPath = $upload->file_path ?: ('documents/dcr/'.$fileName);
             $disk->put($storedPath, file_get_contents($tmpPath));
 
             $upload->update([
@@ -256,7 +279,7 @@ class DcrRecordController extends Controller
             $requestedStatus = 'draft';
         }
 
-        if (!in_array($requestedStatus, $allowedStatuses, true)) {
+        if (! in_array($requestedStatus, $allowedStatuses, true)) {
             return $currentStatus;
         }
 
@@ -284,16 +307,8 @@ class DcrRecordController extends Controller
             $payload = $request->all();
             $isAdmin = $this->isAdminUser();
 
-            $typeId = DocumentType::where('code', 'R-QMS-013')->value('id');
-
-            if (!$typeId) {
-                return response()->json([
-                    'message' => 'DocumentType R-QMS-013 not found.',
-                ], 422);
-            }
-
             $record = DcrRecord::create([
-                'document_type_id' => $typeId,
+                'document_type_id' => $this->rQms013TypeId(),
                 'dcr_no' => $payload['dcrNo'] ?? null,
                 'to_for' => $payload['toFor'] ?? null,
                 'from' => $payload['from'] ?? null,
@@ -403,8 +418,8 @@ class DcrRecordController extends Controller
         } catch (\Throwable $e) {
             \Log::error('DcrRecordController@update failed', [
                 'message' => $e->getMessage(),
-                'file'    => $e->getFile(),
-                'line'    => $e->getLine(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
             ]);
 
             return response()->json([
@@ -423,7 +438,7 @@ class DcrRecordController extends Controller
             ], 422);
         }
 
-        if (!$this->canEditRecordContent($dcrRecord)) {
+        if (! $this->canEditRecordContent($dcrRecord)) {
             return response()->json([
                 'message' => 'This DCR record can no longer be submitted from its current state.',
             ], 422);
@@ -459,7 +474,7 @@ class DcrRecordController extends Controller
             'action' => 'submitted',
             'entity_type' => DcrRecord::class,
             'entity_id' => $dcrRecord->id,
-            'record_label' => $dcrRecord->dcr_no ?: 'DCR #' . $dcrRecord->id,
+            'record_label' => $dcrRecord->dcr_no ?: 'DCR #'.$dcrRecord->id,
             'file_type' => null,
             'description' => $isResubmission
                 ? 'DCR corrected and resubmitted to admin.'
@@ -481,8 +496,8 @@ class DcrRecordController extends Controller
 
         $tmpDir = $this->ensureTmpDir();
 
-        $fileName = 'DCR_' . ($dcrRecord->dcr_no ?: now()->format('Ymd_His')) . '.docx';
-        $outputPath = $tmpDir . '/' . uniqid('dcr_download_', true) . '_' . $fileName;
+        $fileName = 'DCR_'.($dcrRecord->dcr_no ?: now()->format('Ymd_His')).'.docx';
+        $outputPath = $tmpDir.'/'.uniqid('dcr_download_', true).'_'.$fileName;
 
         $this->generateDocxToPath($dcrRecord, $outputPath);
 
@@ -491,9 +506,9 @@ class DcrRecordController extends Controller
             'action' => 'downloaded',
             'entity_type' => DcrRecord::class,
             'entity_id' => $dcrRecord->id,
-            'record_label' => $dcrRecord->dcr_no ?: 'DCR #' . $dcrRecord->id,
+            'record_label' => $dcrRecord->dcr_no ?: 'DCR #'.$dcrRecord->id,
             'file_type' => 'docx',
-            'description' => 'Downloaded generated DCR form ' . ($dcrRecord->dcr_no ?: 'DCR #' . $dcrRecord->id),
+            'description' => 'Downloaded generated DCR form '.($dcrRecord->dcr_no ?: 'DCR #'.$dcrRecord->id),
         ]);
 
         return response()->download($outputPath, $fileName, [
@@ -547,9 +562,9 @@ class DcrRecordController extends Controller
                 'action' => 'published',
                 'entity_type' => DcrRecord::class,
                 'entity_id' => $dcrRecord->id,
-                'record_label' => $dcrRecord->dcr_no ?: 'DCR #' . $dcrRecord->id,
+                'record_label' => $dcrRecord->dcr_no ?: 'DCR #'.$dcrRecord->id,
                 'file_type' => 'docx',
-                'description' => 'Published DCR record ' . ($dcrRecord->dcr_no ?: 'DCR #' . $dcrRecord->id) . ' as document ' . $upload->file_name,
+                'description' => 'Published DCR record '.($dcrRecord->dcr_no ?: 'DCR #'.$dcrRecord->id).' as document '.$upload->file_name,
                 'new_values' => [
                     'upload_id' => $upload->id,
                     'file_name' => $upload->file_name,
@@ -614,9 +629,9 @@ class DcrRecordController extends Controller
                     'action' => 'approved',
                     'entity_type' => DcrRecord::class,
                     'entity_id' => $fresh->id,
-                    'record_label' => $fresh->dcr_no ?: 'DCR #' . $fresh->id,
+                    'record_label' => $fresh->dcr_no ?: 'DCR #'.$fresh->id,
                     'file_type' => 'docx',
-                    'description' => 'Approved DCR and published document ' . $upload->file_name,
+                    'description' => 'Approved DCR and published document '.$upload->file_name,
                     'new_values' => [
                         'workflow_status' => $fresh->workflow_status,
                         'resolution_status' => $fresh->resolution_status,
@@ -654,7 +669,7 @@ class DcrRecordController extends Controller
             'action' => 'rejected',
             'entity_type' => DcrRecord::class,
             'entity_id' => $dcrRecord->id,
-            'record_label' => $dcrRecord->dcr_no ?: 'DCR #' . $dcrRecord->id,
+            'record_label' => $dcrRecord->dcr_no ?: 'DCR #'.$dcrRecord->id,
             'file_type' => null,
             'description' => 'Rejected DCR and returned for correction.',
             'new_values' => [
@@ -666,12 +681,68 @@ class DcrRecordController extends Controller
         return back()->with('success', 'DCR rejected and returned for correction.');
     }
 
+    public function updateResolutionStatus(Request $request, DcrRecord $dcrRecord)
+    {
+        abort_unless($this->isAdminUser(), 403, 'Only admins can update DCR resolution status.');
+
+        $validated = $request->validate([
+            'resolution_status' => ['required', 'in:open,ongoing,closed'],
+        ]);
+
+        if ($dcrRecord->workflow_status !== 'approved') {
+            return response()->json([
+                'message' => 'Only approved DCR records can update resolution status.',
+            ], 422);
+        }
+
+        $newStatus = $validated['resolution_status'];
+        $currentStatus = $dcrRecord->resolution_status ?: 'open';
+
+        DB::transaction(function () use ($dcrRecord, $newStatus) {
+            $dcrRecord = $dcrRecord->lockForUpdate()->fresh();
+            $currentStatus = $dcrRecord->resolution_status ?: 'open';
+
+            $allowedTransitions = [
+                'open' => ['open', 'ongoing', 'closed'],
+                'ongoing' => ['ongoing', 'closed'],
+                'closed' => ['closed'],
+            ];
+
+            if (! in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)) {
+                throw ValidationException::withMessages([
+                    'resolution_status' => "Invalid transition from {$currentStatus} to {$newStatus}.",
+                ]);
+            }
+
+            $dcrRecord->update([
+                'resolution_status' => $newStatus,
+                'updated_by' => auth()->id(),
+            ]);
+        });
+
+        $this->activityLogService->log([
+            'module' => 'dcr',
+            'action' => 'resolution_status_changed',
+            'entity_type' => DcrRecord::class,
+            'entity_id' => $dcrRecord->id,
+            'record_label' => $dcrRecord->dcr_no ?: 'DCR #'.$dcrRecord->id,
+            'description' => "DCR resolution status changed from {$currentStatus} to {$newStatus}",
+            'old_values' => ['resolution_status' => $currentStatus],
+            'new_values' => ['resolution_status' => $newStatus],
+        ]);
+
+        return response()->json([
+            'message' => 'DCR resolution status updated successfully.',
+            'resolution_status' => $newStatus,
+        ]);
+    }
+
     public function myRecords(Request $request)
     {
         $status = $request->input('workflow_status', 'all');
         $allowed = ['all', 'pending', 'approved', 'rejected'];
 
-        if (!in_array($status, $allowed, true)) {
+        if (! in_array($status, $allowed, true)) {
             $status = 'all';
         }
 
@@ -686,7 +757,7 @@ class DcrRecordController extends Controller
             ->latest()
             ->paginate(10)
             ->withQueryString()
-            ->through(fn(DcrRecord $record) => [
+            ->through(fn (DcrRecord $record) => [
                 'id' => $record->id,
                 'dcr_no' => $record->dcr_no,
                 'to_for' => $record->to_for,
@@ -698,22 +769,17 @@ class DcrRecordController extends Controller
                 'created_at' => $record->created_at,
             ]);
 
+        $statusCounts = DcrRecord::query()
+            ->where('created_by', auth()->id())
+            ->selectRaw('workflow_status, COUNT(*) as total')
+            ->groupBy('workflow_status')
+            ->pluck('total', 'workflow_status');
+
         $counts = [
-            'all' => DcrRecord::query()
-                ->where('created_by', auth()->id())
-                ->count(),
-            'pending' => DcrRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'pending')
-                ->count(),
-            'approved' => DcrRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'approved')
-                ->count(),
-            'rejected' => DcrRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'rejected')
-                ->count(),
+            'all' => $statusCounts->sum(),
+            'pending' => $statusCounts->get('pending') ?? 0,
+            'approved' => $statusCounts->get('approved') ?? 0,
+            'rejected' => $statusCounts->get('rejected') ?? 0,
         ];
 
         return \Inertia\Inertia::render('Inbox/MyDCRRecords', [

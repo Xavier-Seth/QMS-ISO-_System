@@ -51,7 +51,11 @@ watch(
         :showSearch="showSearch"
         :searchValue="searchValue"
         @search="(v) => emit('search', v)"
-      />
+      >
+        <template #left>
+          <slot name="headerLeft" />
+        </template>
+      </Header>
 
       <slot />
     </main>

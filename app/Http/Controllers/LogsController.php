@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\ActivityLog;
+use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 
 class LogsController extends Controller
@@ -30,13 +32,13 @@ class LogsController extends Controller
                         ->orWhere('description', 'like', "%{$q}%");
                 });
             })
-            ->when($department !== '', fn($query) => $query->where('department', $department))
-            ->when($fileType !== '', fn($query) => $query->where('file_type', $fileType))
-            ->when($action !== '', fn($query) => $query->where('action', $action))
-            ->when($module !== '', fn($query) => $query->where('module', $module))
-            ->when($user !== '', fn($query) => $query->where('user_name', $user))
-            ->when($dateFrom !== '', fn($query) => $query->whereDate('created_at', '>=', $dateFrom))
-            ->when($dateTo !== '', fn($query) => $query->whereDate('created_at', '<=', $dateTo))
+            ->when($department !== '', fn ($query) => $query->where('department', $department))
+            ->when($fileType !== '', fn ($query) => $query->where('file_type', $fileType))
+            ->when($action !== '', fn ($query) => $query->where('action', $action))
+            ->when($module !== '', fn ($query) => $query->where('module', $module))
+            ->when($user !== '', fn ($query) => $query->where('user_name', $user))
+            ->when($dateFrom !== '', fn ($query) => $query->whereDate('created_at', '>=', $dateFrom))
+            ->when($dateTo !== '', fn ($query) => $query->whereDate('created_at', '<=', $dateTo))
             ->latest('created_at');
 
         $logs = $query
@@ -56,6 +58,47 @@ class LogsController extends Controller
             })
             ->withQueryString();
 
+        $dropdownOptions = DB::table('activity_logs')
+            ->selectRaw("'department' as opt_type, department as opt_value")
+            ->whereNotNull('department')->where('department', '!=', '')
+            ->distinct()
+            ->union(
+                DB::table('activity_logs')
+                    ->selectRaw("'file_type' as opt_type, file_type as opt_value")
+                    ->whereNotNull('file_type')->where('file_type', '!=', '')
+                    ->distinct()
+            )
+            ->union(
+                DB::table('activity_logs')
+                    ->selectRaw("'action' as opt_type, action as opt_value")
+                    ->whereNotNull('action')->where('action', '!=', '')
+                    ->distinct()
+            )
+            ->union(
+                DB::table('activity_logs')
+                    ->selectRaw("'module' as opt_type, module as opt_value")
+                    ->whereNotNull('module')->where('module', '!=', '')
+                    ->distinct()
+            )
+            ->orderBy('opt_value')
+            ->get()
+            ->pipe(function ($rows) {
+                $byType = $rows->groupBy('opt_type');
+
+                return [
+                    'departments' => $byType->get('department', collect())->pluck('opt_value')->values(),
+                    'file_types' => $byType->get('file_type', collect())->pluck('opt_value')->values(),
+                    'actions' => $byType->get('action', collect())->pluck('opt_value')->values(),
+                    'modules' => $byType->get('module', collect())->pluck('opt_value')->values(),
+                ];
+            });
+
+        $userOptions = User::query()
+            ->whereIn('id', ActivityLog::query()->whereNotNull('user_id')->distinct()->pluck('user_id'))
+            ->orderBy('name')
+            ->pluck('name')
+            ->values();
+
         return Inertia::render('Logs/Index', [
             'logs' => $logs,
             'filters' => [
@@ -69,45 +112,11 @@ class LogsController extends Controller
                 'date_to' => $dateTo,
             ],
             'options' => [
-                'departments' => ActivityLog::query()
-                    ->whereNotNull('department')
-                    ->where('department', '!=', '')
-                    ->distinct()
-                    ->orderBy('department')
-                    ->pluck('department')
-                    ->values(),
-
-                'file_types' => ActivityLog::query()
-                    ->whereNotNull('file_type')
-                    ->where('file_type', '!=', '')
-                    ->distinct()
-                    ->orderBy('file_type')
-                    ->pluck('file_type')
-                    ->values(),
-
-                'actions' => ActivityLog::query()
-                    ->whereNotNull('action')
-                    ->where('action', '!=', '')
-                    ->distinct()
-                    ->orderBy('action')
-                    ->pluck('action')
-                    ->values(),
-
-                'modules' => ActivityLog::query()
-                    ->whereNotNull('module')
-                    ->where('module', '!=', '')
-                    ->distinct()
-                    ->orderBy('module')
-                    ->pluck('module')
-                    ->values(),
-
-                'users' => ActivityLog::query()
-                    ->whereNotNull('user_name')
-                    ->where('user_name', '!=', '')
-                    ->distinct()
-                    ->orderBy('user_name')
-                    ->pluck('user_name')
-                    ->values(),
+                'departments' => $dropdownOptions['departments'],
+                'file_types' => $dropdownOptions['file_types'],
+                'actions' => $dropdownOptions['actions'],
+                'modules' => $dropdownOptions['modules'],
+                'users' => $userOptions,
             ],
         ]);
     }

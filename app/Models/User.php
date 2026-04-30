@@ -4,6 +4,7 @@ namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 
@@ -50,5 +51,20 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    public function dcrRecords(): HasMany
+    {
+        return $this->hasMany(DcrRecord::class, 'created_by');
+    }
+
+    public function ofiRecords(): HasMany
+    {
+        return $this->hasMany(OfiRecord::class, 'created_by');
+    }
+
+    public function carRecords(): HasMany
+    {
+        return $this->hasMany(CarRecord::class, 'created_by');
     }
 }

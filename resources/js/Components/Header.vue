@@ -44,7 +44,8 @@ const displayName = computed(() => {
       <div class="flex justify-between items-start gap-6">
 
         <!-- LEFT SIDE -->
-        <div class="min-w-0">
+        <div class="min-w-0 flex items-center gap-4">
+          <slot name="left" />
           <div v-if="showSearch" class="flex items-center">
 
             <div class="relative w-[520px] max-w-[60vw]">

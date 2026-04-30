@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\LoginController;
 use App\Http\Controllers\CarRecordController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DCRController;
 use App\Http\Controllers\DcrRecordController;
 use App\Http\Controllers\DcrTemplateSettingsController;
@@ -20,7 +21,7 @@ use App\Models\DocumentType;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::get('/', fn() => Inertia::render('Home'));
+Route::get('/', fn () => Inertia::render('Home'));
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'show'])->name('login');
@@ -30,9 +31,10 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
-    Route::get('/dashboard', fn() => Inertia::render('Dashboard'))->name('dashboard');
-    Route::get('/dcr', fn() => Inertia::render('DCR'))->name('dcr');
-    Route::get('/ofi-form', fn() => Inertia::render('OFIForm'))->name('ofi.form');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard'); // <-- updated
+
+    Route::get('/dcr', fn () => Inertia::render('DCR'))->name('dcr');
+    Route::get('/ofi-form', fn () => Inertia::render('OFIForm'))->name('ofi.form');
 
     Route::get('/car', function () {
         $carType = DocumentType::where('code', 'F-QMS-006')->first();
@@ -42,7 +44,7 @@ Route::middleware('auth')->group(function () {
         ]);
     })->name('car.form');
 
-    Route::get('/settings', fn() => Inertia::render('Settings/Index'))->name('settings');
+    Route::get('/settings', fn () => Inertia::render('Settings/Index'))->name('settings');
 
     Route::post('/settings/profile', [SettingsController::class, 'updateProfile'])
         ->name('settings.profile.update');
@@ -146,7 +148,7 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::middleware('can:admin-only')->group(function () {
-        Route::get('/admin/dashboard', fn() => Inertia::render('Dashboard'))->name('admin.dashboard');
+        Route::get('/admin/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard'); // <-- updated
 
         Route::get('/logs', [LogsController::class, 'index'])->name('logs');
 
@@ -167,6 +169,9 @@ Route::middleware('auth')->group(function () {
 
         Route::patch('/settings/qms-templates/{module}/{template}/activate', [QmsTemplateSettingsController::class, 'setActiveTemplate'])
             ->name('settings.qms-templates.activate');
+
+        Route::delete('/settings/qms-templates/{module}/{template}', [QmsTemplateSettingsController::class, 'destroyTemplate'])
+            ->name('settings.qms-templates.destroy');
 
         Route::post('/settings/qms-templates/{module}/fields', [QmsTemplateSettingsController::class, 'storeField'])
             ->name('settings.qms-templates.fields.store');
@@ -241,7 +246,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/performance/uploads/{upload}/download', [PerformanceController::class, 'download'])
             ->name('performance.uploads.download');
 
-        Route::get('/upload', fn() => Inertia::render('Upload'))->name('upload');
+        Route::get('/upload', fn () => Inertia::render('Upload'))->name('upload');
 
         /*
         |--------------------------------------------------------------------------
@@ -266,5 +271,8 @@ Route::middleware('auth')->group(function () {
 
         Route::post('/inbox/dcr/{dcrRecord}/approve', [DcrRecordController::class, 'approve'])->name('dcr.inbox.approve');
         Route::post('/inbox/dcr/{dcrRecord}/reject', [DcrRecordController::class, 'reject'])->name('dcr.inbox.reject');
+
+        Route::patch('/dcr/records/{dcrRecord}/resolution-status', [DcrRecordController::class, 'updateResolutionStatus'])
+            ->name('dcr.records.resolution-status');
     });
 });

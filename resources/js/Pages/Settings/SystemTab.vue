@@ -1,6 +1,8 @@
 <script setup>
 import { reactive, ref, computed, onMounted } from "vue";
 import axios from "axios";
+import { useToast } from "@/Composables/useToast";
+import { useConfirm } from "@/Composables/useConfirm";
 
 const form = reactive({
     system_name: "Quality Management System",
@@ -8,6 +10,9 @@ const form = reactive({
     office_name: "QMS (ISO) Office",
     maintenance_mode: false,
 });
+
+const toast = useToast();
+const confirm = useConfirm();
 
 const loading = ref(false);
 const uploadingTemplate = ref(false);
@@ -49,6 +54,7 @@ const newField = reactive({
 const editingFieldId = ref(null);
 
 const hasFields = computed(() => dynamicFields.value.length > 0);
+const templateLimitReached = computed(() => templateHistory.value.length >= 3);
 const selectedModuleConfig = computed(
     () =>
         qmsModules.find((module) => module.code === selectedModule.value) ??
@@ -88,7 +94,7 @@ async function loadQmsTemplateSettings() {
         dynamicFields.value = mapDynamicFields(data.fields ?? []);
     } catch (error) {
         console.error("Failed to load QMS template settings:", error);
-        alert(
+        toast.error(
             error?.response?.data?.message ||
                 `Failed to load ${selectedModule.value} template settings.`
         );
@@ -132,10 +138,10 @@ async function handleTemplateSelected(event) {
         });
 
         await loadQmsTemplateSettings();
-        alert(`${selectedModule.value} template uploaded successfully.`);
+        toast.success(`${selectedModule.value} template uploaded successfully.`);
     } catch (error) {
         console.error("Failed to upload template:", error);
-        alert(
+        toast.error(
             error?.response?.data?.message ||
                 `Failed to upload ${selectedModule.value} template.`
         );
@@ -154,12 +160,35 @@ async function activateTemplate(templateId) {
     try {
         await axios.patch(qmsTemplateSettingsUrl(`${templateId}/activate`));
         await loadQmsTemplateSettings();
-        alert(`Active ${selectedModule.value} template updated successfully.`);
+        toast.success(`Active ${selectedModule.value} template updated successfully.`);
     } catch (error) {
         console.error("Failed to activate template:", error);
-        alert(
+        toast.error(
             error?.response?.data?.message ||
                 `Failed to activate ${selectedModule.value} template.`
+        );
+    }
+}
+
+async function deleteTemplate(template) {
+    const confirmed = await confirm.ask({
+        title: "Delete Template",
+        message: `Delete template "${template.name}"? This cannot be undone.`,
+        confirmText: "Delete",
+        tone: "danger",
+    });
+
+    if (!confirmed) return;
+
+    try {
+        await axios.delete(qmsTemplateSettingsUrl(`${template.id}`));
+        await loadQmsTemplateSettings();
+        toast.success(`${selectedModule.value} template deleted successfully.`);
+    } catch (error) {
+        console.error("Failed to delete template:", error);
+        toast.error(
+            error?.response?.data?.message ||
+                `Failed to delete ${selectedModule.value} template.`
         );
     }
 }
@@ -188,16 +217,16 @@ async function createField() {
 
         resetNewField();
         await loadQmsTemplateSettings();
-        alert(`${selectedModule.value} field created successfully.`);
+        toast.success(`${selectedModule.value} field created successfully.`);
     } catch (error) {
         console.error("Failed to create field:", error);
 
         if (error?.response?.status === 422) {
             const errors = error.response.data.errors || {};
             const firstError = Object.values(errors)[0]?.[0];
-            alert(firstError || "Please check the field input.");
+            toast.error(firstError || "Please check the field input.");
         } else {
-            alert(
+            toast.error(
                 error?.response?.data?.message ||
                     `Failed to create ${selectedModule.value} field.`
             );
@@ -242,16 +271,16 @@ async function updateField(field) {
 
         editingFieldId.value = null;
         await loadQmsTemplateSettings();
-        alert(`${selectedModule.value} field updated successfully.`);
+        toast.success(`${selectedModule.value} field updated successfully.`);
     } catch (error) {
         console.error("Failed to update field:", error);
 
         if (error?.response?.status === 422) {
             const errors = error.response.data.errors || {};
             const firstError = Object.values(errors)[0]?.[0];
-            alert(firstError || "Please check the field input.");
+            toast.error(firstError || "Please check the field input.");
         } else {
-            alert(
+            toast.error(
                 error?.response?.data?.message ||
                     `Failed to update ${selectedModule.value} field.`
             );
@@ -262,9 +291,12 @@ async function updateField(field) {
 }
 
 async function deleteField(field) {
-    const confirmed = window.confirm(
-        `Delete the field "${field.label}"?`
-    );
+    const confirmed = await confirm.ask({
+        title: "Delete Field",
+        message: `Delete the field "${field.label}"?`,
+        confirmText: "Delete",
+        tone: "danger",
+    });
 
     if (!confirmed) return;
 
@@ -273,10 +305,10 @@ async function deleteField(field) {
     try {
         await axios.delete(qmsTemplateSettingsUrl(`fields/${field.id}`));
         await loadQmsTemplateSettings();
-        alert(`${selectedModule.value} field deleted successfully.`);
+        toast.success(`${selectedModule.value} field deleted successfully.`);
     } catch (error) {
         console.error("Failed to delete field:", error);
-        alert(
+        toast.error(
             error?.response?.data?.message ||
                 `Failed to delete ${selectedModule.value} field.`
         );
@@ -413,7 +445,7 @@ onMounted(() => {
                     </p>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-3">
                     <input
                         ref="templateInput"
                         type="file"
@@ -422,11 +454,18 @@ onMounted(() => {
                         @change="handleTemplateSelected"
                     />
 
+                    <span
+                        v-if="templateLimitReached"
+                        class="text-sm text-red-600 font-medium"
+                    >
+                        Template limit reached (3/3). Delete a template first.
+                    </span>
+
                     <button
                         type="button"
                         @click="triggerTemplateUpload"
-                        :disabled="uploadingTemplate"
-                        class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm hover:bg-slate-900 disabled:opacity-60"
+                        :disabled="uploadingTemplate || templateLimitReached"
+                        class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm hover:bg-slate-900 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                         {{ uploadingTemplate ? "Uploading..." : "Upload Template" }}
                     </button>
@@ -500,21 +539,31 @@ onMounted(() => {
                                 </p>
                             </div>
 
-                            <button
-                                v-if="!template.is_active"
-                                type="button"
-                                @click="activateTemplate(template.id)"
-                                class="px-4 py-2 border rounded-lg text-sm hover:bg-slate-50"
-                            >
-                                Set Active
-                            </button>
+                            <div class="flex items-center gap-2">
+                                <button
+                                    v-if="!template.is_active"
+                                    type="button"
+                                    @click="activateTemplate(template.id)"
+                                    class="px-4 py-2 border rounded-lg text-sm hover:bg-slate-50"
+                                >
+                                    Set Active
+                                </button>
 
-                            <span
-                                v-else
-                                class="px-3 py-1 text-xs rounded-full bg-emerald-100 text-emerald-700 font-medium"
-                            >
-                                Active
-                            </span>
+                                <span
+                                    v-else
+                                    class="px-3 py-1 text-xs rounded-full bg-emerald-100 text-emerald-700 font-medium"
+                                >
+                                    Active
+                                </span>
+
+                                <button
+                                    type="button"
+                                    @click="deleteTemplate(template)"
+                                    class="px-4 py-2 text-red-600 border border-red-200 rounded-lg text-sm hover:bg-red-50"
+                                >
+                                    Delete
+                                </button>
+                            </div>
                         </div>
                     </div>
 

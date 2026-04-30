@@ -21,8 +21,7 @@ class OfiRecordController extends Controller
         protected ActivityLogService $activityLogService,
         protected QmsTemplateResolver $templateResolver,
         protected QmsDynamicFieldValidator $dynamicFieldValidator
-    ) {
-    }
+    ) {}
 
     private function rQms018TypeId(): int
     {
@@ -39,7 +38,7 @@ class OfiRecordController extends Controller
     {
         $tmpDir = storage_path('app/ofi_forms_tmp');
 
-        if (!is_dir($tmpDir)) {
+        if (! is_dir($tmpDir)) {
             mkdir($tmpDir, 0755, true);
         }
 
@@ -142,7 +141,7 @@ class OfiRecordController extends Controller
             $requestedStatus = 'draft';
         }
 
-        if (!in_array($requestedStatus, $allowedStatuses, true)) {
+        if (! in_array($requestedStatus, $allowedStatuses, true)) {
             return $currentStatus;
         }
 
@@ -180,14 +179,14 @@ class OfiRecordController extends Controller
 
         if ($existingUpload) {
             $fileName = $existingUpload->file_name
-                ?: ($this->sanitizeBaseFileName($requestedFileName, $ofiRecord) . '.docx');
+                ?: ($this->sanitizeBaseFileName($requestedFileName, $ofiRecord).'.docx');
 
-            $tmpPath = $tmpDir . '/' . uniqid('ofi_republish_', true) . '_' . $fileName;
+            $tmpPath = $tmpDir.'/'.uniqid('ofi_republish_', true).'_'.$fileName;
             $this->generateDocxToPath($ofiRecord, $tmpPath);
 
             $oldDisk = $existingUpload->getStorageDiskName();
             $oldPath = $existingUpload->file_path;
-            $storedPath = $existingUpload->file_path ?: ('documents/ofi/' . $fileName);
+            $storedPath = $existingUpload->file_path ?: ('documents/ofi/'.$fileName);
 
             $written = $disk->put($storedPath, file_get_contents($tmpPath));
 
@@ -234,14 +233,14 @@ class OfiRecordController extends Controller
 
         $baseName = $this->sanitizeBaseFileName($requestedFileName, $ofiRecord);
         $fileName = "{$baseName}.docx";
-        $storedPath = 'documents/ofi/' . $fileName;
+        $storedPath = 'documents/ofi/'.$fileName;
 
         if ($disk->exists($storedPath)) {
-            $fileName = "{$baseName}_" . now()->format('His') . '.docx';
-            $storedPath = 'documents/ofi/' . $fileName;
+            $fileName = "{$baseName}_".now()->format('His').'.docx';
+            $storedPath = 'documents/ofi/'.$fileName;
         }
 
-        $tmpPath = $tmpDir . '/' . uniqid('ofi_publish_', true) . '_' . $fileName;
+        $tmpPath = $tmpDir.'/'.uniqid('ofi_publish_', true).'_'.$fileName;
         $this->generateDocxToPath($ofiRecord, $tmpPath);
 
         $written = $disk->put($storedPath, file_get_contents($tmpPath));
@@ -383,7 +382,7 @@ class OfiRecordController extends Controller
             ], 422);
         }
 
-        if (!$this->canEditRecordContent($ofiRecord)) {
+        if (! $this->canEditRecordContent($ofiRecord)) {
             return response()->json([
                 'message' => 'This OFI record can no longer be submitted from its current state.',
             ], 422);
@@ -432,8 +431,8 @@ class OfiRecordController extends Controller
 
         $tmpDir = $this->ensureTmpDir();
 
-        $fileName = 'OFI_' . ($ofiRecord->ofi_no ?: now()->format('Ymd_His')) . '.docx';
-        $outputPath = $tmpDir . '/' . uniqid('ofi_download_', true) . '_' . $fileName;
+        $fileName = 'OFI_'.($ofiRecord->ofi_no ?: now()->format('Ymd_His')).'.docx';
+        $outputPath = $tmpDir.'/'.uniqid('ofi_download_', true).'_'.$fileName;
 
         $this->generateDocxToPath($ofiRecord, $outputPath);
 
@@ -442,9 +441,9 @@ class OfiRecordController extends Controller
             'action' => 'downloaded',
             'entity_type' => OfiRecord::class,
             'entity_id' => $ofiRecord->id,
-            'record_label' => $ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id,
+            'record_label' => $ofiRecord->ofi_no ?: 'OFI #'.$ofiRecord->id,
             'file_type' => 'docx',
-            'description' => 'Downloaded generated OFI form ' . ($ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id),
+            'description' => 'Downloaded generated OFI form '.($ofiRecord->ofi_no ?: 'OFI #'.$ofiRecord->id),
         ]);
 
         return response()->download($outputPath, $fileName, [
@@ -504,9 +503,9 @@ class OfiRecordController extends Controller
             'action' => 'published',
             'entity_type' => OfiRecord::class,
             'entity_id' => $ofiRecord->id,
-            'record_label' => $ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id,
+            'record_label' => $ofiRecord->ofi_no ?: 'OFI #'.$ofiRecord->id,
             'file_type' => 'docx',
-            'description' => 'Published OFI record ' . ($ofiRecord->ofi_no ?: 'OFI #' . $ofiRecord->id) . ' as document ' . $upload->file_name,
+            'description' => 'Published OFI record '.($ofiRecord->ofi_no ?: 'OFI #'.$ofiRecord->id).' as document '.$upload->file_name,
             'new_values' => [
                 'upload_id' => $upload->id,
                 'file_name' => $upload->file_name,
@@ -525,7 +524,6 @@ class OfiRecordController extends Controller
         ]);
     }
 
-
     public function approve(OfiRecord $ofiRecord)
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can approve OFI records.');
@@ -543,6 +541,9 @@ class OfiRecordController extends Controller
             $ofiRecord->update([
                 'workflow_status' => 'approved',
                 'resolution_status' => $ofiRecord->resolution_status ?: 'open',
+                'rejection_reason' => null,
+                'rejected_at' => null,
+                'rejected_by' => null,
                 'updated_by' => auth()->id(),
             ]);
 
@@ -562,9 +563,9 @@ class OfiRecordController extends Controller
                     'action' => 'approved',
                     'entity_type' => OfiRecord::class,
                     'entity_id' => $fresh->id,
-                    'record_label' => $fresh->ofi_no ?: 'OFI #' . $fresh->id,
+                    'record_label' => $fresh->ofi_no ?: 'OFI #'.$fresh->id,
                     'file_type' => 'docx',
-                    'description' => 'Approved OFI and published document ' . $upload->file_name,
+                    'description' => 'Approved OFI and published document '.$upload->file_name,
                     'new_values' => [
                         'workflow_status' => $fresh->workflow_status,
                         'resolution_status' => $fresh->resolution_status,
@@ -623,7 +624,7 @@ class OfiRecordController extends Controller
             'closed' => ['closed'],
         ];
 
-        if (!in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)) {
+        if (! in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)) {
             return response()->json([
                 'message' => "Invalid resolution status transition from {$currentStatus} to {$newStatus}.",
             ], 422);
@@ -645,7 +646,7 @@ class OfiRecordController extends Controller
         $status = $request->input('workflow_status', 'all');
         $allowed = ['all', 'pending', 'approved', 'rejected'];
 
-        if (!in_array($status, $allowed, true)) {
+        if (! in_array($status, $allowed, true)) {
             $status = 'all';
         }
 
@@ -660,7 +661,7 @@ class OfiRecordController extends Controller
             ->latest()
             ->paginate(10)
             ->withQueryString()
-            ->through(fn(OfiRecord $record) => [
+            ->through(fn (OfiRecord $record) => [
                 'id' => $record->id,
                 'ofi_no' => $record->ofi_no,
                 'ref_no' => $record->ref_no,
@@ -672,22 +673,17 @@ class OfiRecordController extends Controller
                 'created_at' => $record->created_at,
             ]);
 
+        $statusCounts = OfiRecord::query()
+            ->where('created_by', auth()->id())
+            ->selectRaw('workflow_status, COUNT(*) as total')
+            ->groupBy('workflow_status')
+            ->pluck('total', 'workflow_status');
+
         $counts = [
-            'all' => OfiRecord::query()
-                ->where('created_by', auth()->id())
-                ->count(),
-            'pending' => OfiRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'pending')
-                ->count(),
-            'approved' => OfiRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'approved')
-                ->count(),
-            'rejected' => OfiRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'rejected')
-                ->count(),
+            'all' => $statusCounts->sum(),
+            'pending' => $statusCounts->get('pending') ?? 0,
+            'approved' => $statusCounts->get('approved') ?? 0,
+            'rejected' => $statusCounts->get('rejected') ?? 0,
         ];
 
         return Inertia::render('Inbox/MyRecords', [

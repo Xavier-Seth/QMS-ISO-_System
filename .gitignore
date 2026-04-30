@@ -26,3 +26,10 @@ Thumbs.db
 # MS Office temp files
 ~$*.docx
 ~$*.doc
+
+# Laravel Boost
+CLAUDE.md
+AGENTS.md
+.mcp.json
+boost.json
+.claude/settings.local.json

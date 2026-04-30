@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(vendor/bin/pint --dirty --format agent)",
+      "Bash(php artisan route:list*)",
+      "Bash(php artisan tinker*)",
+      "Bash(php artisan migrate --pretend*)",
+      "Bash(php artisan test*)",
+      "Bash(php artisan make:*)",
+      "mcp__laravel-boost__database-schema"
+    ]
+  },
+  "enableAllProjectMcpServers": false,
+  "enabledMcpjsonServers": [
+    "laravel-boost"
+  ]
+}
