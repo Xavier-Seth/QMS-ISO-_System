@@ -83,6 +83,16 @@ class QmsTemplateSettingsController extends Controller
         $setActive = $request->boolean('set_active', true);
 
         $originalFileName = $file->getClientOriginalName();
+
+        $effectiveName = $validated['name'] ?? $originalFileName;
+
+        if (QmsTemplate::query()->forModule($module)->where('name', $effectiveName)->exists()) {
+            return response()->json([
+                'message' => "A template named \"{$effectiveName}\" already exists for the {$module} module.",
+                'errors' => ['name' => ["A template named \"{$effectiveName}\" already exists for the {$module} module."]],
+            ], 422);
+        }
+
         $baseName = pathinfo($originalFileName, PATHINFO_FILENAME);
 
         $safeBaseName = Str::of($baseName)
@@ -203,13 +213,18 @@ class QmsTemplateSettingsController extends Controller
         );
 
         $storageDisk = $template->getStorageDiskName();
-
-        if ($template->file_path && Storage::disk($storageDisk)->exists($template->file_path)) {
-            Storage::disk($storageDisk)->delete($template->file_path);
-        }
-
+        $filePath = $template->file_path;
         $templateName = $template->name;
-        $template->delete();
+
+        DB::transaction(function () use ($template) {
+            $template->delete();
+        });
+
+        DB::afterCommit(function () use ($storageDisk, $filePath) {
+            if ($filePath && Storage::disk($storageDisk)->exists($filePath)) {
+                Storage::disk($storageDisk)->delete($filePath);
+            }
+        });
 
         $this->activityLogService->log([
             'module' => 'settings',

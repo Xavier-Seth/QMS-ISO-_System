@@ -23,6 +23,11 @@ return new class extends Migration
 
     public function down(): void
     {
+        // 'submitted' is not in the original enum — remap to 'draft' before reverting.
+        DB::table('ofi_records')
+            ->where('status', 'submitted')
+            ->update(['status' => 'draft']);
+
         Schema::table('ofi_records', function (Blueprint $table) {
             $table->enum('status', ['draft', 'final', 'closed'])->default('draft')->change();
         });

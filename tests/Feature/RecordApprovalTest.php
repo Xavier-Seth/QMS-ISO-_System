@@ -142,7 +142,7 @@ class RecordApprovalTest extends TestCase
             $table->string('original_file_name');
             $table->string('file_name');
             $table->string('file_path');
-            $table->string('storage_disk', 50)->default('public');
+            $table->string('storage_disk', 50)->default('private');
             $table->boolean('is_active')->default(false);
             $table->foreignId('uploaded_by')->nullable()->constrained('users')->nullOnDelete();
             $table->timestamps();
@@ -281,6 +281,11 @@ class RecordApprovalTest extends TestCase
         $this->assertNull($record->rejected_at);
         $this->assertNull($record->rejected_by);
         $this->assertSame('approved', $record->workflow_status);
+
+        $upload = DocumentUpload::query()->where('ofi_record_id', $record->id)->first();
+        $this->assertNotNull($upload, 'Expected a DocumentUpload to be created on OFI approval.');
+        $this->assertSame('private', $upload->storage_disk);
+        $this->assertEmpty(Storage::disk('public')->allFiles());
     }
 
     // --- Finding #6: CAR ---
@@ -334,6 +339,11 @@ class RecordApprovalTest extends TestCase
         $this->assertNull($record->rejected_at);
         $this->assertNull($record->rejected_by);
         $this->assertSame('approved', $record->workflow_status);
+
+        $upload = DocumentUpload::query()->where('car_record_id', $record->id)->first();
+        $this->assertNotNull($upload, 'Expected a DocumentUpload to be created on CAR approval.');
+        $this->assertSame('private', $upload->storage_disk);
+        $this->assertEmpty(Storage::disk('public')->allFiles());
     }
 
     // --- Finding #8: DCR ---
@@ -409,6 +419,9 @@ class RecordApprovalTest extends TestCase
         $this->assertNull($upload->preview_generated_at);
         $this->assertNull($upload->preview_source_hash);
         Storage::disk('private')->assertMissing($previewPath);
+
+        $this->assertSame('private', $upload->storage_disk);
+        $this->assertEmpty(Storage::disk('public')->allFiles());
     }
 
     private function storeMinimalTemplate(string $module, string $disk, string $path, User $uploadedBy): void

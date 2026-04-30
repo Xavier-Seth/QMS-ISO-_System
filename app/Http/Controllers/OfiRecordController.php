@@ -673,22 +673,17 @@ class OfiRecordController extends Controller
                 'created_at' => $record->created_at,
             ]);
 
+        $statusCounts = OfiRecord::query()
+            ->where('created_by', auth()->id())
+            ->selectRaw('workflow_status, COUNT(*) as total')
+            ->groupBy('workflow_status')
+            ->pluck('total', 'workflow_status');
+
         $counts = [
-            'all' => OfiRecord::query()
-                ->where('created_by', auth()->id())
-                ->count(),
-            'pending' => OfiRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'pending')
-                ->count(),
-            'approved' => OfiRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'approved')
-                ->count(),
-            'rejected' => OfiRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'rejected')
-                ->count(),
+            'all' => $statusCounts->sum(),
+            'pending' => $statusCounts->get('pending') ?? 0,
+            'approved' => $statusCounts->get('approved') ?? 0,
+            'rejected' => $statusCounts->get('rejected') ?? 0,
         ];
 
         return Inertia::render('Inbox/MyRecords', [

@@ -271,5 +271,8 @@ Route::middleware('auth')->group(function () {
 
         Route::post('/inbox/dcr/{dcrRecord}/approve', [DcrRecordController::class, 'approve'])->name('dcr.inbox.approve');
         Route::post('/inbox/dcr/{dcrRecord}/reject', [DcrRecordController::class, 'reject'])->name('dcr.inbox.reject');
+
+        Route::patch('/dcr/records/{dcrRecord}/resolution-status', [DcrRecordController::class, 'updateResolutionStatus'])
+            ->name('dcr.records.resolution-status');
     });
 });

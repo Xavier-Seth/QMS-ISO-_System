@@ -307,16 +307,8 @@ class DcrRecordController extends Controller
             $payload = $request->all();
             $isAdmin = $this->isAdminUser();
 
-            $typeId = DocumentType::where('code', 'R-QMS-013')->value('id');
-
-            if (! $typeId) {
-                return response()->json([
-                    'message' => 'DocumentType R-QMS-013 not found.',
-                ], 422);
-            }
-
             $record = DcrRecord::create([
-                'document_type_id' => $typeId,
+                'document_type_id' => $this->rQms013TypeId(),
                 'dcr_no' => $payload['dcrNo'] ?? null,
                 'to_for' => $payload['toFor'] ?? null,
                 'from' => $payload['from'] ?? null,
@@ -689,6 +681,46 @@ class DcrRecordController extends Controller
         return back()->with('success', 'DCR rejected and returned for correction.');
     }
 
+    public function updateResolutionStatus(Request $request, DcrRecord $dcrRecord)
+    {
+        abort_unless($this->isAdminUser(), 403, 'Only admins can update DCR resolution status.');
+
+        $validated = $request->validate([
+            'resolution_status' => ['required', 'in:open,ongoing,closed'],
+        ]);
+
+        if ($dcrRecord->workflow_status !== 'approved') {
+            return response()->json([
+                'message' => 'Only approved DCR records can update resolution status.',
+            ], 422);
+        }
+
+        $newStatus = $validated['resolution_status'];
+        $currentStatus = $dcrRecord->resolution_status ?: 'open';
+
+        $allowedTransitions = [
+            'open' => ['open', 'ongoing', 'closed'],
+            'ongoing' => ['ongoing', 'closed'],
+            'closed' => ['closed'],
+        ];
+
+        if (! in_array($newStatus, $allowedTransitions[$currentStatus] ?? [], true)) {
+            return response()->json([
+                'message' => "Invalid resolution status transition from {$currentStatus} to {$newStatus}.",
+            ], 422);
+        }
+
+        $dcrRecord->update([
+            'resolution_status' => $newStatus,
+            'updated_by' => auth()->id(),
+        ]);
+
+        return response()->json([
+            'message' => 'DCR resolution status updated successfully.',
+            'resolution_status' => $dcrRecord->resolution_status,
+        ]);
+    }
+
     public function myRecords(Request $request)
     {
         $status = $request->input('workflow_status', 'all');
@@ -721,22 +753,17 @@ class DcrRecordController extends Controller
                 'created_at' => $record->created_at,
             ]);
 
+        $statusCounts = DcrRecord::query()
+            ->where('created_by', auth()->id())
+            ->selectRaw('workflow_status, COUNT(*) as total')
+            ->groupBy('workflow_status')
+            ->pluck('total', 'workflow_status');
+
         $counts = [
-            'all' => DcrRecord::query()
-                ->where('created_by', auth()->id())
-                ->count(),
-            'pending' => DcrRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'pending')
-                ->count(),
-            'approved' => DcrRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'approved')
-                ->count(),
-            'rejected' => DcrRecord::query()
-                ->where('created_by', auth()->id())
-                ->where('workflow_status', 'rejected')
-                ->count(),
+            'all' => $statusCounts->sum(),
+            'pending' => $statusCounts->get('pending') ?? 0,
+            'approved' => $statusCounts->get('approved') ?? 0,
+            'rejected' => $statusCounts->get('rejected') ?? 0,
         ];
 
         return \Inertia\Inertia::render('Inbox/MyDCRRecords', [
