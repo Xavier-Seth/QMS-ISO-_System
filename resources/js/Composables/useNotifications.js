@@ -20,6 +20,8 @@ export function useNotifications() {
     try {
       const response = await axios.get("/notifications");
       notifications.value = response.data.data ?? [];
+    } catch {
+      // silently ignore
     } finally {
       loading.value = false;
     }

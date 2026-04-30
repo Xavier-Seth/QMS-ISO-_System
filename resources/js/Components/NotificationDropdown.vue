@@ -16,9 +16,9 @@ function close() {
   isOpen.value = false;
 }
 
-async function handleClick(notification) {
+function handleClick(notification) {
   close();
-  await markRead(notification.id);
+  markRead(notification.id);
   const url = notification.data?.view_url ?? notification.data?.data?.view_url;
   if (url) {
     router.visit(url);
@@ -115,36 +115,37 @@ const typeBadgeClass = {
 
       <!-- List -->
       <ul v-else class="max-h-72 overflow-y-auto divide-y divide-slate-100">
-        <li
-          v-for="n in notifications"
-          :key="n.id"
-          class="flex gap-3 px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors"
-          :class="{ 'bg-indigo-50/60': !n.read_at }"
-          @click="handleClick(n)"
-        >
-          <!-- Type badge -->
-          <span
-            class="mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none h-fit"
-            :class="typeBadgeClass[(n.data?.type ?? n.data?.data?.type)] ?? 'bg-slate-100 text-slate-600'"
+        <li v-for="n in notifications" :key="n.id">
+          <button
+            type="button"
+            class="flex w-full gap-3 px-4 py-3 text-left cursor-pointer hover:bg-slate-50 transition-colors"
+            :class="{ 'bg-indigo-50/60': !n.read_at }"
+            @click="handleClick(n)"
           >
-            {{ (n.data?.type ?? n.data?.data?.type ?? "—").toUpperCase() }}
-          </span>
+            <!-- Type badge -->
+            <span
+              class="mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold uppercase leading-none h-fit"
+              :class="typeBadgeClass[(n.data?.type ?? n.data?.data?.type)] ?? 'bg-slate-100 text-slate-600'"
+            >
+              {{ (n.data?.type ?? n.data?.data?.type ?? "—").toUpperCase() }}
+            </span>
 
-          <!-- Message + time -->
-          <div class="min-w-0">
-            <p class="text-xs text-slate-700 leading-snug line-clamp-2">
-              {{ n.data?.message ?? n.data?.data?.message ?? "New notification" }}
-            </p>
-            <p class="text-[10px] text-slate-400 mt-0.5">
-              {{ formatTime(n.created_at) }}
-            </p>
-          </div>
+            <!-- Message + time -->
+            <div class="min-w-0">
+              <p class="text-xs text-slate-700 leading-snug line-clamp-2">
+                {{ n.data?.message ?? n.data?.data?.message ?? "New notification" }}
+              </p>
+              <p class="text-[10px] text-slate-400 mt-0.5">
+                {{ formatTime(n.created_at) }}
+              </p>
+            </div>
 
-          <!-- Unread dot -->
-          <span
-            v-if="!n.read_at"
-            class="shrink-0 mt-1.5 h-2 w-2 rounded-full bg-indigo-500"
-          />
+            <!-- Unread dot -->
+            <span
+              v-if="!n.read_at"
+              class="shrink-0 mt-1.5 h-2 w-2 rounded-full bg-indigo-500"
+            />
+          </button>
         </li>
       </ul>
     </div>

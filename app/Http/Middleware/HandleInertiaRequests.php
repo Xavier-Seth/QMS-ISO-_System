@@ -42,7 +42,7 @@ class HandleInertiaRequests extends Middleware
             ],
 
             'notifications_unread_count' => fn () => $request->user()
-                ? rescue(fn () => $request->user()->unreadNotifications()->count(), 0, false)
+                ? rescue(fn () => $request->user()->unreadNotifications()->count(), 0, true)
                 : 0,
         ];
     }
