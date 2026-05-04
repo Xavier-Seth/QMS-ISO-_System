@@ -262,7 +262,7 @@ const isCurrentUpload = (item, manual) => {
         </div>
 
         <div class="px-4 py-3">
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
+          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
             <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
               <div class="text-xs font-medium text-slate-500">Controlled Manual</div>
               <div class="mt-1 text-sm font-semibold text-slate-900">
@@ -355,7 +355,7 @@ const isCurrentUpload = (item, manual) => {
           </div>
 
           <div v-if="controlledRows.length" class="overflow-x-auto">
-            <table class="min-w-full text-sm">
+            <table class="w-full min-w-[480px] text-sm">
               <thead class="border-b border-slate-200 bg-slate-50">
                 <tr class="text-left">
                   <th class="px-4 py-3 font-semibold text-slate-700">File</th>
@@ -375,7 +375,7 @@ const isCurrentUpload = (item, manual) => {
                   :class="isCurrentUpload(item, controlledManual) ? 'bg-emerald-50/50' : 'bg-white'"
                 >
                   <td class="px-4 py-3">
-                    <div class="max-w-[420px] break-words font-medium text-slate-900">
+                    <div class="max-w-[240px] md:max-w-[420px] break-words font-medium text-slate-900">
                       {{ item.file_name }}
                     </div>
 
@@ -482,7 +482,7 @@ const isCurrentUpload = (item, manual) => {
           </div>
 
           <div v-if="uncontrolledRows.length" class="overflow-x-auto">
-            <table class="min-w-full text-sm">
+            <table class="w-full min-w-[480px] text-sm">
               <thead class="border-b border-slate-200 bg-slate-50">
                 <tr class="text-left">
                   <th class="px-4 py-3 font-semibold text-slate-700">File</th>
@@ -502,7 +502,7 @@ const isCurrentUpload = (item, manual) => {
                   :class="isCurrentUpload(item, uncontrolledManual) ? 'bg-emerald-50/50' : 'bg-white'"
                 >
                   <td class="px-4 py-3">
-                    <div class="max-w-[420px] break-words font-medium text-slate-900">
+                    <div class="max-w-[240px] md:max-w-[420px] break-words font-medium text-slate-900">
                       {{ item.file_name }}
                     </div>
 
@@ -625,7 +625,7 @@ const isCurrentUpload = (item, manual) => {
               </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
               <div class="md:col-span-1">
                 <label class="text-xs font-medium text-slate-600">Revision</label>
                 <input

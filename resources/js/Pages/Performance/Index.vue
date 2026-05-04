@@ -421,7 +421,7 @@ function submitUpload() {
 
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-6 py-5">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between lg:flex-row lg:items-center lg:justify-between">
             <div>
               <h1 class="text-xl font-semibold tracking-tight text-white">
                 Performance Commitment and Review Forms
@@ -443,7 +443,7 @@ function submitUpload() {
         </div>
 
         <div class="border-t border-slate-200 px-6 py-5">
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
             <button
               v-for="category in categories"
               :key="category.value"
@@ -465,8 +465,8 @@ function submitUpload() {
         </div>
       </div>
 
-      <div class="grid grid-cols-1 gap-6 xl:grid-cols-12">
-        <div class="space-y-6 xl:col-span-4">
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-12">
+        <div class="space-y-6 lg:col-span-4">
           <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-5 py-4">
               <h2 class="text-base font-semibold text-slate-900">
@@ -544,7 +544,7 @@ function submitUpload() {
               </div>
             </div>
 
-            <div v-if="years.length" class="grid grid-cols-2 gap-3 p-4">
+            <div v-if="years.length" class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4">
               <button
                 v-for="year in years"
                 :key="year.value"
@@ -668,7 +668,7 @@ function submitUpload() {
           </div>
         </div>
 
-        <div class="space-y-6 xl:col-span-8">
+        <div class="space-y-6 lg:col-span-8">
           <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <div class="border-b border-slate-200 px-5 py-4">
               <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -714,7 +714,7 @@ function submitUpload() {
 
             <div v-if="showFilesSection" class="border-b border-slate-200 px-5 py-4">
               <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
-                <div class="md:col-span-8">
+                <div class="col-span-full md:col-span-8">
                   <label class="text-xs font-medium text-slate-600">Search</label>
                   <input
                     v-model="search"
@@ -724,7 +724,7 @@ function submitUpload() {
                   />
                 </div>
 
-                <div class="md:col-span-4">
+                <div class="col-span-full md:col-span-4">
                   <label class="text-xs font-medium text-slate-600">Sort</label>
                   <select
                     v-model="sort"
@@ -783,7 +783,7 @@ function submitUpload() {
                 :key="file.id"
                 class="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300 hover:bg-white"
               >
-                <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between lg:flex-row lg:items-center lg:justify-between">
                   <div class="min-w-0 flex-1">
                     <div class="flex min-w-0 items-center gap-2">
                       <span

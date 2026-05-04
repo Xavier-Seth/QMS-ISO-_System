@@ -496,7 +496,7 @@ onBeforeUnmount(() => {
 
         <div class="px-4 py-4">
           <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
-            <div :class="showPerformanceTypeDropdown ? 'md:col-span-5' : 'md:col-span-6'">
+            <div :class="showPerformanceTypeDropdown ? 'col-span-full md:col-span-5' : 'col-span-full md:col-span-6'">
               <label class="text-xs font-medium text-slate-600">Search</label>
               <div class="relative mt-1">
                 <input
@@ -542,7 +542,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div v-if="showPerformanceTypeDropdown" class="md:col-span-2">
+            <div v-if="showPerformanceTypeDropdown" class="col-span-full md:col-span-2">
               <label class="text-xs font-medium text-slate-600">File Type</label>
               <select
                 v-model="series"
@@ -559,7 +559,7 @@ onBeforeUnmount(() => {
               </select>
             </div>
 
-            <div class="md:col-span-3">
+            <div class="col-span-full sm:col-span-6 md:col-span-3">
               <label class="text-xs font-medium text-slate-600">Document Type Status</label>
               <div class="mt-1 flex rounded-xl border border-slate-200 bg-slate-50 p-1">
                 <button
@@ -580,7 +580,7 @@ onBeforeUnmount(() => {
               </div>
             </div>
 
-            <div :class="showPerformanceTypeDropdown ? 'md:col-span-2' : 'md:col-span-3'">
+            <div :class="showPerformanceTypeDropdown ? 'col-span-full md:col-span-2' : 'col-span-full md:col-span-3'">
               <label class="text-xs font-medium text-slate-600">Sort</label>
               <select
                 v-model="sort"
@@ -698,7 +698,7 @@ onBeforeUnmount(() => {
               <span class="text-xs text-slate-500">{{ items.length }} items</span>
             </div>
 
-            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               <div
                 v-for="row in items"
                 :key="row.id"

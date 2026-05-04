@@ -556,7 +556,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
             <div class="w-full xl:max-w-[520px]">
               <div
                 class="grid grid-cols-1 gap-3"
-                :class="requiresRevision && !isPerformanceForm ? 'sm:grid-cols-3' : 'sm:grid-cols-1'"
+                :class="requiresRevision && !isPerformanceForm ? 'sm:grid-cols-2 md:grid-cols-3' : 'sm:grid-cols-1'"
               >
                 <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
                   <div class="text-xs uppercase tracking-wide text-slate-400">Total Files</div>
@@ -597,7 +597,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
 
         <div class="border-t border-slate-200 px-5 py-4 sm:px-6">
           <div class="grid grid-cols-1 gap-3 md:grid-cols-12">
-            <div class="md:col-span-4">
+            <div class="col-span-full md:col-span-4">
               <label class="text-xs font-medium text-slate-600">Search</label>
               <input
                 v-model="search"
@@ -607,7 +607,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               />
             </div>
 
-            <div v-if="requiresRevision && !isPerformanceForm" class="md:col-span-2">
+            <div v-if="requiresRevision && !isPerformanceForm" class="col-span-full sm:col-span-6 md:col-span-2">
               <label class="text-xs font-medium text-slate-600">Status</label>
               <select
                 v-model="statusFilter"
@@ -619,7 +619,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               </select>
             </div>
 
-            <div :class="requiresRevision && !isPerformanceForm ? 'md:col-span-2' : 'md:col-span-3'">
+            <div :class="requiresRevision && !isPerformanceForm ? 'col-span-full md:col-span-2' : 'col-span-full md:col-span-3'">
               <label class="text-xs font-medium text-slate-600">Sort</label>
               <select
                 v-model="sort"
@@ -634,7 +634,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               </select>
             </div>
 
-            <div class="md:col-span-2">
+            <div class="col-span-full sm:col-span-6 md:col-span-2">
               <label class="text-xs font-medium text-slate-600">Date From</label>
               <input
                 v-model="dateFrom"
@@ -643,7 +643,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
               />
             </div>
 
-            <div class="md:col-span-2">
+            <div class="col-span-full sm:col-span-6 md:col-span-2">
               <label class="text-xs font-medium text-slate-600">Date To</label>
               <input
                 v-model="dateTo"
@@ -730,8 +730,8 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
           </div>
         </div>
 
-        <div v-else class="grid grid-cols-1 gap-6 xl:grid-cols-12">
-          <div class="space-y-6 xl:col-span-4">
+        <div v-else class="grid grid-cols-1 gap-6 lg:grid-cols-12">
+          <div class="space-y-6 lg:col-span-4">
             <div class="rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div class="border-b border-slate-200 px-5 py-4">
                 <h2 class="text-base font-semibold text-slate-900">Record Type</h2>
@@ -795,7 +795,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                 </p>
               </div>
 
-              <div v-if="performanceYearGroups.length" class="grid grid-cols-2 gap-3 p-4">
+              <div v-if="performanceYearGroups.length" class="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4">
                 <button
                   v-for="yearGroup in performanceYearGroups"
                   :key="yearGroup.year"
@@ -909,7 +909,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
             </div>
           </div>
 
-          <div class="xl:col-span-8">
+          <div class="lg:col-span-8">
             <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div class="border-b border-slate-200 px-5 py-4">
                 <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1099,24 +1099,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
           class="overflow-hidden rounded-2xl border border-slate-200 bg-white"
         >
           <div class="overflow-x-auto">
-            <table class="min-w-full table-fixed text-sm">
-              <colgroup>
-                <template v-if="requiresRevision">
-                  <col class="w-[90px]" />
-                  <col />
-                  <col class="w-[120px]" />
-                  <col class="w-[170px]" />
-                  <col class="w-[190px]" />
-                  <col class="w-[170px]" />
-                </template>
-
-                <template v-else>
-                  <col />
-                  <col class="w-[170px]" />
-                  <col class="w-[190px]" />
-                  <col class="w-[170px]" />
-                </template>
-              </colgroup>
+            <table class="min-w-full text-sm">
 
               <thead class="border-b border-slate-200 bg-slate-50">
                 <tr class="text-left">
@@ -1158,7 +1141,7 @@ const tableColspan = computed(() => (requiresRevision.value ? 6 : 5))
                       </span>
 
                       <div
-                        class="min-w-0 max-w-[250px] truncate overflow-hidden whitespace-nowrap"
+                        class="min-w-0 max-w-[150px] sm:max-w-[250px] truncate overflow-hidden whitespace-nowrap"
                         :title="doc.file_name"
                       >
                         {{ doc.file_name }}

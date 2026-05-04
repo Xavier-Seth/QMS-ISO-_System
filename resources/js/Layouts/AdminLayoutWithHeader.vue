@@ -1,5 +1,5 @@
 <script setup>
-import { watch } from "vue";
+import { ref, watch } from "vue";
 import { usePage } from "@inertiajs/vue3";
 
 import Sidebar from "@/Components/Sidebar.vue";
@@ -17,6 +17,8 @@ defineProps({
 });
 
 const emit = defineEmits(["search"]);
+
+const sidebarOpen = ref(false);
 
 const page = usePage();
 const toast = useToast();
@@ -44,13 +46,14 @@ watch(
 
 <template>
   <div class="layout-wrapper">
-    <Sidebar />
+    <Sidebar :open="sidebarOpen" @close="sidebarOpen = false" />
 
     <main class="main-content">
       <Header
         :showSearch="showSearch"
         :searchValue="searchValue"
         @search="(v) => emit('search', v)"
+        @toggle-sidebar="sidebarOpen = !sidebarOpen"
       >
         <template #left>
           <slot name="headerLeft" />
@@ -74,7 +77,7 @@ watch(
 }
 
 .main-content {
-  margin-left: 280px;
+  margin-left: 0;
   flex: 1;
   min-width: 0;
   height: 100vh;
@@ -82,5 +85,11 @@ watch(
   overflow-x: hidden;
   display: flex;
   flex-direction: column;
+}
+
+@media (min-width: 1024px) {
+  .main-content {
+    margin-left: 280px;
+  }
 }
 </style>

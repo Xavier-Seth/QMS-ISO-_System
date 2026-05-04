@@ -8,7 +8,7 @@ const props = defineProps({
   searchValue: { type: String, default: "" },
 });
 
-const emit = defineEmits(["search"]);
+const emit = defineEmits(["search", "toggle-sidebar"]);
 
 const page = usePage();
 const me = computed(() => page.props.auth?.user);
@@ -39,15 +39,26 @@ const displayName = computed(() => {
 
 <template>
   <header class="w-full bg-[#f4f6f8]">
-    <div class="px-10 pt-6 pb-2">
+    <div class="px-4 pt-4 pb-2 lg:px-10 lg:pt-6">
       <div class="flex justify-between items-start gap-6">
 
         <!-- LEFT SIDE -->
-        <div class="min-w-0 flex items-center gap-4">
+        <div class="min-w-0 flex-1 flex items-center gap-4">
+          <button
+            type="button"
+            class="lg:hidden flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors shrink-0"
+            @click="emit('toggle-sidebar')"
+          >
+            <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="3" y1="6" x2="21" y2="6" />
+              <line x1="3" y1="12" x2="21" y2="12" />
+              <line x1="3" y1="18" x2="21" y2="18" />
+            </svg>
+          </button>
           <slot name="left" />
-          <div v-if="showSearch" class="flex items-center">
+          <div v-if="showSearch" class="flex items-center min-w-0 flex-1">
 
-            <div class="relative w-[520px] max-w-[60vw]">
+            <div class="relative w-full max-w-[520px]">
               <div class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
                 <svg
                   class="w-4 h-4"
@@ -74,11 +85,11 @@ const displayName = computed(() => {
         </div>
 
         <!-- RIGHT SIDE -->
-        <div class="flex items-center gap-4">
+        <div class="flex items-center gap-4 shrink-0">
 
           <!-- MAIL ICON -->
           <button
-            class="relative h-10 w-10 rounded-full bg-[#e7e7e7] flex items-center justify-center"
+            class="hidden sm:flex relative h-10 w-10 rounded-full bg-[#e7e7e7] items-center justify-center"
             type="button"
           >
             <svg
@@ -119,7 +130,7 @@ const displayName = computed(() => {
 
             </div>
 
-            <div class="text-right">
+            <div class="text-right hidden sm:block">
               <div class="text-xs text-slate-500 leading-none">
                 Admin User
               </div>

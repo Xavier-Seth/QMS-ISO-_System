@@ -77,7 +77,7 @@ const maxYearlyTotal = computed(() =>
       </div>
     </template>
 
-    <div class="px-8 py-7 space-y-6 bg-[#f4f6f8] min-h-screen">
+    <div class="px-4 py-5 md:px-8 md:py-7 space-y-6 bg-[#f4f6f8] min-h-screen">
 
       <!-- Page heading -->
       <div>
@@ -86,7 +86,7 @@ const maxYearlyTotal = computed(() =>
       </div>
 
       <!-- ── Row 1: Summary Cards ── -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
         <!-- Documents -->
         <div class="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
@@ -156,7 +156,7 @@ const maxYearlyTotal = computed(() =>
       </div>
 
       <!-- ── Row 2: Recent Uploads + Recent Activity ── -->
-      <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         <!-- Recent Uploads -->
         <div class="bg-white rounded-xl border border-slate-200 p-5">

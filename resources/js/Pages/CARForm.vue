@@ -858,9 +858,9 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="flex flex-1 gap-6 overflow-hidden">
+        <div class="flex flex-col lg:flex-row flex-1 gap-6 overflow-hidden">
           <div
-            class="flex flex-1 items-start justify-center overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
+            class="flex flex-1 items-start justify-center overflow-x-auto overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
           >
             <div
               class="flex w-[210mm] flex-col border-2 border-black bg-white text-black transition"

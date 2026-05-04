@@ -34,7 +34,7 @@ const tabIndex = computed(() => {
 });
 
 const tabGridClass = computed(() => {
-    return isAdmin.value ? "grid-cols-3" : "grid-cols-1";
+    return isAdmin.value ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-1";
 });
 
 const indicatorWidth = computed(() => {
@@ -55,7 +55,7 @@ const indicatorTransform = computed(() => {
             </div>
         </template>
 
-        <div class="w-full box-border px-10 pb-10">
+        <div class="w-full box-border px-4 pb-10 md:px-10">
             <div class="mt-6 bg-transparent">
 
                 <!-- TABS -->

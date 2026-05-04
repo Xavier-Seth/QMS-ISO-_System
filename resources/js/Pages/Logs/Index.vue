@@ -82,7 +82,7 @@ function actionBadge(val) {
       </div>
     </template>
 
-    <div class="px-8 py-7 space-y-6 bg-[#f4f6f8] min-h-screen">
+    <div class="px-4 py-5 md:px-8 md:py-7 space-y-6 bg-[#f4f6f8] min-h-screen">
 
       <!-- Filter bar -->
       <div class="bg-white rounded-xl border border-slate-200 px-5 py-4">
@@ -182,7 +182,7 @@ function actionBadge(val) {
                     {{ log.action || '—' }}
                   </span>
                 </td>
-                <td class="max-w-[260px] truncate px-5 py-3.5 text-sm text-slate-500" :title="log.description">
+                <td class="max-w-[160px] md:max-w-[260px] truncate px-5 py-3.5 text-sm text-slate-500" :title="log.description">
                   {{ log.description || '—' }}
                 </td>
               </tr>
