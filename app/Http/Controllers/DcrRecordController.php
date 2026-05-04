@@ -339,9 +339,13 @@ class DcrRecordController extends Controller
         }
     }
 
-    public function show(DcrRecord $dcrRecord)
+    public function show(Request $request, DcrRecord $dcrRecord)
     {
         $this->ensureCanManageRecord($dcrRecord);
+
+        if ($request->header('X-Inertia')) {
+            return redirect("/dcr?record={$dcrRecord->id}");
+        }
 
         $dcrRecord->load([
             'creator:id,name,department',

@@ -216,7 +216,7 @@ class DashboardController extends Controller
             ->where('created_by', $userId)
             ->selectRaw("
                 COUNT(*) as total,
-                SUM(workflow_status = 'draft') as draft,
+                SUM(status = 'draft') as draft,
                 SUM(workflow_status = 'pending') as pending,
                 SUM(workflow_status = 'approved') as approved,
                 SUM(workflow_status = 'rejected') as rejected
@@ -283,16 +283,16 @@ class DashboardController extends Controller
 
         $myDrafts = DB::table('ofi_records')
             ->selectRaw("'OFI' as type, id, ofi_no as record_no, updated_at")
-            ->where('created_by', $userId)->where('workflow_status', 'draft')
+            ->where('created_by', $userId)->where('status', 'draft')
             ->unionAll(
                 DB::table('dcr_records')
                     ->selectRaw("'DCR' as type, id, dcr_no as record_no, updated_at")
-                    ->where('created_by', $userId)->where('workflow_status', 'draft')
+                    ->where('created_by', $userId)->where('status', 'draft')
             )
             ->unionAll(
                 DB::table('car_records')
                     ->selectRaw("'CAR' as type, id, car_no as record_no, updated_at")
-                    ->where('created_by', $userId)->where('workflow_status', 'draft')
+                    ->where('created_by', $userId)->where('status', 'draft')
             )
             ->orderByDesc('updated_at')
             ->get()

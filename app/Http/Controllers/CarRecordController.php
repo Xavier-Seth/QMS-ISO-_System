@@ -342,9 +342,13 @@ class CarRecordController extends Controller
         ]);
     }
 
-    public function show(CarRecord $carRecord)
+    public function show(Request $request, CarRecord $carRecord)
     {
         $this->ensureCanManageRecord($carRecord);
+
+        if ($request->header('X-Inertia')) {
+            return redirect("/car?record={$carRecord->id}");
+        }
 
         $carRecord->load([
             'creator:id,name,department',
