@@ -32,7 +32,13 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
-    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard'); // <-- updated
+    Route::get('/dashboard', function () {
+        $controller = app(DashboardController::class);
+
+        return auth()->user()->role === 'admin'
+            ? $controller->index()
+            : $controller->userDashboard();
+    })->name('dashboard');
 
     Route::get('/dcr', fn () => Inertia::render('DCR'))->name('dcr');
     Route::get('/ofi-form', fn () => Inertia::render('OFIForm'))->name('ofi.form');
