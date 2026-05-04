@@ -342,9 +342,13 @@ class CarRecordController extends Controller
         ]);
     }
 
-    public function show(CarRecord $carRecord)
+    public function show(Request $request, CarRecord $carRecord)
     {
         $this->ensureCanManageRecord($carRecord);
+
+        if ($request->header('X-Inertia')) {
+            return redirect("/car?record={$carRecord->id}");
+        }
 
         $carRecord->load([
             'creator:id,name,department',
@@ -585,6 +589,12 @@ class CarRecordController extends Controller
 
         DB::transaction(function () use ($carRecord, &$guardError) {
             $carRecord = CarRecord::lockForUpdate()->find($carRecord->id);
+
+            if ($carRecord === null) {
+                $guardError = 'CAR record not found.';
+
+                return;
+            }
 
             if ($carRecord->status !== 'submitted' || $carRecord->workflow_status !== 'pending') {
                 $guardError = 'Only submitted pending CAR records can be approved.';

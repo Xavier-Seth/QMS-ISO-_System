@@ -296,9 +296,13 @@ class OfiRecordController extends Controller
         ]);
     }
 
-    public function show(OfiRecord $ofiRecord)
+    public function show(Request $request, OfiRecord $ofiRecord)
     {
         $this->ensureCanManageRecord($ofiRecord);
+
+        if ($request->header('X-Inertia')) {
+            return redirect("/ofi-form?record={$ofiRecord->id}");
+        }
 
         $ofiRecord->load([
             'creator:id,name,department',
