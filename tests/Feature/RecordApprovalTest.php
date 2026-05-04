@@ -12,6 +12,7 @@ use App\Models\QmsTemplate;
 use App\Models\User;
 use App\Support\QmsTemplateModules;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use PhpOffice\PhpWord\IOFactory;
@@ -181,6 +182,15 @@ class RecordApprovalTest extends TestCase
             $table->text('user_agent')->nullable();
             $table->timestamp('created_at')->nullable();
         });
+
+        Schema::create('notifications', function (Blueprint $table) {
+            $table->uuid('id')->primary();
+            $table->string('type');
+            $table->morphs('notifiable');
+            $table->text('data');
+            $table->timestamp('read_at')->nullable();
+            $table->timestamps();
+        });
     }
 
     // --- Finding #4 ---
@@ -344,6 +354,35 @@ class RecordApprovalTest extends TestCase
         $this->assertNotNull($upload, 'Expected a DocumentUpload to be created on CAR approval.');
         $this->assertSame('private', $upload->storage_disk);
         $this->assertEmpty(Storage::disk('public')->allFiles());
+    }
+
+    public function test_car_approve_returns_error_when_record_deleted_before_lock(): void
+    {
+        $admin = User::factory()->create(['username' => 'admincarrace', 'role' => 'admin']);
+
+        $record = CarRecord::query()->create([
+            'car_no' => 'CAR-RACE-001',
+            'status' => 'submitted',
+            'workflow_status' => 'pending',
+            'resolution_status' => 'open',
+            'data' => [],
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        // Override route binding to return the model object even after it is deleted,
+        // simulating a race condition where the record is removed between binding and lock.
+        Route::bind('carRecord', fn () => $record);
+
+        CarRecord::query()->where('id', $record->id)->delete();
+
+        $response = $this
+            ->actingAs($admin)
+            ->from('/inbox')
+            ->post(route('car.inbox.approve', ['carRecord' => $record->id]));
+
+        $response->assertRedirect('/inbox');
+        $response->assertSessionHas('error', 'CAR record not found.');
     }
 
     // --- Finding #8: DCR ---

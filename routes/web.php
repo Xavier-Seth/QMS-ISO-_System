@@ -10,6 +10,7 @@ use App\Http\Controllers\DocumentController;
 use App\Http\Controllers\InboxController;
 use App\Http\Controllers\LogsController;
 use App\Http\Controllers\ManualController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OFIController;
 use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\PerformanceController;
@@ -31,7 +32,13 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [LoginController::class, 'destroy'])->name('logout');
 
-    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard'); // <-- updated
+    Route::get('/dashboard', function () {
+        $controller = app(DashboardController::class);
+
+        return auth()->user()->role === 'admin'
+            ? $controller->index()
+            : $controller->userDashboard();
+    })->name('dashboard');
 
     Route::get('/dcr', fn () => Inertia::render('DCR'))->name('dcr');
     Route::get('/ofi-form', fn () => Inertia::render('OFIForm'))->name('ofi.form');
@@ -113,6 +120,15 @@ Route::middleware('auth')->group(function () {
     Route::post('/car/records/{carRecord}/publish', [CarRecordController::class, 'publish'])->name('car.records.publish');
     Route::patch('/car/records/{carRecord}/resolution-status', [CarRecordController::class, 'updateResolutionStatus'])
         ->name('car.records.resolution-status');
+
+    /*
+    |--------------------------------------------------------------------------
+    | Notifications
+    |--------------------------------------------------------------------------
+    */
+    Route::get('/notifications', [NotificationController::class, 'index'])->name('notifications.index');
+    Route::post('/notifications/read-all', [NotificationController::class, 'markAllRead'])->name('notifications.read-all');
+    Route::post('/notifications/{id}/read', [NotificationController::class, 'markRead'])->name('notifications.read');
 
     /*
     |--------------------------------------------------------------------------

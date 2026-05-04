@@ -19,21 +19,21 @@ class DashboardController extends Controller
     {
         // ── Summary Counts ───────────────────────────────────────────────────
         $totalDocumentTypes = DocumentType::query()
-            ->whereHas('series', fn($q) => $q->where('code_prefix', '!=', 'MANUAL'))
+            ->whereHas('series', fn ($q) => $q->where('code_prefix', '!=', 'MANUAL'))
             ->count();
 
         $activeDocumentTypes = DocumentType::query()
-            ->whereHas('series', fn($q) => $q->where('code_prefix', '!=', 'MANUAL'))
+            ->whereHas('series', fn ($q) => $q->where('code_prefix', '!=', 'MANUAL'))
             ->whereRaw("LOWER(COALESCE(status,'active')) = 'active'")
             ->count();
 
         $obsoleteDocumentTypes = DocumentType::query()
-            ->whereHas('series', fn($q) => $q->where('code_prefix', '!=', 'MANUAL'))
+            ->whereHas('series', fn ($q) => $q->where('code_prefix', '!=', 'MANUAL'))
             ->whereRaw("LOWER(COALESCE(status,'active')) = 'obsolete'")
             ->count();
 
         $totalUploads = DocumentUpload::query()
-            ->whereHas('documentType.series', fn($q) => $q->where('code_prefix', '!=', 'MANUAL'))
+            ->whereHas('documentType.series', fn ($q) => $q->where('code_prefix', '!=', 'MANUAL'))
             ->count();
 
         $totalOfi = OfiRecord::count();
@@ -48,15 +48,15 @@ class DashboardController extends Controller
         // These are revision-controlled types that have NO active upload (i.e. no current active version)
         $needsRevision = DocumentType::query()
             ->with('series:id,code_prefix,name')
-            ->whereHas('series', fn($q) => $q->where('code_prefix', '!=', 'MANUAL'))
+            ->whereHas('series', fn ($q) => $q->where('code_prefix', '!=', 'MANUAL'))
             ->where('requires_revision', true)
             ->whereRaw("LOWER(COALESCE(status,'active')) = 'active'")
-            ->whereDoesntHave('uploads', fn($q) => $q->where('status', 'Active'))
+            ->whereDoesntHave('uploads', fn ($q) => $q->where('status', 'Active'))
             ->select(['id', 'code', 'title', 'series_id', 'updated_at'])
             ->orderBy('code')
             ->limit(10)
             ->get()
-            ->map(fn(DocumentType $t) => [
+            ->map(fn (DocumentType $t) => [
                 'id' => $t->id,
                 'code' => $t->code,
                 'title' => $t->title,
@@ -67,14 +67,14 @@ class DashboardController extends Controller
         // ── Recently uploaded documents ───────────────────────────────────────
         $recentUploads = DocumentUpload::query()
             ->with(['documentType:id,code,title', 'uploader:id,name'])
-            ->whereHas('documentType.series', fn($q) => $q->where('code_prefix', '!=', 'MANUAL'))
+            ->whereHas('documentType.series', fn ($q) => $q->where('code_prefix', '!=', 'MANUAL'))
             ->whereNull('ofi_record_id')
             ->whereNull('dcr_record_id')
             ->whereNull('car_record_id')
             ->orderByDesc('created_at')
             ->limit(5)
             ->get()
-            ->map(fn(DocumentUpload $u) => [
+            ->map(fn (DocumentUpload $u) => [
                 'id' => $u->id,
                 'file_name' => $u->file_name,
                 'doc_code' => $u->documentType?->code,
@@ -91,19 +91,19 @@ class DashboardController extends Controller
             ->whereNotIn('code_prefix', ['IPCR', 'DPCR', 'UPCR'])
             ->withCount([
                 'types as total_types',
-                'types as active_types' => fn($q) => $q->whereRaw("LOWER(COALESCE(status,'active')) = 'active'"),
-                'types as obsolete_types' => fn($q) => $q->whereRaw("LOWER(COALESCE(status,'active')) = 'obsolete'"),
+                'types as active_types' => fn ($q) => $q->whereRaw("LOWER(COALESCE(status,'active')) = 'active'"),
+                'types as obsolete_types' => fn ($q) => $q->whereRaw("LOWER(COALESCE(status,'active')) = 'obsolete'"),
             ])
             ->orderBy('code_prefix')
             ->get()
-            ->map(fn(DocumentSeries $s) => [
+            ->map(fn (DocumentSeries $s) => [
                 'series' => $s->code_prefix,
                 'name' => $s->name,
                 'total_types' => (int) $s->total_types,
                 'active_types' => (int) $s->active_types,
                 'obsolete_types' => (int) $s->obsolete_types,
             ])
-            ->filter(fn($s) => $s['total_types'] > 0)
+            ->filter(fn ($s) => $s['total_types'] > 0)
             ->values();
 
         // ── Recent QMS form activity (last 5 records across OFI / DCR / CAR) ─
@@ -127,9 +127,9 @@ class DashboardController extends Controller
         $creators = User::whereIn('id', $activityRows->pluck('created_by')->filter()->unique()->values()->all())
             ->pluck('name', 'id');
 
-        $recentActivity = $activityRows->map(fn($row) => [
+        $recentActivity = $activityRows->map(fn ($row) => [
             'type' => $row->type,
-            'record_no' => $row->record_no_raw ?: ($row->type . ' #' . $row->id),
+            'record_no' => $row->record_no_raw ?: ($row->type.' #'.$row->id),
             'actor' => $creators->get($row->created_by) ?? '—',
             'workflow_status' => $row->workflow_status,
             'updated_at' => Carbon::parse($row->updated_at)->diffForHumans(),
@@ -205,6 +205,138 @@ class DashboardController extends Controller
             'series_distribution' => $seriesDistribution,
             'recent_activity' => $recentActivity,
             'yearly_stats' => $yearlyStats,
+        ]);
+    }
+
+    public function userDashboard()
+    {
+        $userId = auth()->id();
+
+        $countsByStatus = fn (string $table) => DB::table($table)
+            ->where('created_by', $userId)
+            ->selectRaw("
+                COUNT(*) as total,
+                SUM(status = 'draft') as draft,
+                SUM(workflow_status = 'pending') as pending,
+                SUM(workflow_status = 'approved') as approved,
+                SUM(workflow_status = 'rejected') as rejected
+            ")
+            ->first();
+
+        $toArray = fn ($row) => [
+            'total' => (int) ($row?->total ?? 0),
+            'draft' => (int) ($row?->draft ?? 0),
+            'pending' => (int) ($row?->pending ?? 0),
+            'approved' => (int) ($row?->approved ?? 0),
+            'rejected' => (int) ($row?->rejected ?? 0),
+        ];
+
+        $recentActivity = DB::table('ofi_records')
+            ->selectRaw("'OFI' as type, id, ofi_no as record_no, workflow_status, rejection_reason, updated_at")
+            ->where('created_by', $userId)
+            ->unionAll(
+                DB::table('dcr_records')
+                    ->selectRaw("'DCR' as type, id, dcr_no as record_no, workflow_status, rejection_reason, updated_at")
+                    ->where('created_by', $userId)
+            )
+            ->unionAll(
+                DB::table('car_records')
+                    ->selectRaw("'CAR' as type, id, car_no as record_no, workflow_status, rejection_reason, updated_at")
+                    ->where('created_by', $userId)
+            )
+            ->orderByDesc('updated_at')
+            ->limit(5)
+            ->get()
+            ->map(fn ($row) => [
+                'type' => $row->type,
+                'id' => $row->id,
+                'record_no' => $row->record_no ?: ($row->type.' #'.$row->id),
+                'workflow_status' => $row->workflow_status,
+                'rejection_reason' => $row->rejection_reason,
+                'updated_at' => Carbon::parse($row->updated_at)->diffForHumans(),
+            ])
+            ->values();
+
+        $needsAttention = DB::table('ofi_records')
+            ->selectRaw("'OFI' as type, id, ofi_no as record_no, rejection_reason, updated_at")
+            ->where('created_by', $userId)->where('workflow_status', 'rejected')
+            ->unionAll(
+                DB::table('dcr_records')
+                    ->selectRaw("'DCR' as type, id, dcr_no as record_no, rejection_reason, updated_at")
+                    ->where('created_by', $userId)->where('workflow_status', 'rejected')
+            )
+            ->unionAll(
+                DB::table('car_records')
+                    ->selectRaw("'CAR' as type, id, car_no as record_no, rejection_reason, updated_at")
+                    ->where('created_by', $userId)->where('workflow_status', 'rejected')
+            )
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(fn ($row) => [
+                'type' => $row->type,
+                'id' => $row->id,
+                'record_no' => $row->record_no ?: ($row->type.' #'.$row->id),
+                'rejection_reason' => $row->rejection_reason,
+                'updated_at' => Carbon::parse($row->updated_at)->diffForHumans(),
+            ])
+            ->values();
+
+        $myDrafts = DB::table('ofi_records')
+            ->selectRaw("'OFI' as type, id, ofi_no as record_no, updated_at")
+            ->where('created_by', $userId)->where('status', 'draft')
+            ->unionAll(
+                DB::table('dcr_records')
+                    ->selectRaw("'DCR' as type, id, dcr_no as record_no, updated_at")
+                    ->where('created_by', $userId)->where('status', 'draft')
+            )
+            ->unionAll(
+                DB::table('car_records')
+                    ->selectRaw("'CAR' as type, id, car_no as record_no, updated_at")
+                    ->where('created_by', $userId)->where('status', 'draft')
+            )
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(fn ($row) => [
+                'type' => $row->type,
+                'id' => $row->id,
+                'record_no' => $row->record_no ?: ($row->type.' #'.$row->id),
+                'updated_at' => Carbon::parse($row->updated_at)->diffForHumans(),
+            ])
+            ->values();
+
+        $pendingRecords = DB::table('ofi_records')
+            ->selectRaw("'OFI' as type, id, ofi_no as record_no, updated_at")
+            ->where('created_by', $userId)->where('workflow_status', 'pending')
+            ->unionAll(
+                DB::table('dcr_records')
+                    ->selectRaw("'DCR' as type, id, dcr_no as record_no, updated_at")
+                    ->where('created_by', $userId)->where('workflow_status', 'pending')
+            )
+            ->unionAll(
+                DB::table('car_records')
+                    ->selectRaw("'CAR' as type, id, car_no as record_no, updated_at")
+                    ->where('created_by', $userId)->where('workflow_status', 'pending')
+            )
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(fn ($row) => [
+                'type' => $row->type,
+                'id' => $row->id,
+                'record_no' => $row->record_no ?: ($row->type.' #'.$row->id),
+                'updated_at' => Carbon::parse($row->updated_at)->diffForHumans(),
+            ])
+            ->values();
+
+        return Inertia::render('UserDashboard', [
+            'summary' => [
+                'ofi' => $toArray($countsByStatus('ofi_records')),
+                'dcr' => $toArray($countsByStatus('dcr_records')),
+                'car' => $toArray($countsByStatus('car_records')),
+            ],
+            'needs_attention' => $needsAttention,
+            'my_drafts' => $myDrafts,
+            'pending_records' => $pendingRecords,
+            'recent_activity' => $recentActivity,
         ]);
     }
 }
