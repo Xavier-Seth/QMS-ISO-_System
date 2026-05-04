@@ -590,6 +590,12 @@ class CarRecordController extends Controller
         DB::transaction(function () use ($carRecord, &$guardError) {
             $carRecord = CarRecord::lockForUpdate()->find($carRecord->id);
 
+            if ($carRecord === null) {
+                $guardError = 'CAR record not found.';
+
+                return;
+            }
+
             if ($carRecord->status !== 'submitted' || $carRecord->workflow_status !== 'pending') {
                 $guardError = 'Only submitted pending CAR records can be approved.';
 
