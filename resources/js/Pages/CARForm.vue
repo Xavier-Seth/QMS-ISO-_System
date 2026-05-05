@@ -728,7 +728,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="h-screen overflow-hidden bg-slate-100 font-sans">
+    <div class="min-h-screen overflow-y-auto bg-slate-100 font-sans lg:h-screen lg:overflow-hidden">
       <div class="flex h-full flex-col gap-6 px-10 py-8">
         <div class="flex shrink-0 flex-wrap items-end justify-between gap-3">
           <div class="min-w-0">
@@ -858,7 +858,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
 
-        <div class="flex flex-col lg:flex-row flex-1 gap-6 overflow-hidden">
+        <div class="flex flex-col lg:flex-row flex-1 gap-6 lg:overflow-hidden">
           <div
             class="flex flex-1 items-start justify-center overflow-x-auto overflow-y-auto rounded-2xl border border-slate-200 bg-white p-8 shadow-[0_2px_12px_rgba(0,0,0,0.06)]"
           >

@@ -96,7 +96,7 @@ const indicatorTransform = computed(() => {
 
                     <!-- animated indicator -->
                     <div
-                        class="absolute bottom-0 left-0 z-[3] h-0.5 bg-[#7f7f7f] transition duration-300 ease-out"
+                        class="absolute bottom-0 left-0 z-[3] hidden h-0.5 bg-[#7f7f7f] transition duration-300 ease-out sm:block"
                         :style="{
                             width: indicatorWidth,
                             transform: indicatorTransform,

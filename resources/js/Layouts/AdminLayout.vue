@@ -17,6 +17,8 @@ const sidebarOpen = ref(false);
       <button
         type="button"
         class="lg:hidden fixed top-4 left-4 z-[101] flex items-center justify-center w-9 h-9 rounded-lg bg-white shadow text-slate-500 hover:bg-slate-50 transition-colors"
+        aria-label="Toggle sidebar"
+        :aria-expanded="sidebarOpen.toString()"
         @click="sidebarOpen = !sidebarOpen"
       >
         <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
