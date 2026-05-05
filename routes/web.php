@@ -164,7 +164,22 @@ Route::middleware('auth')->group(function () {
     |--------------------------------------------------------------------------
     */
     Route::middleware('can:admin-only')->group(function () {
-        Route::get('/admin/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard'); // <-- updated
+        Route::get('/admin/dashboard', [DashboardController::class, 'index'])->name('admin.dashboard');
+
+        Route::post('/settings/system', [SettingsController::class, 'updateSystem'])
+            ->name('settings.system.update');
+
+        Route::post('/settings/signature', [SettingsController::class, 'uploadSignature'])
+            ->name('settings.signature.upload');
+
+        Route::delete('/settings/signature', [SettingsController::class, 'removeSignature'])
+            ->name('settings.signature.remove');
+
+        Route::post('/settings/logo', [SettingsController::class, 'uploadLogo'])
+            ->name('settings.logo.upload');
+
+        Route::delete('/settings/logo', [SettingsController::class, 'removeLogo'])
+            ->name('settings.logo.remove');
 
         Route::get('/logs', [LogsController::class, 'index'])->name('logs');
 

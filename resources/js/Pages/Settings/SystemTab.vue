@@ -1,18 +1,99 @@
 <script setup>
 import { reactive, ref, computed, onMounted } from "vue";
+import { usePage, useForm, router } from "@inertiajs/vue3";
 import axios from "axios";
 import { useToast } from "@/Composables/useToast";
 import { useConfirm } from "@/Composables/useConfirm";
 
-const form = reactive({
-    system_name: "Quality Management System",
-    institution_name: "Leyte Normal University",
-    office_name: "QMS (ISO) Office",
-    maintenance_mode: false,
-});
-
+const page = usePage();
 const toast = useToast();
 const confirm = useConfirm();
+
+// General Settings
+const _settings = page.props.system_settings ?? {};
+const generalForm = useForm({
+    system_name: _settings.system_name ?? "Quality Management System",
+    institution_name: _settings.institution_name ?? "Leyte Normal University",
+    office_name: _settings.office_name ?? "QMS (ISO) Office",
+    maintenance_mode: _settings.maintenance_mode ?? false,
+});
+
+function saveGeneralSettings() {
+    generalForm.post("/settings/system", { preserveScroll: true });
+}
+
+// Logo
+const logoInput = ref(null);
+const logoForm = useForm({ logo: null });
+const currentLogoUrl = computed(
+    () => page.props.system_settings?.logo_url ?? '/images/QMS_Logo.png'
+);
+const hasCustomLogo = computed(() => !!page.props.system_settings?.logo_url);
+
+function triggerLogoUpload() {
+    logoInput.value?.click();
+}
+
+function handleLogoSelected(event) {
+    const file = event.target.files?.[0];
+    if (!file) { return; }
+    logoForm.logo = file;
+    logoForm.post("/settings/logo", {
+        preserveScroll: true,
+        forceFormData: true,
+        onSuccess: () => {
+            logoForm.reset();
+            if (logoInput.value) { logoInput.value.value = ""; }
+        },
+    });
+}
+
+async function removeLogo() {
+    const confirmed = await confirm.ask({
+        title: "Remove Logo",
+        message: "Remove the current system logo? This cannot be undone.",
+        confirmText: "Remove",
+        tone: "danger",
+    });
+    if (!confirmed) { return; }
+    router.delete("/settings/logo", { preserveScroll: true });
+}
+
+// E-Signature
+const signatureInput = ref(null);
+const signatureForm = useForm({ e_signature: null });
+const currentSignatureUrl = computed(
+    () => page.props.system_settings?.e_signature_url ?? null
+);
+
+function triggerSignatureUpload() {
+    signatureInput.value?.click();
+}
+
+function handleSignatureSelected(event) {
+    const file = event.target.files?.[0];
+    if (!file) { return; }
+    signatureForm.e_signature = file;
+    signatureForm.post("/settings/signature", {
+        preserveScroll: true,
+        forceFormData: true,
+        onSuccess: () => {
+            signatureForm.reset();
+            if (signatureInput.value) { signatureInput.value.value = ""; }
+        },
+    });
+}
+
+async function removeSignature() {
+    const confirmed = await confirm.ask({
+        title: "Remove E-Signature",
+        message: "Remove the current e-signature? This cannot be undone.",
+        confirmText: "Remove",
+        tone: "danger",
+    });
+    if (!confirmed) { return; }
+    router.delete("/settings/signature", { preserveScroll: true });
+}
 
 const loading = ref(false);
 const uploadingTemplate = ref(false);
@@ -345,7 +426,7 @@ onMounted(() => {
                     <div>
                         <label class="text-sm text-slate-600">System Name</label>
                         <input
-                            v-model="form.system_name"
+                            v-model="generalForm.system_name"
                             class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
                         />
                     </div>
@@ -353,7 +434,7 @@ onMounted(() => {
                     <div>
                         <label class="text-sm text-slate-600">Institution Name</label>
                         <input
-                            v-model="form.institution_name"
+                            v-model="generalForm.institution_name"
                             class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
                         />
                     </div>
@@ -361,13 +442,13 @@ onMounted(() => {
                     <div>
                         <label class="text-sm text-slate-600">Office Name</label>
                         <input
-                            v-model="form.office_name"
+                            v-model="generalForm.office_name"
                             class="mt-1 w-full border rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-slate-200 outline-none"
                         />
                     </div>
 
                     <div class="flex items-center gap-2 mt-4">
-                        <input type="checkbox" v-model="form.maintenance_mode" />
+                        <input type="checkbox" v-model="generalForm.maintenance_mode" />
                         <label class="text-sm text-slate-700">
                             Enable Maintenance Mode
                         </label>
@@ -380,21 +461,36 @@ onMounted(() => {
                         <label class="text-sm text-slate-600">System Logo</label>
                         <div class="mt-2 flex items-center gap-4">
                             <div
-                                class="w-20 h-20 bg-gray-100 border rounded-lg flex items-center justify-center text-xs text-gray-400"
+                                class="w-20 h-20 bg-gray-100 border rounded-lg overflow-hidden flex items-center justify-center text-xs text-gray-400"
                             >
-                                Logo
+                                <img
+                                    :src="currentLogoUrl"
+                                    alt="System Logo"
+                                    class="h-full w-full object-contain"
+                                />
                             </div>
 
                             <div class="flex gap-2">
+                                <input
+                                    ref="logoInput"
+                                    type="file"
+                                    accept="image/jpg,image/jpeg,image/png,image/webp"
+                                    class="hidden"
+                                    @change="handleLogoSelected"
+                                />
                                 <button
                                     type="button"
-                                    class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm hover:bg-slate-900"
+                                    :disabled="logoForm.processing"
+                                    class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm hover:bg-slate-900 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    @click="triggerLogoUpload"
                                 >
-                                    Upload
+                                    {{ logoForm.processing ? "Uploading..." : "Upload" }}
                                 </button>
                                 <button
+                                    v-if="hasCustomLogo"
                                     type="button"
-                                    class="px-4 py-2 border rounded-lg text-sm"
+                                    class="px-4 py-2 border rounded-lg text-sm hover:bg-slate-50"
+                                    @click="removeLogo"
                                 >
                                     Remove
                                 </button>
@@ -407,21 +503,38 @@ onMounted(() => {
                         <label class="text-sm text-slate-600">Authorized Signature</label>
                         <div class="mt-2 flex items-center gap-4">
                             <div
-                                class="w-24 h-16 bg-gray-100 border rounded-lg flex items-center justify-center text-xs text-gray-400"
+                                class="w-24 h-16 bg-gray-100 border rounded-lg overflow-hidden flex items-center justify-center text-xs text-gray-400"
                             >
-                                Signature
+                                <img
+                                    v-if="currentSignatureUrl"
+                                    :src="currentSignatureUrl"
+                                    alt="E-Signature"
+                                    class="h-full w-full object-contain"
+                                />
+                                <span v-else>No signature</span>
                             </div>
 
                             <div class="flex gap-2">
+                                <input
+                                    ref="signatureInput"
+                                    type="file"
+                                    accept="image/jpg,image/jpeg,image/png,image/webp"
+                                    class="hidden"
+                                    @change="handleSignatureSelected"
+                                />
                                 <button
                                     type="button"
-                                    class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm hover:bg-slate-900"
+                                    :disabled="signatureForm.processing"
+                                    class="px-4 py-2 bg-slate-800 text-white rounded-lg text-sm hover:bg-slate-900 disabled:opacity-60 disabled:cursor-not-allowed"
+                                    @click="triggerSignatureUpload"
                                 >
-                                    Upload
+                                    {{ signatureForm.processing ? "Uploading..." : "Upload" }}
                                 </button>
                                 <button
+                                    v-if="currentSignatureUrl"
                                     type="button"
-                                    class="px-4 py-2 border rounded-lg text-sm"
+                                    class="px-4 py-2 border rounded-lg text-sm hover:bg-slate-50"
+                                    @click="removeSignature"
                                 >
                                     Remove
                                 </button>
@@ -429,6 +542,17 @@ onMounted(() => {
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <div class="mt-6 flex justify-end border-t border-slate-100 pt-6">
+                <button
+                    type="button"
+                    :disabled="generalForm.processing"
+                    class="px-6 py-2 bg-slate-800 text-white rounded-lg text-sm hover:bg-slate-900 disabled:opacity-60 disabled:cursor-not-allowed"
+                    @click="saveGeneralSettings"
+                >
+                    {{ generalForm.processing ? "Saving..." : "Save Settings" }}
+                </button>
             </div>
         </div>
 
