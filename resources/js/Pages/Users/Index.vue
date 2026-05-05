@@ -124,6 +124,49 @@ const deleteUser = async (user) => {
     loading.close();
   }
 };
+
+const showResetPassword = ref(false);
+const resetTarget = ref(null);
+
+const resetPasswordForm = useForm({
+  new_password: "",
+  new_password_confirmation: "",
+});
+
+const openResetPassword = (user) => {
+  resetTarget.value = user;
+  resetPasswordForm.reset();
+  resetPasswordForm.clearErrors();
+  showResetPassword.value = true;
+};
+
+const closeResetPassword = () => {
+  showResetPassword.value = false;
+  resetTarget.value = null;
+};
+
+const submitResetPassword = () => {
+  loading.open("Resetting password...");
+
+  try {
+    resetPasswordForm.patch(`/users/${resetTarget.value.id}/password`, {
+      preserveScroll: true,
+      onSuccess: () => {
+        showResetPassword.value = false;
+        router.reload({ preserveScroll: true });
+      },
+      onError: () => {
+        loading.close();
+        toast.error("Failed to reset password. Please check the form.");
+      },
+      onFinish: () => {
+        loading.close();
+      },
+    });
+  } catch {
+    loading.close();
+  }
+};
 </script>
 
 <template>
@@ -211,7 +254,8 @@ const deleteUser = async (user) => {
                   <button
                     class="hover:text-slate-800"
                     type="button"
-                    title="Edit"
+                    title="Reset Password"
+                    @click="openResetPassword(u)"
                   >
                     <svg
                       class="h-4 w-4"
@@ -469,6 +513,97 @@ const deleteUser = async (user) => {
                     @click="submitCreate"
                   >
                     {{ createForm.processing ? "Creating..." : "Create User" }}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Transition>
+        </div>
+      </Transition>
+
+      <!-- Reset Password Modal -->
+      <Transition
+        enter-active-class="transition-opacity duration-150 ease-out"
+        enter-from-class="opacity-0"
+        enter-to-class="opacity-100"
+        leave-active-class="transition-opacity duration-100 ease-in"
+        leave-from-class="opacity-100"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="showResetPassword"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-[2px]"
+          @click.self="closeResetPassword"
+        >
+          <Transition
+            appear
+            enter-active-class="transition-all duration-200 ease-out"
+            enter-from-class="opacity-0 translate-y-2 scale-[0.985]"
+            enter-to-class="opacity-100 translate-y-0 scale-100"
+            leave-active-class="transition-all duration-150 ease-in"
+            leave-from-class="opacity-100 translate-y-0 scale-100"
+            leave-to-class="opacity-0 translate-y-2 scale-[0.985]"
+          >
+            <div
+              v-if="showResetPassword"
+              class="w-full max-w-sm overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
+            >
+              <div class="flex items-center justify-between bg-slate-900 px-5 py-4 text-white">
+                <div class="font-semibold">
+                  Reset Password — {{ resetTarget?.name }}
+                </div>
+                <button
+                  class="text-white/80 transition duration-200 hover:rotate-90 hover:text-white"
+                  type="button"
+                  @click="closeResetPassword"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div class="p-5">
+                <div class="flex flex-col gap-4">
+                  <div>
+                    <label class="mb-1 block text-xs font-semibold text-slate-700">New Password</label>
+                    <input
+                      v-model="resetPasswordForm.new_password"
+                      type="password"
+                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                    />
+                    <p v-if="resetPasswordForm.errors.new_password" class="mt-1 text-xs text-red-600">
+                      {{ resetPasswordForm.errors.new_password }}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label class="mb-1 block text-xs font-semibold text-slate-700">Confirm Password</label>
+                    <input
+                      v-model="resetPasswordForm.new_password_confirmation"
+                      type="password"
+                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                    />
+                    <p v-if="resetPasswordForm.errors.new_password_confirmation" class="mt-1 text-xs text-red-600">
+                      {{ resetPasswordForm.errors.new_password_confirmation }}
+                    </p>
+                  </div>
+                </div>
+
+                <div class="mt-6 flex justify-end gap-2">
+                  <button
+                    class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-slate-700 transition duration-150 hover:-translate-y-[1px] hover:bg-slate-50 active:translate-y-0"
+                    type="button"
+                    @click="closeResetPassword"
+                  >
+                    Cancel
+                  </button>
+
+                  <button
+                    class="rounded-lg bg-[#C9A84C] px-4 py-2 text-black transition duration-150 hover:-translate-y-[1px] hover:opacity-90 active:translate-y-0 disabled:opacity-50 disabled:hover:translate-y-0"
+                    type="button"
+                    :disabled="resetPasswordForm.processing"
+                    @click="submitResetPassword"
+                  >
+                    {{ resetPasswordForm.processing ? "Resetting..." : "Reset Password" }}
                   </button>
                 </div>
               </div>

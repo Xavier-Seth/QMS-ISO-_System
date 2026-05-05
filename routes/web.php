@@ -26,7 +26,7 @@ Route::get('/', fn () => Inertia::render('Home'));
 
 Route::middleware('guest')->group(function () {
     Route::get('/login', [LoginController::class, 'show'])->name('login');
-    Route::post('/login', [LoginController::class, 'store']);
+    Route::post('/login', [LoginController::class, 'store'])->middleware('throttle:6,1');
 });
 
 Route::middleware('auth')->group(function () {
@@ -171,6 +171,7 @@ Route::middleware('auth')->group(function () {
         Route::get('/users', [UsersController::class, 'index'])->name('users.index');
         Route::post('/users', [UsersController::class, 'store'])->name('users.store');
         Route::delete('/users/{user}', [UsersController::class, 'destroy'])->name('users.destroy');
+        Route::patch('/users/{user}/password', [UsersController::class, 'resetPassword'])->name('users.password.reset');
 
         /*
         |--------------------------------------------------------------------------

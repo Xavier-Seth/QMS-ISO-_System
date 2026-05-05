@@ -81,4 +81,17 @@ class UsersController extends Controller
 
         return back()->with('success', 'User deleted successfully.');
     }
+
+    public function resetPassword(Request $request, User $user): \Illuminate\Http\RedirectResponse
+    {
+        abort_if($user->role === 'admin' && auth()->id() !== $user->id, 403);
+
+        $request->validate([
+            'new_password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user->update(['password' => $request->new_password]);
+
+        return back()->with('success', 'Password reset successfully.');
+    }
 }
