@@ -6,6 +6,7 @@ import NotificationDropdown from "@/Components/NotificationDropdown.vue";
 const props = defineProps({
   showSearch: { type: Boolean, default: false },
   searchValue: { type: String, default: "" },
+  sidebarOpen: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(["search", "toggle-sidebar"]);
@@ -47,6 +48,8 @@ const displayName = computed(() => {
           <button
             type="button"
             class="lg:hidden flex items-center justify-center w-9 h-9 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors shrink-0"
+            aria-label="Toggle sidebar"
+            :aria-expanded="sidebarOpen.toString()"
             @click="emit('toggle-sidebar')"
           >
             <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

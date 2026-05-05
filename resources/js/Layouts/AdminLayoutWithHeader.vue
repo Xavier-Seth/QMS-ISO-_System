@@ -24,6 +24,13 @@ const page = usePage();
 const toast = useToast();
 
 watch(
+  () => page.url,
+  () => {
+    sidebarOpen.value = false;
+  }
+);
+
+watch(
   () => page.props.flash,
   (flash) => {
     if (!flash) return;
@@ -52,6 +59,7 @@ watch(
       <Header
         :showSearch="showSearch"
         :searchValue="searchValue"
+        :sidebarOpen="sidebarOpen"
         @search="(v) => emit('search', v)"
         @toggle-sidebar="sidebarOpen = !sidebarOpen"
       >
