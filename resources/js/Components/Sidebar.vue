@@ -2,6 +2,11 @@
 import { ref, computed, watch } from "vue";
 import { Link, usePage } from "@inertiajs/vue3";
 
+defineProps({
+    open: { type: Boolean, default: false },
+});
+const emit = defineEmits(['close']);
+
 const page = usePage();
 
 const currentPath = computed(() => {
@@ -37,6 +42,8 @@ watch(
     { immediate: true }
 );
 
+watch(currentPath, () => emit('close'));
+
 const navItemClass = (active = false) => [
     "group flex w-full items-center gap-3 rounded-[10px] px-[14px] py-[11px] text-left text-sm tracking-[0.01em] transition",
     active
@@ -58,8 +65,22 @@ const dropdownItemClass = (active = false) => [
 </script>
 
 <template>
+    <Transition
+        enter-active-class="transition-opacity duration-300"
+        leave-active-class="transition-opacity duration-300"
+        enter-from-class="opacity-0"
+        leave-to-class="opacity-0"
+    >
+        <div
+            v-if="open"
+            class="lg:hidden fixed inset-0 z-[99] bg-black/40"
+            @click="emit('close')"
+        />
+    </Transition>
+
     <aside
-        class="fixed left-0 top-0 z-[100] flex h-screen w-[280px] flex-col overflow-hidden border-r border-white/5 bg-[linear-gradient(180deg,#0d1424_0%,#111827_50%,#0f1e2e_100%)] font-sans text-slate-200"
+        class="fixed left-0 top-0 z-[100] flex h-screen w-[280px] flex-col overflow-hidden border-r border-white/5 bg-[linear-gradient(180deg,#0d1424_0%,#111827_50%,#0f1e2e_100%)] font-sans text-slate-200 -translate-x-full lg:translate-x-0 transition-transform duration-300 ease-in-out"
+        :class="{ 'translate-x-0': open }"
     >
         <!-- Logo -->
         <div class="flex shrink-0 items-center gap-3.5 px-6 pb-6 pt-7">

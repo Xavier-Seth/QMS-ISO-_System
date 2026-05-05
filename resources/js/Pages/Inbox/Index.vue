@@ -222,7 +222,7 @@ function typeBadgeClass(typeValue) {
                 </div>
 
                 <div class="border-t border-slate-200 px-6 py-4">
-                    <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between lg:flex-row lg:items-center lg:justify-between">
                         <!-- Status Tabs -->
                         <div class="flex flex-wrap gap-2">
                             <button
@@ -312,13 +312,13 @@ function typeBadgeClass(typeValue) {
                                 </td>
 
                                 <td class="px-5 py-4 text-slate-600">
-                                    <div class="max-w-[220px] truncate" :title="record.subject || '—'">
+                                    <div class="max-w-[140px] md:max-w-[220px] truncate" :title="record.subject || '—'">
                                         {{ record.subject || "—" }}
                                     </div>
                                 </td>
 
                                 <td class="px-5 py-4 text-slate-600">
-                                    <div class="max-w-[170px] leading-5">
+                                    <div class="max-w-[100px] md:max-w-[170px] leading-5">
                                         {{ record.submitted_by || "—" }}
                                     </div>
                                 </td>

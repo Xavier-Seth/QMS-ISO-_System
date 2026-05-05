@@ -74,7 +74,7 @@ function typeBadgeClass(type) {
 
         <!-- Tabs + Type Filter -->
         <div class="border-t border-slate-200 px-6 py-4">
-          <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between lg:flex-row lg:items-center lg:justify-between">
             <!-- Tabs -->
             <div class="flex flex-wrap gap-2">
               <button

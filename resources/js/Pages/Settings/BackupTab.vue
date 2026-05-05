@@ -20,7 +20,7 @@ const form = reactive({
             </p>
         </div>
 
-        <div class="grid grid-cols-2 gap-8">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
             <!-- LEFT SIDE -->
             <div class="space-y-4">
                 <div>

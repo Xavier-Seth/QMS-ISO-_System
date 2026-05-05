@@ -64,7 +64,7 @@ const totalPending = computed(
       </div>
     </template>
 
-    <div class="px-8 py-7 space-y-5 bg-[#f4f6f8] min-h-screen">
+    <div class="px-4 py-5 md:px-8 md:py-7 space-y-5 bg-[#f4f6f8] min-h-screen">
 
       <!-- Page heading -->
       <div>
@@ -73,7 +73,7 @@ const totalPending = computed(
       </div>
 
       <!-- ── Row 1: Summary Cards (always 3 columns) ── -->
-      <div class="grid grid-cols-3 gap-4">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
 
         <!-- OFI -->
         <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-2.5">
@@ -181,7 +181,7 @@ const totalPending = computed(
       </div>
 
       <!-- ── Row 3: Needs Attention + My Drafts (drafts column hidden when empty) ── -->
-      <div :class="my_drafts.length > 0 ? 'grid grid-cols-2 gap-4' : ''">
+      <div :class="my_drafts.length > 0 ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : ''">
 
         <!-- Needs Attention (Rejected) -->
         <div class="bg-white rounded-xl border border-slate-200 p-4">
@@ -267,7 +267,7 @@ const totalPending = computed(
       </div>
 
       <!-- ── Row 4: Pending + Recent Activity ── -->
-      <div class="grid grid-cols-2 gap-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         <!-- Pending Records -->
         <div class="bg-white rounded-xl border border-slate-200 p-4">

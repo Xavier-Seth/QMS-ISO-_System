@@ -340,7 +340,7 @@ onMounted(() => {
                 General Settings
             </h3>
 
-            <div class="grid grid-cols-2 gap-8">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div class="space-y-4">
                     <div>
                         <label class="text-sm text-slate-600">System Name</label>
@@ -591,7 +591,7 @@ onMounted(() => {
                     Add New Field
                 </p>
 
-                <div class="grid grid-cols-6 gap-4">
+                <div class="grid grid-cols-3 sm:grid-cols-6 gap-4">
                     <div class="col-span-2">
                         <label class="text-sm text-slate-600">Label</label>
                         <input
@@ -668,7 +668,7 @@ onMounted(() => {
                     :key="field.id"
                     class="border rounded-xl p-4"
                 >
-                    <div class="grid grid-cols-6 gap-4">
+                    <div class="grid grid-cols-3 sm:grid-cols-6 gap-4">
                         <div class="col-span-2">
                             <label class="text-sm text-slate-600">Label</label>
                             <input

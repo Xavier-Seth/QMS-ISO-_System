@@ -128,8 +128,8 @@ const deleteUser = async (user) => {
 
 <template>
   <AdminLayout :showSearch="true" :searchValue="q" @search="onHeaderSearch">
-    <div class="px-10 pb-8">
-      <div class="mb-10 ml-[380px]">
+    <div class="px-4 pt-6 pb-8 md:px-10">
+      <div class="mb-10 flex justify-end">
         <button
           type="button"
           @click="openCreate"
@@ -150,7 +150,8 @@ const deleteUser = async (user) => {
         </button>
       </div>
 
-      <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <div class="overflow-x-auto">
+      <div class="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm min-w-[640px]">
         <div class="bg-slate-900 px-4 py-3 text-white">
           <div
             class="grid items-center"
@@ -316,6 +317,7 @@ const deleteUser = async (user) => {
             </button>
           </div>
         </div>
+      </div>
       </div>
 
       <Transition
