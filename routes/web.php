@@ -16,6 +16,7 @@ use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\QmsDynamicFieldController;
 use App\Http\Controllers\QmsTemplateSettingsController;
+use App\Http\Controllers\BackupController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UsersController;
 use App\Models\DocumentType;
@@ -51,7 +52,7 @@ Route::middleware('auth')->group(function () {
         ]);
     })->name('car.form');
 
-    Route::get('/settings', fn () => Inertia::render('Settings/Index'))->name('settings');
+    Route::get('/settings', [SettingsController::class, 'index'])->name('settings');
 
     Route::post('/settings/profile', [SettingsController::class, 'updateProfile'])
         ->name('settings.profile.update');
@@ -180,6 +181,24 @@ Route::middleware('auth')->group(function () {
 
         Route::delete('/settings/logo', [SettingsController::class, 'removeLogo'])
             ->name('settings.logo.remove');
+
+        /*
+        |--------------------------------------------------------------------------
+        | Backup
+        |--------------------------------------------------------------------------
+        */
+        Route::post('/settings/backup/create', [BackupController::class, 'create'])
+            ->name('settings.backup.create')
+            ->middleware('throttle:3,60');
+
+        Route::get('/settings/backup/download', [BackupController::class, 'download'])
+            ->name('settings.backup.download');
+
+        Route::post('/settings/backup/restore', [BackupController::class, 'restore'])
+            ->name('settings.backup.restore');
+
+        Route::post('/settings/backup/settings', [BackupController::class, 'saveSettings'])
+            ->name('settings.backup.settings');
 
         Route::get('/logs', [LogsController::class, 'index'])->name('logs');
 
