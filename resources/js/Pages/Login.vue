@@ -9,6 +9,7 @@ const form = useForm({
 });
 
 const showPassword = ref(false);
+const showForgotModal = ref(false);
 
 const submit = () => {
   form.post('/login', {
@@ -125,7 +126,7 @@ const submit = () => {
               <input v-model="form.remember" type="checkbox" class="remember-checkbox" />
               <span>Remember me</span>
             </label>
-            <a href="#" class="forgot-link">Forgot Password?</a>
+            <button type="button" class="forgot-link" @click="showForgotModal = true">Forgot Password?</button>
           </div>
 
           <button
@@ -143,6 +144,34 @@ const submit = () => {
       <div class="footer-gold"></div>
       <div class="footer-dark"></div>
     </footer>
+
+    <!-- Forgot Password Modal -->
+    <div
+      v-if="showForgotModal"
+      class="forgot-overlay"
+      @click.self="showForgotModal = false"
+    >
+      <div class="forgot-card">
+        <div class="forgot-card-header">
+          <span>Reset Password</span>
+          <button type="button" class="forgot-card-close" @click="showForgotModal = false">✕</button>
+        </div>
+        <div class="forgot-card-body">
+          <p class="forgot-intro">Contact the System Administrator to reset your password.</p>
+          <div class="forgot-contact">
+            <div class="forgot-row">
+              <span class="forgot-label">Name</span>
+              <span class="forgot-value">QMS System Administrator</span>
+            </div>
+            <div class="forgot-row">
+              <span class="forgot-label">Email</span>
+              <a href="mailto:qms.admin@lnu.edu.ph" class="forgot-email-link">qms.admin@lnu.edu.ph</a>
+            </div>
+          </div>
+          <button type="button" class="forgot-dismiss-btn" @click="showForgotModal = false">Close</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -350,6 +379,121 @@ const submit = () => {
 .login-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* ── Forgot Password Modal ── */
+.forgot-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 16px;
+}
+
+.forgot-card {
+  width: 100%;
+  max-width: 340px;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.22);
+}
+
+.forgot-card-header {
+  background: #1a1f2b;
+  color: #fff;
+  padding: 14px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.forgot-card-close {
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  transition: color 0.15s;
+}
+
+.forgot-card-close:hover {
+  color: #fff;
+}
+
+.forgot-card-body {
+  padding: 20px 18px;
+}
+
+.forgot-intro {
+  font-size: 13px;
+  color: #374151;
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.forgot-contact {
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.forgot-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.forgot-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.forgot-value {
+  font-size: 13px;
+  color: #1a1f2b;
+  font-weight: 500;
+}
+
+.forgot-email-link {
+  font-size: 13px;
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.forgot-email-link:hover {
+  text-decoration: underline;
+}
+
+.forgot-dismiss-btn {
+  width: 100%;
+  background: #1a1f2b;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.forgot-dismiss-btn:hover {
+  background: #111521;
 }
 
 /* ── Footer ── */

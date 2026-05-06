@@ -3,12 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Services\ActivityLogService;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class UsersController extends Controller
 {
+    public function __construct(
+        protected ActivityLogService $activityLogService,
+    ) {}
+
     public function index(Request $request)
     {
         $q = trim((string) $request->input('q', ''));
@@ -80,5 +85,27 @@ class UsersController extends Controller
         $user->delete();
 
         return back()->with('success', 'User deleted successfully.');
+    }
+
+    public function resetPassword(Request $request, User $user): \Illuminate\Http\RedirectResponse
+    {
+        abort_if($user->role === 'admin' && auth()->id() !== $user->id, 403);
+
+        $request->validate([
+            'new_password' => ['required', 'string', 'min:8', 'confirmed'],
+        ]);
+
+        $user->update(['password' => $request->new_password]);
+
+        $this->activityLogService->log([
+            'module' => 'users',
+            'action' => 'password_reset',
+            'entity_type' => User::class,
+            'entity_id' => $user->id,
+            'record_label' => $user->name,
+            'description' => "Password reset for user {$user->name}",
+        ]);
+
+        return back()->with('success', 'Password reset successfully.');
     }
 }
