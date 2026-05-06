@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DocumentUpload;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use ZipArchive;
@@ -113,36 +114,53 @@ class BackupService
         }
 
         $count = 0;
+        $written = [];
 
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $entryName = $zip->getNameIndex($i);
+        try {
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $entryName = $zip->getNameIndex($i);
 
-            if ($entryName === false) {
-                continue;
+                if ($entryName === false) {
+                    continue;
+                }
+
+                // Skip manifest and directories
+                if ($entryName === 'manifest.json' || str_ends_with($entryName, '/')) {
+                    continue;
+                }
+
+                // Zipslip guard: normalize backslashes, reject traversal and absolute paths
+                $normalized = str_replace('\\', '/', $entryName);
+
+                if (str_contains($normalized, '..') ||
+                    str_starts_with($normalized, '/') ||
+                    preg_match('/^[a-zA-Z]:/', $normalized)) {
+                    throw new RuntimeException("Unsafe path in archive: {$entryName}");
+                }
+
+                $bytes = $zip->getFromIndex($i);
+
+                if ($bytes === false) {
+                    continue;
+                }
+
+                $diskName = $diskMap[$entryName] ?? 'private';
+                Storage::disk($diskName)->put($entryName, $bytes);
+                $written[] = ['disk' => $diskName, 'path' => $entryName];
+                $count++;
+            }
+        } catch (\Throwable $e) {
+            foreach ($written as $file) {
+                try {
+                    Storage::disk($file['disk'])->delete($file['path']);
+                } catch (\Throwable $deleteError) {
+                    Log::warning("Restore rollback: failed to delete {$file['path']} on disk {$file['disk']}: {$deleteError->getMessage()}");
+                }
             }
 
-            // Skip manifest and directories
-            if ($entryName === 'manifest.json' || str_ends_with($entryName, '/')) {
-                continue;
-            }
+            $zip->close();
 
-            // Zipslip guard: normalize backslashes, reject traversal and absolute paths
-            $normalized = str_replace('\\', '/', $entryName);
-
-            if (str_contains($normalized, '..') ||
-                str_starts_with($normalized, '/') ||
-                preg_match('/^[a-zA-Z]:/', $normalized)) {
-                throw new RuntimeException("Unsafe path in archive: {$entryName}");
-            }
-
-            $bytes = $zip->getFromIndex($i);
-
-            if ($bytes === false) {
-                continue;
-            }
-
-            Storage::disk($diskMap[$entryName] ?? 'private')->put($entryName, $bytes);
-            $count++;
+            throw new RuntimeException($e->getMessage(), 0, $e);
         }
 
         $zip->close();
