@@ -20,7 +20,11 @@ class BackupController extends Controller
 
     public function create(Request $request): RedirectResponse
     {
-        $backup = $this->backupService->createBackup();
+        try {
+            $backup = $this->backupService->createBackup();
+        } catch (RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
 
         $this->activityLogService->log([
             'module' => 'system',

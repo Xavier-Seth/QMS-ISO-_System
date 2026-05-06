@@ -28,25 +28,33 @@ class BackupService
             throw new RuntimeException('Could not create backup archive.');
         }
 
-        $uploads = DocumentUpload::all();
         $fileCount = 0;
+        $filesManifest = [];
 
-        foreach ($uploads as $upload) {
-            $storageDisk = Storage::disk($upload->getStorageDiskName());
+        DocumentUpload::chunk(100, function ($uploads) use ($zip, &$fileCount, &$filesManifest) {
+            foreach ($uploads as $upload) {
+                $diskName = $upload->getStorageDiskName();
+                $storageDisk = Storage::disk($diskName);
 
-            if (! $storageDisk->exists($upload->file_path)) {
-                continue;
+                if (! $storageDisk->exists($upload->file_path)) {
+                    continue;
+                }
+
+                $absolutePath = $storageDisk->path($upload->file_path);
+                $zip->addFile($absolutePath, $upload->file_path);
+                $filesManifest[] = [
+                    'file_path' => $upload->file_path,
+                    'storage_disk' => $diskName,
+                ];
+                $fileCount++;
             }
-
-            $bytes = $storageDisk->get($upload->file_path);
-            $zip->addFromString($upload->file_path, $bytes);
-            $fileCount++;
-        }
+        });
 
         $manifest = json_encode([
             'created_at' => now()->toIso8601String(),
             'file_count' => $fileCount,
             'app_name' => config('app.name'),
+            'files' => $filesManifest,
         ]);
 
         $zip->addFromString('manifest.json', $manifest);
@@ -93,7 +101,17 @@ class BackupService
             throw new RuntimeException('Could not open backup archive.');
         }
 
-        $disk = Storage::disk('private');
+        $diskMap = [];
+        $manifestIndex = $zip->locateName('manifest.json');
+
+        if ($manifestIndex !== false) {
+            $manifestData = json_decode($zip->getFromIndex($manifestIndex), true);
+
+            foreach ($manifestData['files'] ?? [] as $entry) {
+                $diskMap[$entry['file_path']] = $entry['storage_disk'];
+            }
+        }
+
         $count = 0;
 
         for ($i = 0; $i < $zip->numFiles; $i++) {
@@ -108,8 +126,12 @@ class BackupService
                 continue;
             }
 
-            // Zipslip guard: reject paths with traversal segments
-            if (str_contains($entryName, '..') || str_starts_with($entryName, '/')) {
+            // Zipslip guard: normalize backslashes, reject traversal and absolute paths
+            $normalized = str_replace('\\', '/', $entryName);
+
+            if (str_contains($normalized, '..') ||
+                str_starts_with($normalized, '/') ||
+                preg_match('/^[a-zA-Z]:/', $normalized)) {
                 throw new RuntimeException("Unsafe path in archive: {$entryName}");
             }
 
@@ -119,7 +141,7 @@ class BackupService
                 continue;
             }
 
-            $disk->put($entryName, $bytes);
+            Storage::disk($diskMap[$entryName] ?? 'private')->put($entryName, $bytes);
             $count++;
         }
 

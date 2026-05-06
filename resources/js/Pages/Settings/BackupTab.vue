@@ -69,17 +69,18 @@ async function submitRestore() {
         return;
     }
 
+    loading.open("Restoring backup... Please do not navigate away.");
     restoreForm.post("/settings/backup/restore", {
         forceFormData: true,
         preserveScroll: true,
         onSuccess: () => {
-            toast.success("Backup restored successfully.");
             restoreForm.reset();
             if (restoreFileInput.value) {
                 restoreFileInput.value.value = "";
             }
         },
         onError: () => toast.error("Restore failed. The file may be invalid or corrupted."),
+        onFinish: () => loading.close(),
     });
 }
 
