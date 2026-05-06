@@ -4,14 +4,34 @@ namespace App\Http\Controllers;
 
 use App\Models\SystemSetting;
 use App\Services\ActivityLogService;
+use App\Services\BackupService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class SettingsController extends Controller
 {
-    public function __construct(private ActivityLogService $activityLogService) {}
+    public function __construct(
+        private ActivityLogService $activityLogService,
+        private BackupService $backupService,
+    ) {}
+
+    public function index(): Response
+    {
+        $settings = SystemSetting::instance();
+
+        return Inertia::render('Settings/Index', [
+            'backup_settings' => [
+                'backup_frequency' => $settings->backup_frequency,
+                'storage_location' => $settings->storage_location,
+                'auto_backup' => $settings->auto_backup,
+                'latest_backup' => $this->backupService->getLatestBackup(),
+            ],
+        ]);
+    }
 
     public function updateProfile(Request $request): RedirectResponse
     {
