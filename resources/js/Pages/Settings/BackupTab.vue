@@ -37,7 +37,6 @@ function createBackup() {
         {},
         {
             preserveScroll: true,
-            onSuccess: () => toast.success("Backup created successfully."),
             onError: () => toast.error("Failed to create backup."),
             onFinish: () => loading.close(),
         },

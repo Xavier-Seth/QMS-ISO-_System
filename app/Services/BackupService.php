@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Models\DocumentUpload;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use ZipArchive;
@@ -20,7 +19,7 @@ class BackupService
             $disk->makeDirectory($this->backupDir);
         }
 
-        $filename = 'backup_'.now()->format('Y-m-d_His').'.zip';
+        $filename = 'backup_'.now()->format('Y-m-d_His').'_'.substr(uniqid(), -6).'.zip';
         $zipPath = $disk->path($this->backupDir.'/'.$filename);
 
         $zip = new ZipArchive;
@@ -32,7 +31,7 @@ class BackupService
         $fileCount = 0;
         $filesManifest = [];
 
-        DocumentUpload::chunk(100, function ($uploads) use ($zip, &$fileCount, &$filesManifest) {
+        DocumentUpload::with('documentType.series')->chunk(100, function ($uploads) use ($zip, &$fileCount, &$filesManifest) {
             foreach ($uploads as $upload) {
                 $diskName = $upload->getStorageDiskName();
                 $storageDisk = Storage::disk($diskName);
@@ -41,9 +40,15 @@ class BackupService
                     continue;
                 }
 
+                $type = $upload->documentType;
+                $seriesCode = $type?->series?->code_prefix ?? 'unknown';
+                $typeCode = $type?->code ?? 'unknown';
+                $entryName = "{$seriesCode}/{$typeCode}/{$upload->file_name}";
                 $absolutePath = $storageDisk->path($upload->file_path);
-                $zip->addFile($absolutePath, $upload->file_path);
+                $zip->addFile($absolutePath, $entryName);
                 $filesManifest[] = [
+                    'zip_entry' => $entryName,
+                    'file_name' => $upload->file_name,
                     'file_path' => $upload->file_path,
                     'storage_disk' => $diskName,
                 ];
@@ -102,69 +107,91 @@ class BackupService
             throw new RuntimeException('Could not open backup archive.');
         }
 
-        $diskMap = [];
-        $manifestIndex = $zip->locateName('manifest.json');
-
-        if ($manifestIndex !== false) {
-            $manifestData = json_decode($zip->getFromIndex($manifestIndex), true);
-
-            foreach ($manifestData['files'] ?? [] as $entry) {
-                $diskMap[$entry['file_path']] = $entry['storage_disk'];
-            }
-        }
-
-        $count = 0;
-        $written = [];
-
-        try {
-            for ($i = 0; $i < $zip->numFiles; $i++) {
-                $entryName = $zip->getNameIndex($i);
-
-                if ($entryName === false) {
-                    continue;
-                }
-
-                // Skip manifest and directories
-                if ($entryName === 'manifest.json' || str_ends_with($entryName, '/')) {
-                    continue;
-                }
-
-                // Zipslip guard: normalize backslashes, reject traversal and absolute paths
-                $normalized = str_replace('\\', '/', $entryName);
-
-                if (str_contains($normalized, '..') ||
-                    str_starts_with($normalized, '/') ||
-                    preg_match('/^[a-zA-Z]:/', $normalized)) {
-                    throw new RuntimeException("Unsafe path in archive: {$entryName}");
-                }
-
-                $bytes = $zip->getFromIndex($i);
-
-                if ($bytes === false) {
-                    continue;
-                }
-
-                $diskName = $diskMap[$entryName] ?? 'private';
-                Storage::disk($diskName)->put($entryName, $bytes);
-                $written[] = ['disk' => $diskName, 'path' => $entryName];
-                $count++;
-            }
-        } catch (\Throwable $e) {
-            foreach ($written as $file) {
-                try {
-                    Storage::disk($file['disk'])->delete($file['path']);
-                } catch (\Throwable $deleteError) {
-                    Log::warning("Restore rollback: failed to delete {$file['path']} on disk {$file['disk']}: {$deleteError->getMessage()}");
-                }
-            }
-
+        if ($zip->numFiles === 0) {
             $zip->close();
 
-            throw new RuntimeException($e->getMessage(), 0, $e);
+            return 0;
+        }
+
+        // Issue B: require a readable, valid manifest in any non-empty archive
+        $manifestIndex = $zip->locateName('manifest.json');
+
+        if ($manifestIndex === false) {
+            $zip->close();
+            throw new RuntimeException('Backup archive is missing manifest.json.');
+        }
+
+        $manifestRaw = $zip->getFromIndex($manifestIndex);
+
+        if ($manifestRaw === false) {
+            $zip->close();
+            throw new RuntimeException('Could not read manifest.json from archive.');
+        }
+
+        $manifestData = json_decode($manifestRaw, true);
+
+        if (! is_array($manifestData)) {
+            $zip->close();
+            throw new RuntimeException('manifest.json is corrupt or contains invalid JSON.');
+        }
+
+        // Key by zip_entry (new format) with file_path fallback for old-format backups
+        $diskMap = [];
+
+        foreach ($manifestData['files'] ?? [] as $entry) {
+            $key = $entry['zip_entry'] ?? $entry['file_path'];
+            $diskMap[$key] = [
+                'disk' => $entry['storage_disk'],
+                'path' => $entry['file_path'],
+            ];
+        }
+
+        // Pass 1 — validate all entries and buffer bytes; no files written yet
+        $validated = [];
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $entryName = $zip->getNameIndex($i);
+
+            if ($entryName === false) {
+                continue;
+            }
+
+            if ($entryName === 'manifest.json' || str_ends_with($entryName, '/')) {
+                continue;
+            }
+
+            // Zipslip guard: normalize backslashes, reject traversal and absolute paths
+            $normalized = str_replace('\\', '/', $entryName);
+
+            if (str_contains($normalized, '..') ||
+                str_starts_with($normalized, '/') ||
+                preg_match('/^[a-zA-Z]:/', $normalized)) {
+                $zip->close();
+                throw new RuntimeException("Unsafe path in archive: {$entryName}");
+            }
+
+            $bytes = $zip->getFromIndex($i);
+
+            if ($bytes === false) {
+                $zip->close();
+                throw new RuntimeException("Could not read entry from archive: {$entryName}");
+            }
+
+            $target = $diskMap[$entryName] ?? null;
+            $validated[] = [
+                'disk' => $target['disk'] ?? 'private',
+                'path' => $target['path'] ?? $entryName,
+                'bytes' => $bytes,
+            ];
         }
 
         $zip->close();
 
-        return $count;
+        // Pass 2 — all entries validated; write atomically
+        foreach ($validated as $entry) {
+            Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
+        }
+
+        return count($validated);
     }
 }
