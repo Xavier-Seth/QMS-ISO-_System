@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\SystemSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Middleware;
@@ -44,6 +45,42 @@ class HandleInertiaRequests extends Middleware
             'notifications_unread_count' => fn () => $request->user()
                 ? rescue(fn () => $request->user()->unreadNotifications()->count(), 0, true)
                 : 0,
+
+            'system_settings' => fn () => rescue(function () {
+                $settings = SystemSetting::first();
+
+                if (! $settings) {
+                    return $this->defaultSystemSettings();
+                }
+
+                return [
+                    'system_name' => $settings->system_name,
+                    'institution_name' => $settings->institution_name,
+                    'office_name' => $settings->office_name,
+                    'maintenance_mode' => $settings->maintenance_mode,
+                    'e_signature_url' => $settings->e_signature_path
+                        ? Storage::url($settings->e_signature_path)
+                        : null,
+                    'logo_url' => $settings->logo_path
+                        ? Storage::url($settings->logo_path)
+                        : null,
+                ];
+            }, $this->defaultSystemSettings(), true),
+        ];
+    }
+
+    /**
+     * @return array{system_name: string, institution_name: string, office_name: string, maintenance_mode: bool, e_signature_url: null, logo_url: null}
+     */
+    private function defaultSystemSettings(): array
+    {
+        return [
+            'system_name' => 'Quality Management System',
+            'institution_name' => 'Leyte Normal University',
+            'office_name' => 'QMS (ISO) Office',
+            'maintenance_mode' => false,
+            'e_signature_url' => null,
+            'logo_url' => null,
         ];
     }
 }

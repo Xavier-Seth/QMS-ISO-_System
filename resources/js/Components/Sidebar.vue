@@ -17,6 +17,8 @@ const currentPath = computed(() => {
 
 const user = computed(() => page.props.auth?.user ?? null);
 const isAdmin = computed(() => user.value?.role === "admin");
+const systemName = computed(() => page.props.system_settings?.system_name ?? "Quality Management System");
+const logoUrl = computed(() => page.props.system_settings?.logo_url ?? "/images/QMS_logo.png");
 
 const openCreateDocuments = ref(false);
 const openManual = ref(false);
@@ -85,13 +87,12 @@ const dropdownItemClass = (active = false) => [
         <!-- Logo -->
         <div class="flex shrink-0 items-center gap-3.5 px-6 pb-6 pt-7">
             <img
-                :src="`/images/QMS_logo.png`"
+                :src="logoUrl"
                 alt="QMS Logo"
                 class="h-[52px] w-[52px] shrink-0 object-contain drop-shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
             />
             <div class="flex flex-col text-[13.5px] font-medium leading-[1.4] tracking-[0.01em] text-slate-300">
-                <span>Quality Management</span>
-                <span>System</span>
+                <span>{{ systemName }}</span>
             </div>
         </div>
 

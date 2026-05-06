@@ -2,13 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\SystemSetting;
+use App\Services\ActivityLogService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class SettingsController extends Controller
 {
-    public function updateProfile(Request $request)
+    public function __construct(private ActivityLogService $activityLogService) {}
+
+    public function updateProfile(Request $request): RedirectResponse
     {
         $user = $request->user();
 
@@ -38,7 +43,7 @@ class SettingsController extends Controller
             $validated['first_name'] ?? '',
             $validated['middle_name'] ?? '',
             $validated['last_name'] ?? '',
-        ])->filter(fn($value) => filled($value))->implode(' ');
+        ])->filter(fn ($value) => filled($value))->implode(' ');
 
         $user->name = $fullName;
         $user->email = $validated['email'];
@@ -54,12 +59,138 @@ class SettingsController extends Controller
             $user->profile_photo = $request->file('profile_photo')->store('profile-photos', 'public');
         }
 
-        if (!empty($validated['new_password'])) {
+        if (! empty($validated['new_password'])) {
             $user->password = $validated['new_password'];
         }
 
         $user->save();
 
         return back()->with('success', 'Profile updated successfully.');
+    }
+
+    public function updateSystem(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'system_name' => ['required', 'string', 'max:255'],
+            'institution_name' => ['required', 'string', 'max:255'],
+            'office_name' => ['required', 'string', 'max:255'],
+            'maintenance_mode' => ['boolean'],
+        ]);
+
+        $settings = SystemSetting::instance();
+        $oldValues = $settings->only(['system_name', 'institution_name', 'office_name', 'maintenance_mode']);
+
+        $settings->update($validated);
+
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'updated',
+            'entity_type' => SystemSetting::class,
+            'entity_id' => $settings->id,
+            'record_label' => 'General Settings',
+            'description' => 'Updated general system settings.',
+            'old_values' => $oldValues,
+            'new_values' => $validated,
+        ]);
+
+        return back()->with('success', 'General settings updated successfully.');
+    }
+
+    public function uploadSignature(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'e_signature' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ]);
+
+        $settings = SystemSetting::instance();
+
+        if ($settings->e_signature_path && Storage::disk('public')->exists($settings->e_signature_path)) {
+            Storage::disk('public')->delete($settings->e_signature_path);
+        }
+
+        $path = $request->file('e_signature')->store('signatures', 'public');
+        $settings->update(['e_signature_path' => $path]);
+
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'uploaded',
+            'entity_type' => SystemSetting::class,
+            'entity_id' => $settings->id,
+            'record_label' => 'E-Signature',
+            'description' => 'Uploaded authorized e-signature image.',
+        ]);
+
+        return back()->with('success', 'E-signature uploaded successfully.');
+    }
+
+    public function removeSignature(): RedirectResponse
+    {
+        $settings = SystemSetting::instance();
+
+        if ($settings->e_signature_path && Storage::disk('public')->exists($settings->e_signature_path)) {
+            Storage::disk('public')->delete($settings->e_signature_path);
+        }
+
+        $settings->update(['e_signature_path' => null]);
+
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'removed',
+            'entity_type' => SystemSetting::class,
+            'entity_id' => $settings->id,
+            'record_label' => 'E-Signature',
+            'description' => 'Removed authorized e-signature image.',
+        ]);
+
+        return back()->with('success', 'E-signature removed successfully.');
+    }
+
+    public function uploadLogo(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'logo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
+        ]);
+
+        $settings = SystemSetting::instance();
+
+        if ($settings->logo_path && Storage::disk('public')->exists($settings->logo_path)) {
+            Storage::disk('public')->delete($settings->logo_path);
+        }
+
+        $path = $request->file('logo')->store('settings', 'public');
+        $settings->update(['logo_path' => $path]);
+
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'uploaded',
+            'entity_type' => SystemSetting::class,
+            'entity_id' => $settings->id,
+            'record_label' => 'System Logo',
+            'description' => 'Uploaded system logo image.',
+        ]);
+
+        return back()->with('success', 'Logo uploaded successfully.');
+    }
+
+    public function removeLogo(): RedirectResponse
+    {
+        $settings = SystemSetting::instance();
+
+        if ($settings->logo_path && Storage::disk('public')->exists($settings->logo_path)) {
+            Storage::disk('public')->delete($settings->logo_path);
+        }
+
+        $settings->update(['logo_path' => null]);
+
+        $this->activityLogService->log([
+            'module' => 'settings',
+            'action' => 'removed',
+            'entity_type' => SystemSetting::class,
+            'entity_id' => $settings->id,
+            'record_label' => 'System Logo',
+            'description' => 'Removed system logo image.',
+        ]);
+
+        return back()->with('success', 'Logo removed successfully.');
     }
 }

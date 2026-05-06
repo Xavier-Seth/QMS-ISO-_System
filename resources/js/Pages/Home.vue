@@ -1,6 +1,12 @@
 <script setup>
-import { Link } from '@inertiajs/vue3'
+import { computed } from 'vue'
+import { Link, usePage } from '@inertiajs/vue3'
 import lnuLogo from '../images/LNU_logo.png'
+
+const page = usePage()
+const systemName = computed(() => page.props.system_settings?.system_name ?? 'Quality Management System')
+const institutionName = computed(() => page.props.system_settings?.institution_name ?? 'Leyte Normal University')
+const logoUrl = computed(() => page.props.system_settings?.logo_url ?? '/images/QMS_Logo.png')
 
 const modules = [
     {
@@ -33,9 +39,9 @@ const modules = [
         <header class="relative border-b-[6px] border-[#C9A84C] bg-[#151b2b] text-white">
             <!-- LNU affiliation — top-right corner -->
             <div class="absolute right-6 top-4 flex flex-col items-center gap-1 opacity-80">
-                <img :src="lnuLogo" alt="Leyte Normal University" class="h-10 w-10 object-contain" />
+                <img :src="lnuLogo" :alt="institutionName" class="h-10 w-10 object-contain" />
                 <span class="max-w-[72px] text-center text-[10px] leading-tight tracking-wide text-slate-300">
-                    Leyte Normal University
+                    {{ institutionName }}
                 </span>
             </div>
 
@@ -43,14 +49,14 @@ const modules = [
                 <!-- Logo + Title -->
                 <div class="flex flex-col items-center justify-center gap-6 md:flex-row md:gap-8">
                     <img
-                        :src="'/images/QMS_Logo.png'"
+                        :src="logoUrl"
                         alt="QMS Logo"
                         class="h-28 w-28 shrink-0 object-contain md:h-36 md:w-36"
                     />
 
                     <div class="text-center md:text-left">
                         <h1 class="text-2xl font-bold leading-tight tracking-wide md:text-4xl">
-                            Quality Management System (ISO)
+                            {{ systemName }}
                         </h1>
                         <h2 class="text-2xl font-bold leading-tight tracking-wide md:text-4xl">
                             Archiving
@@ -123,8 +129,8 @@ const modules = [
         <!-- FOOTER -->
         <footer class="bg-[#151b2b] py-5 text-[#9ca3af]">
             <div class="flex items-center justify-center gap-3">
-                <img :src="lnuLogo" alt="LNU" class="h-8 w-8 object-contain opacity-70" />
-                <p class="text-sm">© 2026 Quality Management System | Developed For Efficient Record Management</p>
+                <img :src="lnuLogo" :alt="institutionName" class="h-8 w-8 object-contain opacity-70" />
+                <p class="text-sm">© 2026 {{ systemName }} | Developed For Efficient Record Management</p>
             </div>
         </footer>
     </div>
