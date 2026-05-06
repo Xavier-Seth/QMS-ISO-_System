@@ -44,6 +44,15 @@ class BackupController extends Controller
 
         abort_if($latest === null, 404, 'No backup found.');
 
+        $this->activityLogService->log([
+            'module' => 'system',
+            'action' => 'backup_downloaded',
+            'entity_type' => null,
+            'entity_id' => null,
+            'record_label' => $latest['filename'],
+            'description' => "Backup downloaded: {$latest['filename']}",
+        ]);
+
         return Storage::disk('private')->download('backups/'.$latest['filename']);
     }
 
