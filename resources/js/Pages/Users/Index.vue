@@ -582,9 +582,6 @@ const submitResetPassword = () => {
                       type="password"
                       class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
                     />
-                    <p v-if="resetPasswordForm.errors.new_password_confirmation" class="mt-1 text-xs text-red-600">
-                      {{ resetPasswordForm.errors.new_password_confirmation }}
-                    </p>
                   </div>
                 </div>
 
