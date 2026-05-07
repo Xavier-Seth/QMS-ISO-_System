@@ -16,8 +16,7 @@ class PerformanceController extends Controller
         protected DocumentPreviewService $documentPreviewService,
         protected DocumentDownloadService $documentDownloadService,
         protected ActivityLogService $activityLogService,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -26,19 +25,19 @@ class PerformanceController extends Controller
         $allowedPeriods = $this->allowedPeriods();
 
         $selectedCategory = strtoupper(trim((string) $request->input('category', 'IPCR')));
-        if (!in_array($selectedCategory, $allowedCategories, true)) {
+        if (! in_array($selectedCategory, $allowedCategories, true)) {
             $selectedCategory = 'IPCR';
         }
 
         $selectedRecordType = strtoupper(trim((string) $request->input('record_type', '')));
-        if ($selectedRecordType !== '' && !in_array($selectedRecordType, $allowedRecordTypes, true)) {
+        if ($selectedRecordType !== '' && ! in_array($selectedRecordType, $allowedRecordTypes, true)) {
             $selectedRecordType = '';
         }
 
         $selectedYear = $request->filled('year') ? (int) $request->input('year') : null;
 
         $selectedPeriod = strtoupper(trim((string) $request->input('period', '')));
-        if ($selectedPeriod !== '' && !in_array($selectedPeriod, $allowedPeriods, true)) {
+        if ($selectedPeriod !== '' && ! in_array($selectedPeriod, $allowedPeriods, true)) {
             $selectedPeriod = '';
         }
 
@@ -52,7 +51,7 @@ class PerformanceController extends Controller
             'name_desc',
         ];
 
-        if (!in_array($sort, $allowedSorts, true)) {
+        if (! in_array($sort, $allowedSorts, true)) {
             $sort = 'latest';
         }
 
@@ -95,7 +94,7 @@ class PerformanceController extends Controller
 
         $missingTypes = count($categoryTypeIds) < count($allowedCategories);
 
-        if (!$missingTypes && $selectedCategory !== '' && isset($categoryTypeIds[$selectedCategory])) {
+        if (! $missingTypes && $selectedCategory !== '' && isset($categoryTypeIds[$selectedCategory])) {
             $selectedTypeId = $categoryTypeIds[$selectedCategory];
 
             $recordTypes = collect($allowedRecordTypes)
@@ -116,7 +115,7 @@ class PerformanceController extends Controller
         }
 
         if (
-            !$missingTypes
+            ! $missingTypes
             && $selectedCategory !== ''
             && $selectedRecordType !== ''
             && isset($categoryTypeIds[$selectedCategory])
@@ -132,7 +131,7 @@ class PerformanceController extends Controller
                 ->distinct()
                 ->orderByDesc('year')
                 ->pluck('year')
-                ->map(fn($year) => [
+                ->map(fn ($year) => [
                     'value' => (int) $year,
                     'label' => (string) $year,
                 ])
@@ -140,7 +139,7 @@ class PerformanceController extends Controller
         }
 
         if (
-            !$missingTypes
+            ! $missingTypes
             && $selectedCategory !== ''
             && $selectedRecordType !== ''
             && $selectedYear !== null
@@ -157,13 +156,13 @@ class PerformanceController extends Controller
                 ->select('period')
                 ->distinct()
                 ->pluck('period')
-                ->map(fn($period) => strtoupper((string) $period))
+                ->map(fn ($period) => strtoupper((string) $period))
                 ->values()
                 ->all();
 
             $periods = collect($allowedPeriods)
-                ->filter(fn($period) => in_array($period, $existingPeriods, true))
-                ->map(fn($period) => [
+                ->filter(fn ($period) => in_array($period, $existingPeriods, true))
+                ->map(fn ($period) => [
                     'value' => $period,
                     'label' => $this->periodLabel($period),
                 ])
@@ -171,7 +170,7 @@ class PerformanceController extends Controller
         }
 
         if (
-            !$missingTypes
+            ! $missingTypes
             && $selectedCategory !== ''
             && $selectedRecordType !== ''
             && $selectedYear !== null
@@ -239,6 +238,7 @@ class PerformanceController extends Controller
                             ? route('performance.uploads.preview', $upload->id)
                             : null,
                         'download_url' => route('performance.uploads.download', $upload->id),
+                        'delete_url' => route('documents.uploads.destroy', $upload->id),
                     ];
                 })
                 ->toArray();
@@ -266,7 +266,7 @@ class PerformanceController extends Controller
                 'period_label' => $selectedPeriod !== ''
                     ? $this->periodLabel($selectedPeriod)
                     : null,
-                'can_upload' => !$missingTypes
+                'can_upload' => ! $missingTypes
                     && $selectedCategory !== ''
                     && $selectedRecordType !== '',
                 'missing_types' => $missingTypes,
@@ -281,6 +281,7 @@ class PerformanceController extends Controller
     {
         return addcslashes($value, '\\%_');
     }
+
     public function upload(Request $request)
     {
         $data = $request->validate([
@@ -319,7 +320,7 @@ class PerformanceController extends Controller
 
         $typeId = $this->performanceTypeId($category);
 
-        if (!$typeId) {
+        if (! $typeId) {
             return back()->withErrors([
                 'performance_category' => 'The performance document type for this category is missing.',
             ]);
@@ -355,7 +356,7 @@ class PerformanceController extends Controller
                 'entity_id' => $upload->id,
                 'record_label' => $this->performanceRecordLabelFromUpload($upload),
                 'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-                'description' => 'Uploaded performance file ' . ($upload->file_name ?: ('Upload #' . $upload->id)),
+                'description' => 'Uploaded performance file '.($upload->file_name ?: ('Upload #'.$upload->id)),
             ]);
 
             $created++;
@@ -388,7 +389,7 @@ class PerformanceController extends Controller
             'entity_id' => $upload->id,
             'record_label' => $this->performanceRecordLabelFromUpload($upload),
             'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-            'description' => 'Previewed performance file ' . ($upload->file_name ?: ('Upload #' . $upload->id)),
+            'description' => 'Previewed performance file '.($upload->file_name ?: ('Upload #'.$upload->id)),
         ]);
 
         return $this->documentPreviewService->preview($upload);
@@ -405,7 +406,7 @@ class PerformanceController extends Controller
             'entity_id' => $upload->id,
             'record_label' => $this->performanceRecordLabelFromUpload($upload),
             'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-            'description' => 'Downloaded performance file ' . ($upload->file_name ?: ('Upload #' . $upload->id)),
+            'description' => 'Downloaded performance file '.($upload->file_name ?: ('Upload #'.$upload->id)),
         ]);
 
         return $this->documentDownloadService->download($upload);

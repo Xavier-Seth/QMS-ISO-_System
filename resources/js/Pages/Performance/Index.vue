@@ -2,6 +2,8 @@
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import { router } from '@inertiajs/vue3'
 import { computed, ref, watch } from 'vue'
+import { useLoadingOverlay } from '@/Composables/useLoadingOverlay'
+import { useToast } from '@/Composables/useToast'
 
 const props = defineProps({
   categories: {
@@ -259,6 +261,53 @@ function getFileTypeClass(fileName) {
   if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) return 'bg-amber-50 text-amber-700 ring-amber-200'
 
   return 'bg-slate-100 text-slate-700 ring-slate-200'
+}
+
+const loading = useLoadingOverlay()
+const toast = useToast()
+
+const deleteModalOpen = ref(false)
+const uploadToDelete = ref(null)
+const deleting = ref(false)
+
+function openDeleteModal(file) {
+  uploadToDelete.value = file
+  deleteModalOpen.value = true
+}
+
+function closeDeleteModal() {
+  if (deleting.value) return
+  deleteModalOpen.value = false
+  uploadToDelete.value = null
+}
+
+function submitDeleteUpload() {
+  if (!uploadToDelete.value || deleting.value) return
+
+  deleting.value = true
+  loading.open('Deleting file...')
+
+  router.delete(uploadToDelete.value.delete_url, {
+    preserveScroll: true,
+    onSuccess: () => {
+      toast.success('File deleted successfully.')
+      deleteModalOpen.value = false
+      uploadToDelete.value = null
+    },
+    onError: (errors) => {
+      const message =
+        errors.delete ||
+        errors.message ||
+        Object.values(errors || {})[0] ||
+        'Failed to delete file. Please try again.'
+
+      toast.error(Array.isArray(message) ? message[0] : message)
+    },
+    onFinish: () => {
+      deleting.value = false
+      loading.close()
+    },
+  })
 }
 
 const showUploadModal = ref(false)
@@ -833,6 +882,14 @@ function submitUpload() {
                     >
                       Download
                     </a>
+
+                    <button
+                      type="button"
+                      @click="openDeleteModal(file)"
+                      class="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-white px-3 py-1.5 text-xs text-rose-600 transition hover:bg-rose-50"
+                    >
+                      Delete
+                    </button>
                   </div>
                 </div>
               </div>
@@ -1054,6 +1111,58 @@ function submitUpload() {
           </div>
         </div>
       </Transition>
+
+      <div
+        v-if="deleteModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      >
+        <div class="w-full max-w-lg rounded-2xl bg-white shadow-xl">
+          <div class="border-b border-slate-200 px-6 py-4">
+            <h2 class="text-lg font-semibold text-rose-700">Delete File</h2>
+            <p class="mt-1 text-sm text-slate-500">This action cannot be undone.</p>
+          </div>
+
+          <div class="px-6 py-5">
+            <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+              <div class="flex min-w-0 items-center gap-2">
+                <span
+                  class="inline-flex shrink-0 items-center rounded-md px-1.5 py-[2px] text-[10px] font-bold tracking-wide ring-1"
+                  :class="getFileTypeClass(uploadToDelete?.file_name)"
+                >
+                  {{ getFileTypeLabel(uploadToDelete?.file_name) }}
+                </span>
+                <div class="truncate font-semibold" :title="uploadToDelete?.file_name">
+                  {{ uploadToDelete?.file_name }}
+                </div>
+              </div>
+
+              <div class="mt-3">
+                This will permanently remove the file and cannot be recovered.
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+            <button
+              type="button"
+              @click="closeDeleteModal"
+              :disabled="deleting"
+              class="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              @click="submitDeleteUpload"
+              :disabled="deleting"
+              class="rounded-xl bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {{ deleting ? 'Deleting...' : 'Delete Permanently' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   </AdminLayout>
 </template>

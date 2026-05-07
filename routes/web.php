@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Auth\LoginController;
+use App\Http\Controllers\BackupController;
 use App\Http\Controllers\CarRecordController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DCRController;
@@ -16,7 +17,6 @@ use App\Http\Controllers\OfiRecordController;
 use App\Http\Controllers\PerformanceController;
 use App\Http\Controllers\QmsDynamicFieldController;
 use App\Http\Controllers\QmsTemplateSettingsController;
-use App\Http\Controllers\BackupController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UsersController;
 use App\Models\DocumentType;
@@ -279,6 +279,9 @@ Route::middleware('auth')->group(function () {
 
         Route::get('/documents/uploads/{upload}/download', [DocumentController::class, 'download'])
             ->name('documents.uploads.download');
+
+        Route::delete('/documents/uploads/{upload}', [DocumentController::class, 'destroyUpload'])
+            ->name('documents.uploads.destroy');
 
         /*
         |--------------------------------------------------------------------------
