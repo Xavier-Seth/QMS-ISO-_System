@@ -7,19 +7,19 @@ use App\Models\DocumentType;
 use App\Models\DocumentTypeRevision;
 use App\Models\DocumentUpload;
 use App\Services\ActivityLogService;
+use App\Services\CARFormGenerator;
 use App\Services\DCRFormGenerator;
 use App\Services\DocumentPreview\DocumentDownloadService;
 use App\Services\DocumentPreview\DocumentPreviewService;
 use App\Services\DocumentPreview\OfficeToPdfConverter;
 use App\Services\OFIFormGenerator;
+use App\Services\QmsTemplateResolver;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
-use App\Services\QmsTemplateResolver;
 use Inertia\Inertia;
-use App\Services\CARFormGenerator;
 use RuntimeException;
 use Symfony\Component\HttpFoundation\ResponseHeaderBag;
 
@@ -31,8 +31,7 @@ class DocumentController extends Controller
         protected OfficeToPdfConverter $officeToPdfConverter,
         protected ActivityLogService $activityLogService,
         protected QmsTemplateResolver $qmsTemplateResolver,
-    ) {
-    }
+    ) {}
 
     public function index(Request $request)
     {
@@ -44,7 +43,7 @@ class DocumentController extends Controller
         $mode = (string) $request->input('mode', '');
 
         $allowedTypeStatuses = ['All', 'Active', 'Obsolete'];
-        if (!in_array($status, $allowedTypeStatuses, true)) {
+        if (! in_array($status, $allowedTypeStatuses, true)) {
             $status = 'All';
         }
 
@@ -52,7 +51,7 @@ class DocumentController extends Controller
             ->where('code_prefix', '!=', 'MANUAL')
             ->orderBy('code_prefix')
             ->get(['id', 'code_prefix', 'name'])
-            ->map(fn($s) => [
+            ->map(fn ($s) => [
                 'id' => $s->id,
                 'code_prefix' => $s->code_prefix,
                 'name' => $s->name,
@@ -85,7 +84,7 @@ class DocumentController extends Controller
                 $query->whereRaw('1=0');
             }
         } else {
-            $query->whereHas('series', fn($qq) => $qq->where('code_prefix', '!=', 'MANUAL'));
+            $query->whereHas('series', fn ($qq) => $qq->where('code_prefix', '!=', 'MANUAL'));
         }
 
         if ($status !== 'All') {
@@ -133,7 +132,7 @@ class DocumentController extends Controller
                 'latest_upload_at' => $t->uploads_max_created_at,
                 'status' => $normalizedStatus === 'obsolete' ? 'Obsolete' : 'Active',
                 'status_note' => $t->status_note,
-                'can_upload' => !$t->isObsolete(),
+                'can_upload' => ! $t->isObsolete(),
                 'series' => [
                     'code_prefix' => $t->series?->code_prefix,
                     'name' => $t->series?->name,
@@ -226,7 +225,7 @@ class DocumentController extends Controller
             'entity_id' => $documentType->id,
             'record_label' => $documentType->code,
             'file_type' => null,
-            'description' => 'Created document type ' . $documentType->code . ' - ' . $documentType->title,
+            'description' => 'Created document type '.$documentType->code.' - '.$documentType->title,
         ]);
 
         return back()->with('success', "Document type {$documentType->code} created.");
@@ -252,7 +251,7 @@ class DocumentController extends Controller
             'entity_id' => $documentType->id,
             'record_label' => $documentType->code,
             'file_type' => null,
-            'description' => 'Marked document type ' . $documentType->code . ' as obsolete.',
+            'description' => 'Marked document type '.$documentType->code.' as obsolete.',
         ]);
 
         return back()->with('success', "{$documentType->code} marked as obsolete.");
@@ -343,8 +342,8 @@ class DocumentController extends Controller
         DB::afterCommit(function () use ($filesToDelete, $previewFilesToDelete) {
             foreach ($filesToDelete as $file) {
                 if (
-                    !empty($file['disk']) &&
-                    !empty($file['path']) &&
+                    ! empty($file['disk']) &&
+                    ! empty($file['path']) &&
                     Storage::disk($file['disk'])->exists($file['path'])
                 ) {
                     Storage::disk($file['disk'])->delete($file['path']);
@@ -353,8 +352,8 @@ class DocumentController extends Controller
 
             foreach ($previewFilesToDelete as $file) {
                 if (
-                    !empty($file['disk']) &&
-                    !empty($file['path']) &&
+                    ! empty($file['disk']) &&
+                    ! empty($file['path']) &&
                     Storage::disk($file['disk'])->exists($file['path'])
                 ) {
                     Storage::disk($file['disk'])->delete($file['path']);
@@ -369,7 +368,7 @@ class DocumentController extends Controller
             'entity_id' => null,
             'record_label' => $code,
             'file_type' => null,
-            'description' => 'Deleted document type ' . $code . ' - ' . $title . ' and removed ' . $uploadCount . ' related upload(s).',
+            'description' => 'Deleted document type '.$code.' - '.$title.' and removed '.$uploadCount.' related upload(s).',
         ]);
 
         return back()->with('success', 'Document type permanently deleted.');
@@ -390,7 +389,7 @@ class DocumentController extends Controller
 
         $allowedPerPage = [10, 25, 50, 100];
         $perPage = (int) $request->input('per_page', 10);
-        if (!in_array($perPage, $allowedPerPage, true)) {
+        if (! in_array($perPage, $allowedPerPage, true)) {
             $perPage = 10;
         }
 
@@ -402,7 +401,7 @@ class DocumentController extends Controller
             'revision_asc',
             'revision_desc',
         ];
-        if (!in_array($sort, $allowedSorts, true)) {
+        if (! in_array($sort, $allowedSorts, true)) {
             $sort = 'latest';
         }
 
@@ -416,10 +415,10 @@ class DocumentController extends Controller
 
         $stats = [
             'total' => (clone $statsBase)->count(),
-            'active' => $isRevisionControlled && !$isPerformanceForm
+            'active' => $isRevisionControlled && ! $isPerformanceForm
                 ? (clone $statsBase)->where('status', 'Active')->count()
                 : 0,
-            'obsolete' => $isRevisionControlled && !$isPerformanceForm
+            'obsolete' => $isRevisionControlled && ! $isPerformanceForm
                 ? (clone $statsBase)->where('status', 'Obsolete')->count()
                 : 0,
         ];
@@ -434,7 +433,7 @@ class DocumentController extends Controller
             'status' => $normalizedTypeStatus === 'obsolete' ? 'Obsolete' : 'Active',
             'status_note' => $documentType->status_note,
             'is_obsolete' => $documentType->isObsolete(),
-            'can_upload' => !$documentType->isObsolete(),
+            'can_upload' => ! $documentType->isObsolete(),
             'series' => [
                 'code_prefix' => $documentType->series?->code_prefix,
                 'name' => $documentType->series?->name,
@@ -516,9 +515,9 @@ class DocumentController extends Controller
                 ->values();
 
             $hasValidSelectedRecordType = $selectedRecordType !== null
-                && $recordTypeGroups->contains(fn($group) => (string) $group['record_type'] === $selectedRecordType);
+                && $recordTypeGroups->contains(fn ($group) => (string) $group['record_type'] === $selectedRecordType);
 
-            if (!$hasValidSelectedRecordType && $recordTypeGroups->isNotEmpty()) {
+            if (! $hasValidSelectedRecordType && $recordTypeGroups->isNotEmpty()) {
                 $selectedRecordType = (string) $recordTypeGroups->first()['record_type'];
             }
 
@@ -526,9 +525,9 @@ class DocumentController extends Controller
             $availableYearsForSelectedRecordType = collect($selectedRecordTypeGroup['years'] ?? []);
 
             $hasValidSelectedYear = $selectedYear !== null
-                && $availableYearsForSelectedRecordType->contains(fn($group) => (int) $group['year'] === $selectedYear);
+                && $availableYearsForSelectedRecordType->contains(fn ($group) => (int) $group['year'] === $selectedYear);
 
-            if (!$hasValidSelectedYear && $availableYearsForSelectedRecordType->isNotEmpty()) {
+            if (! $hasValidSelectedYear && $availableYearsForSelectedRecordType->isNotEmpty()) {
                 $selectedYear = (int) $availableYearsForSelectedRecordType->first()['year'];
             }
 
@@ -536,9 +535,9 @@ class DocumentController extends Controller
             $availablePeriodsForSelectedYear = collect($selectedYearGroup['periods'] ?? []);
 
             $hasValidSelectedPeriod = $selectedPeriod !== null
-                && $availablePeriodsForSelectedYear->contains(fn($period) => (string) $period['period'] === $selectedPeriod);
+                && $availablePeriodsForSelectedYear->contains(fn ($period) => (string) $period['period'] === $selectedPeriod);
 
-            if (!$hasValidSelectedPeriod && $availablePeriodsForSelectedYear->isNotEmpty()) {
+            if (! $hasValidSelectedPeriod && $availablePeriodsForSelectedYear->isNotEmpty()) {
                 $selectedPeriod = (string) $availablePeriodsForSelectedYear->first()['period'];
             }
 
@@ -588,7 +587,7 @@ class DocumentController extends Controller
                         break;
                 }
 
-                $selectedPeriodFiles = $periodFilesQuery->get()->map(fn($d) => [
+                $selectedPeriodFiles = $periodFilesQuery->get()->map(fn ($d) => [
                     'id' => $d->id,
                     'file_name' => $d->file_name,
                     'revision' => $d->revision,
@@ -608,6 +607,7 @@ class DocumentController extends Controller
                     'can_preview' => $this->canPreviewUpload($d),
                     'preview_url' => route('documents.uploads.preview', $d->id),
                     'download_url' => route('documents.uploads.download', $d->id),
+                    'delete_url' => route('documents.uploads.destroy', $d->id),
                 ])->values();
             }
 
@@ -694,7 +694,7 @@ class DocumentController extends Controller
         $documents = $query
             ->paginate($perPage)
             ->withQueryString()
-            ->through(fn($d) => [
+            ->through(fn ($d) => [
                 'id' => $d->id,
                 'file_name' => $d->file_name,
                 'revision' => $d->revision,
@@ -712,6 +712,7 @@ class DocumentController extends Controller
                 'can_preview' => $this->canPreviewUpload($d),
                 'preview_url' => route('documents.uploads.preview', $d->id),
                 'download_url' => route('documents.uploads.download', $d->id),
+                'delete_url' => route('documents.uploads.destroy', $d->id),
             ]);
 
         return Inertia::render('Documents/Show', [
@@ -758,7 +759,7 @@ class DocumentController extends Controller
             'remarks' => ['nullable', 'string', 'max:1000'],
         ];
 
-        if ($isRevisionControlled && !$isPerformanceForm) {
+        if ($isRevisionControlled && ! $isPerformanceForm) {
             $rules['revision'] = ['required', 'string', 'max:50'];
         }
 
@@ -782,7 +783,7 @@ class DocumentController extends Controller
 
         $files = $request->file('files', []);
 
-        if ($isRevisionControlled && !$isPerformanceForm && count($files) > 1) {
+        if ($isRevisionControlled && ! $isPerformanceForm && count($files) > 1) {
             return back()->withErrors([
                 'files' => 'Multiple upload is not allowed for revision-controlled documents.',
             ]);
@@ -810,14 +811,14 @@ class DocumentController extends Controller
             $uploadAttributes = [
                 'document_type_id' => $documentType->id,
                 'uploaded_by' => $request->user()->id,
-                'revision' => ($isRevisionControlled && !$isPerformanceForm)
+                'revision' => ($isRevisionControlled && ! $isPerformanceForm)
                     ? trim((string) $data['revision'])
                     : null,
                 'year' => $year,
                 'performance_category' => $performanceCategory,
                 'performance_record_type' => $performanceRecordType,
                 'period' => $period,
-                'status' => ($isRevisionControlled && !$isPerformanceForm) ? 'Active' : null,
+                'status' => ($isRevisionControlled && ! $isPerformanceForm) ? 'Active' : null,
                 'file_name' => $file->getClientOriginalName(),
                 'file_path' => $path,
                 'storage_disk' => $storageDisk,
@@ -825,7 +826,7 @@ class DocumentController extends Controller
             ];
 
             try {
-                if ($isRevisionControlled && !$isPerformanceForm) {
+                if ($isRevisionControlled && ! $isPerformanceForm) {
                     DB::transaction(function () use ($documentType, $uploadAttributes) {
                         DocumentType::query()
                             ->whereKey($documentType->id)
@@ -856,6 +857,75 @@ class DocumentController extends Controller
             : 'File uploaded successfully.');
     }
 
+    public function destroyUpload(DocumentUpload $upload)
+    {
+        if ($upload->ofi_record_id || $upload->dcr_record_id || $upload->car_record_id) {
+            return back()->withErrors([
+                'delete' => 'This file is linked to a form record and cannot be deleted from here.',
+            ]);
+        }
+
+        $upload->loadMissing(['documentType.series']);
+
+        $isRevisionControlled = $upload->documentType
+            ? $this->isRevisionControlled($upload->documentType)
+            : false;
+
+        $isPerformanceForm = $upload->documentType
+            ? $this->isPerformanceFormType($upload->documentType)
+            : false;
+
+        $shouldPromote = $isRevisionControlled
+            && ! $isPerformanceForm
+            && $upload->status === 'Active';
+
+        $storageDisk = $upload->getStorageDiskName();
+        $filePath = $upload->file_path;
+        $previewDisk = $upload->getPreviewDiskName();
+        $previewPath = $upload->preview_path;
+        $hasPreview = $upload->hasPreviewCache();
+
+        DB::transaction(function () use ($upload, $shouldPromote) {
+            if ($shouldPromote) {
+                $previous = DocumentUpload::query()
+                    ->where('document_type_id', $upload->document_type_id)
+                    ->where('id', '!=', $upload->id)
+                    ->where('status', 'Obsolete')
+                    ->orderByDesc('created_at')
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($previous) {
+                    $previous->update(['status' => 'Active']);
+                }
+            }
+
+            $upload->delete();
+        });
+
+        DB::afterCommit(function () use ($storageDisk, $filePath, $previewDisk, $previewPath, $hasPreview) {
+            if (! empty($storageDisk) && $filePath && Storage::disk($storageDisk)->exists($filePath)) {
+                Storage::disk($storageDisk)->delete($filePath);
+            }
+
+            if ($hasPreview && ! empty($previewDisk) && $previewPath && Storage::disk($previewDisk)->exists($previewPath)) {
+                Storage::disk($previewDisk)->delete($previewPath);
+            }
+        });
+
+        $this->activityLogService->log([
+            'module' => $this->resolveModuleFromUpload($upload),
+            'action' => 'deleted',
+            'entity_type' => DocumentUpload::class,
+            'entity_id' => null,
+            'record_label' => $this->resolveDocumentRecordLabel($upload),
+            'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+            'description' => 'Deleted upload '.($upload->file_name ?: 'Upload #'.$upload->id),
+        ]);
+
+        return back()->with('success', 'File deleted successfully.');
+    }
+
     public function preview(DocumentUpload $upload)
     {
         $upload->loadMissing(['documentType.series', 'ofiRecord', 'dcrRecord', 'carRecord']);
@@ -866,9 +936,9 @@ class DocumentController extends Controller
                 'action' => 'previewed',
                 'entity_type' => DocumentUpload::class,
                 'entity_id' => $upload->id,
-                'record_label' => $upload->ofiRecord->ofi_no ?: 'OFI #' . $upload->ofiRecord->id,
+                'record_label' => $upload->ofiRecord->ofi_no ?: 'OFI #'.$upload->ofiRecord->id,
                 'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-                'description' => 'Previewed published OFI document ' . ($upload->file_name ?: 'file'),
+                'description' => 'Previewed published OFI document '.($upload->file_name ?: 'file'),
             ]);
 
             return $this->previewLatestOfiAsPdf($upload);
@@ -880,9 +950,9 @@ class DocumentController extends Controller
                 'action' => 'previewed',
                 'entity_type' => DocumentUpload::class,
                 'entity_id' => $upload->id,
-                'record_label' => $upload->dcrRecord->dcr_no ?: 'DCR #' . $upload->dcrRecord->id,
+                'record_label' => $upload->dcrRecord->dcr_no ?: 'DCR #'.$upload->dcrRecord->id,
                 'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-                'description' => 'Previewed published DCR document ' . ($upload->file_name ?: 'file'),
+                'description' => 'Previewed published DCR document '.($upload->file_name ?: 'file'),
             ]);
 
             return $this->previewLatestDcrAsPdf($upload);
@@ -894,9 +964,9 @@ class DocumentController extends Controller
                 'action' => 'previewed',
                 'entity_type' => DocumentUpload::class,
                 'entity_id' => $upload->id,
-                'record_label' => $upload->carRecord->car_no ?: 'CAR #' . $upload->carRecord->id,
+                'record_label' => $upload->carRecord->car_no ?: 'CAR #'.$upload->carRecord->id,
                 'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-                'description' => 'Previewed published CAR document ' . ($upload->file_name ?: 'file'),
+                'description' => 'Previewed published CAR document '.($upload->file_name ?: 'file'),
             ]);
 
             return $this->previewLatestCarAsPdf($upload);
@@ -915,7 +985,7 @@ class DocumentController extends Controller
             'entity_id' => $upload->id,
             'record_label' => $this->resolveDocumentRecordLabel($upload),
             'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-            'description' => 'Previewed document ' . $this->resolveDocumentRecordLabel($upload),
+            'description' => 'Previewed document '.$this->resolveDocumentRecordLabel($upload),
         ]);
 
         return $this->documentPreviewService->preview($upload);
@@ -931,9 +1001,9 @@ class DocumentController extends Controller
                 'action' => 'downloaded',
                 'entity_type' => DocumentUpload::class,
                 'entity_id' => $upload->id,
-                'record_label' => $upload->ofiRecord->ofi_no ?: 'OFI #' . $upload->ofiRecord->id,
+                'record_label' => $upload->ofiRecord->ofi_no ?: 'OFI #'.$upload->ofiRecord->id,
                 'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-                'description' => 'Downloaded published OFI document ' . ($upload->file_name ?: 'file'),
+                'description' => 'Downloaded published OFI document '.($upload->file_name ?: 'file'),
             ]);
 
             return $this->downloadLatestOfiDocx($upload);
@@ -945,9 +1015,9 @@ class DocumentController extends Controller
                 'action' => 'downloaded',
                 'entity_type' => DocumentUpload::class,
                 'entity_id' => $upload->id,
-                'record_label' => $upload->dcrRecord->dcr_no ?: 'DCR #' . $upload->dcrRecord->id,
+                'record_label' => $upload->dcrRecord->dcr_no ?: 'DCR #'.$upload->dcrRecord->id,
                 'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-                'description' => 'Downloaded published DCR document ' . ($upload->file_name ?: 'file'),
+                'description' => 'Downloaded published DCR document '.($upload->file_name ?: 'file'),
             ]);
 
             return $this->downloadLatestDcrDocx($upload);
@@ -959,9 +1029,9 @@ class DocumentController extends Controller
                 'action' => 'downloaded',
                 'entity_type' => DocumentUpload::class,
                 'entity_id' => $upload->id,
-                'record_label' => $upload->carRecord->car_no ?: 'CAR #' . $upload->carRecord->id,
+                'record_label' => $upload->carRecord->car_no ?: 'CAR #'.$upload->carRecord->id,
                 'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-                'description' => 'Downloaded published CAR document ' . ($upload->file_name ?: 'file'),
+                'description' => 'Downloaded published CAR document '.($upload->file_name ?: 'file'),
             ]);
 
             return $this->downloadLatestCarDocx($upload);
@@ -974,7 +1044,7 @@ class DocumentController extends Controller
             'entity_id' => $upload->id,
             'record_label' => $this->resolveDocumentRecordLabel($upload),
             'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
-            'description' => 'Downloaded document ' . $this->resolveDocumentRecordLabel($upload),
+            'description' => 'Downloaded document '.$this->resolveDocumentRecordLabel($upload),
         ]);
 
         return $this->documentDownloadService->download($upload);
@@ -1022,17 +1092,17 @@ class DocumentController extends Controller
             $upload->year &&
             $upload->period
         ) {
-            return $upload->documentType->title . ' - ' . $upload->year . ' ' . $this->resolvePerformancePeriodName((string) $upload->period);
+            return $upload->documentType->title.' - '.$upload->year.' '.$this->resolvePerformancePeriodName((string) $upload->period);
         }
 
         return $upload->documentType?->code
             ?: $upload->file_name
-            ?: 'Upload #' . $upload->id;
+            ?: 'Upload #'.$upload->id;
     }
 
     private function buildDocumentTypeCode(string $seriesCodePrefix, int $documentNo): string
     {
-        return strtoupper($seriesCodePrefix) . '-' . str_pad((string) $documentNo, 3, '0', STR_PAD_LEFT);
+        return strtoupper($seriesCodePrefix).'-'.str_pad((string) $documentNo, 3, '0', STR_PAD_LEFT);
     }
 
     private function ensureDocumentTypeCodeIsAvailable(string $generatedCode): void
@@ -1079,7 +1149,7 @@ class DocumentController extends Controller
 
         return response()->download($outputPath, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT . '; filename="' . addslashes($fileName) . '"',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT.'; filename="'.addslashes($fileName).'"',
         ])->deleteFileAfterSend(true);
     }
 
@@ -1090,7 +1160,7 @@ class DocumentController extends Controller
 
         return response()->file($pdfPath, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($pdfName) . '"',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE.'; filename="'.addslashes($pdfName).'"',
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, max-age=0, must-revalidate',
             'Pragma' => 'public',
@@ -1106,7 +1176,7 @@ class DocumentController extends Controller
         $templatePath = $this->qmsTemplateResolver->getActiveOfiTemplatePath();
 
         $tmpDir = storage_path('app/ofi_forms_tmp');
-        if (!is_dir($tmpDir)) {
+        if (! is_dir($tmpDir)) {
             mkdir($tmpDir, 0755, true);
         }
 
@@ -1118,8 +1188,8 @@ class DocumentController extends Controller
             $safeBaseName = 'OFI_record';
         }
 
-        $fileName = $safeBaseName . '.docx';
-        $outputPath = $tmpDir . '/' . uniqid('ofi_', true) . '_' . $fileName;
+        $fileName = $safeBaseName.'.docx';
+        $outputPath = $tmpDir.'/'.uniqid('ofi_', true).'_'.$fileName;
 
         $generator = new OFIFormGenerator($templatePath);
         $generator->generate($upload->ofiRecord->data ?? [], $outputPath);
@@ -1133,7 +1203,7 @@ class DocumentController extends Controller
 
         return response()->download($outputPath, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT . '; filename="' . addslashes($fileName) . '"',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT.'; filename="'.addslashes($fileName).'"',
         ])->deleteFileAfterSend(true);
     }
 
@@ -1144,7 +1214,7 @@ class DocumentController extends Controller
 
         return response()->file($pdfPath, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($pdfName) . '"',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE.'; filename="'.addslashes($pdfName).'"',
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, max-age=0, must-revalidate',
             'Pragma' => 'public',
@@ -1160,7 +1230,7 @@ class DocumentController extends Controller
         $templatePath = $this->qmsTemplateResolver->getActiveDcrTemplatePath();
 
         $tmpDir = storage_path('app/dcr_forms_tmp');
-        if (!is_dir($tmpDir)) {
+        if (! is_dir($tmpDir)) {
             mkdir($tmpDir, 0755, true);
         }
 
@@ -1172,8 +1242,8 @@ class DocumentController extends Controller
             $safeBaseName = 'DCR_record';
         }
 
-        $fileName = $safeBaseName . '.docx';
-        $outputPath = $tmpDir . '/' . uniqid('dcr_', true) . '_' . $fileName;
+        $fileName = $safeBaseName.'.docx';
+        $outputPath = $tmpDir.'/'.uniqid('dcr_', true).'_'.$fileName;
 
         $generator = new DCRFormGenerator($templatePath);
         $generator->generate($upload->dcrRecord->data ?? [], $outputPath);
@@ -1183,12 +1253,12 @@ class DocumentController extends Controller
 
     private function convertGeneratedDocxToPdfUsingExistingConverter(string $docxPath, string $originalFileName): array
     {
-        if (!is_file($docxPath)) {
+        if (! is_file($docxPath)) {
             throw new RuntimeException("Generated DOCX file not found: {$docxPath}");
         }
 
         $tmpDir = storage_path('app/generated_preview_tmp');
-        if (!is_dir($tmpDir) && !mkdir($tmpDir, 0755, true) && !is_dir($tmpDir)) {
+        if (! is_dir($tmpDir) && ! mkdir($tmpDir, 0755, true) && ! is_dir($tmpDir)) {
             throw new RuntimeException("Unable to create generated preview temp directory: {$tmpDir}");
         }
 
@@ -1200,7 +1270,7 @@ class DocumentController extends Controller
             $safeBaseName = 'preview';
         }
 
-        $pdfPath = $tmpDir . '/' . uniqid('generated_pdf_', true) . '_' . $safeBaseName . '.pdf';
+        $pdfPath = $tmpDir.'/'.uniqid('generated_pdf_', true).'_'.$safeBaseName.'.pdf';
 
         try {
             $this->officeToPdfConverter->convertToPdf($docxPath, $pdfPath);
@@ -1208,11 +1278,11 @@ class DocumentController extends Controller
             @unlink($docxPath);
         }
 
-        if (!is_file($pdfPath)) {
+        if (! is_file($pdfPath)) {
             throw new RuntimeException("Converted PDF was not created: {$pdfPath}");
         }
 
-        return [$pdfPath, $safeBaseName . '.pdf'];
+        return [$pdfPath, $safeBaseName.'.pdf'];
     }
 
     private function generateLatestCarTempFile(DocumentUpload $upload): array
@@ -1224,7 +1294,7 @@ class DocumentController extends Controller
         $templatePath = $this->qmsTemplateResolver->getActiveCarTemplatePath();
 
         $tmpDir = storage_path('app/car_forms_tmp');
-        if (!is_dir($tmpDir)) {
+        if (! is_dir($tmpDir)) {
             mkdir($tmpDir, 0755, true);
         }
 
@@ -1236,8 +1306,8 @@ class DocumentController extends Controller
             $safeBaseName = 'CAR_record';
         }
 
-        $fileName = $safeBaseName . '.docx';
-        $outputPath = $tmpDir . '/' . uniqid('car_', true) . '_' . $fileName;
+        $fileName = $safeBaseName.'.docx';
+        $outputPath = $tmpDir.'/'.uniqid('car_', true).'_'.$fileName;
 
         $generator = new CARFormGenerator($templatePath);
         $generator->generate($upload->carRecord->data ?? [], $outputPath);
@@ -1251,7 +1321,7 @@ class DocumentController extends Controller
 
         return response()->download($outputPath, $fileName, [
             'Content-Type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT . '; filename="' . addslashes($fileName) . '"',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_ATTACHMENT.'; filename="'.addslashes($fileName).'"',
         ])->deleteFileAfterSend(true);
     }
 
@@ -1262,7 +1332,7 @@ class DocumentController extends Controller
 
         return response()->file($pdfPath, [
             'Content-Type' => 'application/pdf',
-            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE . '; filename="' . addslashes($pdfName) . '"',
+            'Content-Disposition' => ResponseHeaderBag::DISPOSITION_INLINE.'; filename="'.addslashes($pdfName).'"',
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, max-age=0, must-revalidate',
             'Pragma' => 'public',
