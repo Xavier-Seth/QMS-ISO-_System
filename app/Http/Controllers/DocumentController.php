@@ -904,14 +904,24 @@ class DocumentController extends Controller
         });
 
         DB::afterCommit(function () use ($storageDisk, $filePath, $previewDisk, $previewPath, $hasPreview) {
-            if ($filePath && Storage::disk($storageDisk)->exists($filePath)) {
+            if (! empty($storageDisk) && $filePath && Storage::disk($storageDisk)->exists($filePath)) {
                 Storage::disk($storageDisk)->delete($filePath);
             }
 
-            if ($hasPreview && $previewDisk && $previewPath && Storage::disk($previewDisk)->exists($previewPath)) {
+            if ($hasPreview && ! empty($previewDisk) && $previewPath && Storage::disk($previewDisk)->exists($previewPath)) {
                 Storage::disk($previewDisk)->delete($previewPath);
             }
         });
+
+        $this->activityLogService->log([
+            'module' => $this->resolveModuleFromUpload($upload),
+            'action' => 'deleted',
+            'entity_type' => DocumentUpload::class,
+            'entity_id' => null,
+            'record_label' => $this->resolveDocumentRecordLabel($upload),
+            'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+            'description' => 'Deleted upload '.($upload->file_name ?: 'Upload #'.$upload->id),
+        ]);
 
         return back()->with('success', 'File deleted successfully.');
     }

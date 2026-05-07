@@ -347,8 +347,10 @@ class DocumentUploadDestroyTest extends TestCase
             'preview_path' => 'previews/cache.pdf',
         ]);
 
-        $this->actingAs($admin)->delete(route('documents.uploads.destroy', $upload));
+        $response = $this->actingAs($admin)->delete(route('documents.uploads.destroy', $upload));
 
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
         Storage::disk('private')->assertMissing('qms/R-QMS-001/main.pdf');
         Storage::disk('local')->assertMissing('previews/cache.pdf');
     }
