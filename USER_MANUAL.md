@@ -84,7 +84,7 @@ The User Dashboard shows information specific to the logged-in user:
 
 ## Documents
 
-> **Access:** Admin and Admin Officer (Admin Officer can view documents; upload, create types, and mark obsolete require Admin access)
+> **Access:** Admin only. All Document module operations — browsing, viewing, uploading, previewing, and downloading — require Admin access. Admin Officers cannot access this module. Anonymous (unauthenticated) access is not possible.
 
 The Documents module stores all controlled QMS documents organized by series and type.
 
@@ -134,11 +134,13 @@ Only document types with no uploads can be deleted. Open the document type and c
 
 > Office files (DOCX, XLSX, PPTX) are converted to PDF for preview. The first preview of a document may take a few seconds.
 
+> All preview and download actions require an active Admin session. Anonymous (unauthenticated) access to documents is not possible.
+
 ---
 
 ## Document Change Request (DCR)
 
-> **Access:** All logged-in users can create DCR records. Admin can approve, reject, and publish.
+> **Access:** All authenticated users can create DCR records. Admin Officers can only view and edit records they personally created — they cannot access records created by other users. Admin can view and manage all records, and can approve, reject, and publish.
 
 A DCR (Document Change Request, form code R-QMS-013) is used to formally request changes to documents.
 
@@ -194,7 +196,7 @@ Admins have additional controls on DCR forms:
 
 ## Opportunity for Improvement (OFI)
 
-> **Access:** All logged-in users can create OFI records. Admin can approve, reject, and publish.
+> **Access:** All authenticated users can create OFI records. Admin Officers can only view and edit records they personally created — they cannot access records created by other users. Admin can view and manage all records, and can approve, reject, and publish.
 
 An OFI (Opportunity for Improvement, form code R-QMS-018) records identified opportunities to improve processes or systems.
 
@@ -220,7 +222,7 @@ All DCR workflow and resolution status rules apply identically to OFI.
 
 ## Corrective Action Report (CAR)
 
-> **Access:** All logged-in users can create CAR records. Admin can approve, reject, and publish.
+> **Access:** All authenticated users can create CAR records. Admin Officers can only view and edit records they personally created — they cannot access records created by other users. Admin can view and manage all records, and can approve, reject, and publish.
 
 A CAR (Corrective Action Report, form code R-QMS-017) documents nonconformities and the corrective actions taken.
 
@@ -242,7 +244,7 @@ The CAR workflow follows the same pattern as DCR and OFI:
 
 ## Performance
 
-> **Access:** Admin only
+> **Access:** Admin only. Admin Officers have no access to the Performance module — they cannot browse, upload, preview, or download performance files.
 
 The Performance module stores IPCR, DPCR, and UPCR performance evaluation files.
 
@@ -466,12 +468,12 @@ Real-time notifications appear in the notification bell icon in the top navigati
 |---------|-------|---------------|
 | Admin Dashboard | ✓ | — |
 | User Dashboard | — | ✓ |
-| View Documents | ✓ | ✓ |
+| View Documents | ✓ | — |
 | Upload Documents | ✓ | — |
 | Create Document Types | ✓ | — |
 | Mark Document Obsolete | ✓ | — |
-| Create DCR / OFI / CAR | ✓ | ✓ |
-| Submit DCR / OFI / CAR | ✓ | ✓ |
+| Create DCR / OFI / CAR | ✓ | ✓ (own records only) |
+| Submit DCR / OFI / CAR | ✓ | ✓ (own records only) |
 | Approve / Reject Records | ✓ | — |
 | Publish Records | ✓ | — |
 | Update Resolution Status | ✓ | — |
@@ -485,6 +487,8 @@ Real-time notifications appear in the notification bell icon in the top navigati
 | Backup | ✓ | — |
 | QMS Template Settings | ✓ | — |
 | Profile Settings | ✓ | ✓ |
+
+> **Note on DCR / OFI / CAR record access:** Admin Officers can only view and edit records they personally created. Attempting to access a record created by another user returns a 403 Forbidden error. Admins can view and manage all records regardless of creator.
 
 ---
 
