@@ -11,23 +11,36 @@ return new class extends Migration
         Schema::create('ofi_records', function (Blueprint $table) {
             $table->id();
 
-            // connect to DocumentType: R-QMS-018
             $table->foreignId('document_type_id')->constrained('document_types');
 
-            // searchable fields (handy)
-            $table->string('ofi_no')->nullable()->index();
-            $table->string('ref_no')->nullable()->index();
-            $table->string('to')->nullable()->index();
+            $table->string('ofi_no')->nullable();
+            $table->string('ref_no')->nullable();
+            $table->string('to')->nullable();
 
             $table->enum('status', ['draft', 'submitted'])->default('draft');
+            $table->enum('workflow_status', ['pending', 'approved', 'rejected'])->nullable();
+            $table->enum('resolution_status', ['open', 'ongoing', 'closed'])->default('open');
 
-            // store EVERYTHING here (same shape as your Vue form)
+            $table->text('rejection_reason')->nullable();
+            $table->timestamp('rejected_at')->nullable();
+            $table->foreignId('rejected_by')
+                ->nullable()
+                ->constrained('users')
+                ->nullOnDelete();
+
             $table->json('data');
 
-            $table->foreignId('created_by')->nullable()->constrained('users');
-            $table->foreignId('updated_by')->nullable()->constrained('users');
+            $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->foreignId('updated_by')->nullable()->constrained('users')->nullOnDelete();
 
             $table->timestamps();
+
+            $table->index('ofi_no', 'ofi_records_ofi_no_idx');
+            $table->index('ref_no', 'ofi_records_ref_no_idx');
+            $table->index('to');
+            $table->index('workflow_status');
+            $table->index('resolution_status');
+            $table->index(['status', 'workflow_status'], 'ofi_records_status_workflow_idx');
         });
     }
 

@@ -8,22 +8,20 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('car_records', function (Blueprint $table) {
+        Schema::create('dcr_records', function (Blueprint $table) {
             $table->id();
 
             $table->foreignId('document_type_id')
                 ->constrained('document_types')
-                ->cascadeOnUpdate()
-                ->restrictOnDelete();
+                ->cascadeOnDelete();
 
-            $table->string('car_no')->nullable();
-            $table->string('ref_no')->nullable();
-            $table->string('dept_section')->nullable();
-            $table->string('auditor')->nullable();
+            $table->string('dcr_no')->nullable();
+            $table->string('to_for')->nullable();
+            $table->string('from')->nullable();
 
             $table->string('status')->default('draft');
             $table->string('workflow_status')->nullable();
-            $table->string('resolution_status')->default('open');
+            $table->string('resolution_status')->nullable();
 
             $table->text('rejection_reason')->nullable();
             $table->timestamp('rejected_at')->nullable();
@@ -46,19 +44,14 @@ return new class extends Migration
 
             $table->timestamps();
 
-            $table->index('car_no');
-            $table->index('status');
-            $table->index('workflow_status');
-            $table->index('resolution_status');
-            $table->index('created_by');
-            $table->index('ref_no', 'car_records_ref_no_idx');
-            $table->index('dept_section', 'car_records_dept_section_idx');
-            $table->index('auditor', 'car_records_auditor_idx');
+            $table->index('dcr_no', 'dcr_records_dcr_no_idx');
+            $table->index(['status', 'workflow_status'], 'dcr_records_status_workflow_idx');
+            $table->index(['created_by', 'workflow_status'], 'dcr_records_created_by_workflow_idx');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('car_records');
+        Schema::dropIfExists('dcr_records');
     }
 };
