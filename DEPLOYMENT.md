@@ -20,14 +20,14 @@
 
 ## System Requirements
 
-| Requirement | Minimum | Notes |
-|-------------|---------|-------|
-| PHP | 8.2 | Extensions: pdo, pdo_sqlite or pdo_mysql, zip, fileinfo, mbstring, openssl, xml, curl |
-| Composer | 2.x | PHP dependency manager |
-| Node.js | 18+ | Required for Vite and npm |
-| npm | 9+ | Bundled with Node.js |
-| Database | SQLite 3 (default) or MySQL 8+ | SQLite requires no extra setup |
-| LibreOffice | 7+ | Required for Office→PDF preview conversion |
+| Requirement | Minimum                        | Notes                                                                                 |
+| ----------- | ------------------------------ | ------------------------------------------------------------------------------------- |
+| PHP         | 8.2                            | Extensions: pdo, pdo_sqlite or pdo_mysql, zip, fileinfo, mbstring, openssl, xml, curl |
+| Composer    | 2.x                            | PHP dependency manager                                                                |
+| Node.js     | 18+                            | Required for Vite and npm                                                             |
+| npm         | 9+                             | Bundled with Node.js                                                                  |
+| Database    | SQLite 3 (default) or MySQL 8+ | SQLite requires no extra setup                                                        |
+| LibreOffice | 7+                             | Required for Office→PDF preview conversion                                            |
 
 > LibreOffice must be installed on the server and the `soffice` binary must be accessible. This is **not optional** if document preview of DOCX/XLSX/PPTX files is needed.
 
@@ -44,12 +44,14 @@ composer run setup
 ```
 
 This script runs in sequence:
+
 1. `composer install` — installs PHP dependencies
 2. Copies `.env.example` to `.env` if no `.env` exists
 3. `php artisan key:generate` — generates `APP_KEY`
-4. `php artisan migrate --force` — runs all database migrations
-5. `npm install` — installs Node.js dependencies
-6. `npm run build` — compiles frontend assets
+4. **Edit `.env`** — set `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`, and any other required values before continuing
+5. `php artisan migrate --force` — runs all database migrations
+6. `npm install` — installs Node.js dependencies
+7. `npm run build` — compiles frontend assets
 
 After running setup, **edit `.env`** to configure your environment (database, Reverb, mail, etc.) and then create the storage symlink:
 
@@ -254,6 +256,7 @@ composer run dev
 ```
 
 This runs:
+
 - `php artisan serve` — Laravel development server on http://localhost:8000
 - `php artisan queue:listen --tries=1 --timeout=0` — processes queued jobs
 - `php artisan pail --timeout=0` — real-time log viewer
@@ -299,22 +302,22 @@ php artisan reverb:start --host=0.0.0.0 --port=8080
 - **Used for:** Converting DOCX/XLSX/PPTX files to PDF for inline document preview.
 - **How to install:**
 
-  ```bash
-  # Ubuntu/Debian
-  sudo apt-get install libreoffice
-  # or minimal headless install:
-  sudo apt-get install libreoffice-writer libreoffice-calc libreoffice-impress
+    ```bash
+    # Ubuntu/Debian
+    sudo apt-get install libreoffice
+    # or minimal headless install:
+    sudo apt-get install libreoffice-writer libreoffice-calc libreoffice-impress
 
-  # CentOS/RHEL
-  sudo yum install libreoffice
+    # CentOS/RHEL
+    sudo yum install libreoffice
 
-  # macOS
-  brew install --cask libreoffice
-  ```
+    # macOS
+    brew install --cask libreoffice
+    ```
 
-  Verify: `soffice --version`
+    Verify: `soffice --version`
 
-  If `soffice` is not on the system PATH, set `LIBREOFFICE_BINARY` to the full binary path (e.g., `/opt/libreoffice7.6/program/soffice`).
+    If `soffice` is not on the system PATH, set `LIBREOFFICE_BINARY` to the full binary path (e.g., `/opt/libreoffice7.6/program/soffice`).
 
 ### 3. phpoffice/phpword
 
@@ -345,6 +348,7 @@ php artisan reverb:start --host=0.0.0.0 --port=8080
 **Symptom:** `No application encryption key has been specified.`
 
 **Fix:**
+
 ```bash
 php artisan key:generate
 ```
@@ -354,6 +358,7 @@ php artisan key:generate
 ### Blank page or 500 error after deploy
 
 **Likely causes:**
+
 1. Frontend assets not built — run `npm run build`.
 2. Config cache stale — run `php artisan optimize:clear`.
 3. Missing `.env` — copy from `.env.example` and set `APP_KEY`.
@@ -367,6 +372,7 @@ php artisan key:generate
 **Symptom:** Preview button shows an error; DOCX/XLSX files cannot be previewed.
 
 **Fix:**
+
 1. Verify LibreOffice is installed: `soffice --version`
 2. If installed at a non-standard path, set `LIBREOFFICE_BINARY=/full/path/to/soffice` in `.env`.
 3. Ensure the web server process has permission to execute `soffice`.
@@ -379,6 +385,7 @@ php artisan key:generate
 **Symptom:** Notification bell does not update without page refresh.
 
 **Fix:**
+
 1. Ensure the Reverb server is running: `php artisan reverb:start`
 2. Ensure `BROADCAST_CONNECTION=reverb` in `.env`.
 3. Ensure `VITE_REVERB_*` variables match your `REVERB_*` values and that assets were rebuilt after any changes: `npm run build`.
@@ -392,6 +399,7 @@ php artisan key:generate
 **Symptom:** Notifications are not sent; published documents are not created.
 
 **Fix:**
+
 1. Ensure the queue worker is running: `php artisan queue:listen`
 2. Check `QUEUE_CONNECTION=database` in `.env`.
 3. Run `php artisan migrate` to ensure the `jobs` table exists.
@@ -404,10 +412,12 @@ php artisan key:generate
 **Symptom:** `SQLSTATE` errors during `php artisan migrate`.
 
 **Fix (SQLite):**
+
 - Ensure the file exists: `touch database/database.sqlite`
 - Ensure the file is writable by the web server process.
 
 **Fix (MySQL):**
+
 - Verify `DB_*` credentials are correct.
 - Ensure the database exists: `CREATE DATABASE qms_archive;`
 - Ensure the user has full privileges on the database.
@@ -419,6 +429,7 @@ php artisan key:generate
 **Symptom:** Vite build error, often about Node version or missing modules.
 
 **Fix:**
+
 1. Verify Node version: `node --version` — must be 18 or higher.
 2. Delete `node_modules` and reinstall: `rm -rf node_modules && npm install`
 3. Run `npm run build` again.
@@ -430,6 +441,7 @@ php artisan key:generate
 **Symptom:** Uploaded documents or profile photos cannot be accessed.
 
 **Fix:**
+
 ```bash
 php artisan storage:link
 ```
@@ -438,4 +450,4 @@ This creates `public/storage → storage/app/public`. Without this symlink, uplo
 
 ---
 
-*For technical support, contact the system developer or refer to the Laravel documentation at https://laravel.com/docs.*
+_For technical support, contact the system developer or refer to the Laravel documentation at https://laravel.com/docs._
