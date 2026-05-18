@@ -326,6 +326,95 @@ php artisan reverb:start --host=0.0.0.0 --port=8080
 
 ---
 
+## First-Time Setup After Login
+
+After the application is deployed and running, the **admin must complete these steps before regular users can publish documents**. Without this setup, users can create and save drafts but the Publish and Download DOCX buttons will fail.
+
+---
+
+### Step 1 — Log in as Admin
+
+Navigate to `http://your-domain.com` and log in with the seeded admin credentials:
+
+- **Email:** value of `ADMIN_EMAIL` in your `.env` (default: `admin@qms.local`)
+- **Password:** value of `ADMIN_PASSWORD` in your `.env` (default: `admin123`)
+
+> ⚠️ Change the admin password immediately after first login via **Settings → Profile**.
+
+---
+
+### Step 2 — Upload QMS Templates
+
+The system requires a DOCX template for each module (DCR, OFI, CAR) before documents can be generated or published.
+
+1. Go to **Settings** in the sidebar
+2. Select the **System** tab
+3. Under **Template Management**, select the module (DCR, OFI, or CAR) from the dropdown
+4. Click **Upload Template** and select the corresponding `.docx` template file
+5. The uploaded template will be set as active automatically
+6. Repeat for each module — DCR, OFI, and CAR each need their own template
+
+> The template files are included in the repository under the `templates/` folder:
+> - `F-QMS-001_template.docx` — DCR template
+> - `F-QMS-006 Corrective Action Request...docx` — CAR template
+> - `F-QMS-007_template_fixed_v6.docx` — OFI template
+>
+> Upload each file to its corresponding module in Settings → System → Template Management.
+
+> Templates must be `.docx` files with `${placeholder}` variables matching the form fields.
+> A maximum of 3 templates can be stored per module — the active one is used for generation.
+
+---
+
+### Step 3 — Create User Accounts
+
+Regular users (department representatives, auditors) need accounts to submit records.
+
+1. Go to **Users** in the sidebar
+2. Click **Add User**
+3. Fill in name, email, username, and assign the role **user**
+4. Share the credentials with the respective department staff
+
+> Only admins can create and manage user accounts.
+
+---
+
+### Step 4 — Configure Dynamic Fields (Optional)
+
+Additional custom fields can be added to DCR, OFI, and CAR forms.
+
+1. Go to **Settings → System**
+2. Under **Dynamic Fields**, select the module
+3. Click **Add Field** and configure the label, type (text, textarea, date), and whether it is required
+4. Fields added here will appear in the "Additional Fields" sidebar of the respective form
+
+---
+
+### Step 5 — Configure System Settings (Optional)
+
+1. Go to **Settings → General**
+2. Upload the institution logo — appears on the form header
+3. Upload the e-signature — used in generated documents
+4. Save settings
+
+---
+
+### Step 6 — Verify End-to-End Flow
+
+Before handing off to users, do a quick smoke test:
+
+1. Log in as a regular user
+2. Go to **Create Documents → Create CAR Form** (or OFI/DCR)
+3. Fill in the required fields and click **Save Draft** — should succeed
+4. Click **Download DOCX** — should generate and download the filled template
+5. Click **Submit to Admin** — record should appear in the admin Inbox
+6. Log back in as admin, go to **Inbox**, approve the record
+7. Confirm the document appears under **Documents**
+
+If Step 6 item 4 (Download DOCX) fails with a template error, go back to Step 2 and ensure the correct module template is uploaded and set as active for that module.
+
+---
+
 ## Third-Party Services and Dependencies
 
 ### 1. Laravel Reverb

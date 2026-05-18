@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { usePage } from "@inertiajs/vue3";
 import AdminLayout from "@/Layouts/AdminLayoutWithHeader.vue";
 import ProfileTab from "./ProfileTab.vue";
@@ -12,6 +12,13 @@ const user = computed(() => page.props.auth?.user ?? null);
 const isAdmin = computed(() => user.value?.role === "admin");
 
 const activeTab = ref("profile");
+
+onMounted(() => {
+    const queryTab = new URLSearchParams(window.location.search).get('tab')
+    if (queryTab && availableTabs.value.includes(queryTab)) {
+        activeTab.value = queryTab
+    }
+})
 
 const availableTabs = computed(() => {
     return isAdmin.value
