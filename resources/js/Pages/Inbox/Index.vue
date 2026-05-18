@@ -58,7 +58,7 @@ const tabs = computed(() => {
         },
         {
             key: "rejected",
-            label: "Rejected",
+            label: "Returned",
             count: source.rejected ?? 0,
         },
     ];
@@ -177,18 +177,18 @@ function typeBadgeClass(typeValue) {
         >
             <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl">
                 <h3 class="text-lg font-semibold text-slate-900">
-                    Reject {{ rejectRecord?.type_label }} Record
+                    Return {{ rejectRecord?.type_label }} Record for Revision
                 </h3>
 
                 <p class="mt-1 text-sm text-slate-500">
-                    Please provide a reason for rejecting this record.
+                    Please provide a reason for returning this record for revision.
                 </p>
 
                 <textarea
                     v-model="rejectReason"
                     rows="4"
                     class="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                    placeholder="Enter rejection reason..."
+                    placeholder="Describe what needs to be corrected before resubmitting..."
                 ></textarea>
 
                 <div class="mt-6 flex justify-end gap-2">
@@ -202,10 +202,10 @@ function typeBadgeClass(typeValue) {
 
                     <button
                         type="button"
-                        class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+                        class="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700"
                         @click="submitReject"
                     >
-                        Reject Record
+                        Return for Revision
                     </button>
                 </div>
             </div>
@@ -370,9 +370,9 @@ function typeBadgeClass(typeValue) {
                                             <button
                                                 type="button"
                                                 @click="openRejectModal(record)"
-                                                class="rounded-lg bg-rose-600 px-3 py-1.5 text-xs text-white hover:bg-rose-500"
+                                                class="rounded-lg bg-amber-600 px-3 py-1.5 text-xs text-white hover:bg-amber-500"
                                             >
-                                                Reject
+                                                Return
                                             </button>
                                         </template>
                                     </div>
