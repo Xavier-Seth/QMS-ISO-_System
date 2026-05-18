@@ -13,7 +13,7 @@ return new class extends Migration
 
             $table->foreignId('document_type_id')
                 ->constrained('document_types')
-                ->cascadeOnDelete();
+                ->restrictOnDelete();
 
             $table->string('dcr_no')->nullable();
             $table->string('to_for')->nullable();

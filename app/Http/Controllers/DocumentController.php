@@ -1092,7 +1092,7 @@ class DocumentController extends Controller
             $upload->year &&
             $upload->period
         ) {
-            return $upload->documentType->title.' - '.$upload->year.' '.$this->resolvePerformancePeriodName((string) $upload->period);
+            return ($upload->documentType?->title ?? 'Unknown').' - '.$upload->year.' '.$this->resolvePerformancePeriodName((string) $upload->period);
         }
 
         return $upload->documentType?->code

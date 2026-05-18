@@ -26,10 +26,12 @@
 | Composer    | 2.x                            | PHP dependency manager                                                                |
 | Node.js     | 18+                            | Required for Vite and npm                                                             |
 | npm         | 9+                             | Bundled with Node.js                                                                  |
-| Database    | SQLite 3 (default) or MySQL 8+ | SQLite requires no extra setup                                                        |
+| Database    | SQLite 3 (default) or MySQL 8.0.16+ | SQLite requires no extra setup                                                        |
 | LibreOffice | 7+                             | Required for Office→PDF preview conversion                                            |
 
 > LibreOffice must be installed on the server and the `soffice` binary must be accessible. This is **not optional** if document preview of DOCX/XLSX/PPTX files is needed.
+
+> **MySQL version:** The `document_uploads` table includes a `CHECK` constraint that requires **MySQL 8.0.16 or later**. Earlier versions (MySQL 5.7, MySQL 8.0.0–8.0.15) will silently ignore or error on this constraint. Run `mysql --version` on your server before deploying to confirm compatibility.
 
 ---
 
@@ -82,6 +84,8 @@ cp .env.example .env
 php artisan key:generate
 ```
 
+> ⚠️ Back up your `APP_KEY` immediately after generation. If this key is lost, all encrypted sessions and data will be invalidated and users will be logged out permanently.
+
 Edit `.env` with your environment values (see [Environment Configuration](#environment-configuration) below).
 
 ### 3. Create the database (SQLite)
@@ -105,6 +109,15 @@ php artisan storage:link
 ```
 
 This links `public/storage` → `storage/app/public` so uploaded files are web-accessible.
+
+Set directory permissions so the web server can write to storage:
+
+```bash
+chmod -R 775 storage bootstrap/cache
+chown -R www-data:www-data storage bootstrap/cache
+```
+
+> Replace `www-data` with your web server user (e.g. `nginx`, `apache`, or `www`).
 
 ### 6. Build frontend assets
 
@@ -267,6 +280,31 @@ This runs:
 In production, run each process separately and use a process manager (Supervisor, systemd, etc.).
 
 **Web server:** Use Nginx or Apache with PHP-FPM pointing the document root to `/public`.
+
+```nginx
+# Minimal Nginx config example
+server {
+    listen 80;
+    server_name your-domain.com;
+    root /var/www/archive-system/public;
+
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/var/run/php/php8.2-fpm.sock;
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+```
 
 **Queue worker** (required for notifications and background jobs):
 
