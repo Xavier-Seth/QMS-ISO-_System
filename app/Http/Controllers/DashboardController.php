@@ -8,6 +8,7 @@ use App\Models\DocumentSeries;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
 use App\Models\OfiRecord;
+use App\Models\QmsTemplate;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -205,7 +206,23 @@ class DashboardController extends Controller
             'series_distribution' => $seriesDistribution,
             'recent_activity' => $recentActivity,
             'yearly_stats' => $yearlyStats,
+            'setup_checklist' => $this->buildSetupChecklist(),
         ]);
+    }
+
+    private function buildSetupChecklist(): array
+    {
+        $dcrActive = QmsTemplate::activeFor('DCR') !== null;
+        $ofiActive = QmsTemplate::activeFor('OFI') !== null;
+        $carActive = QmsTemplate::activeFor('CAR') !== null;
+        $hasUsers = User::where('role', '!=', 'admin')->exists();
+
+        return [
+            'dcr_template_active' => $dcrActive,
+            'ofi_template_active' => $ofiActive,
+            'car_template_active' => $carActive,
+            'has_non_admin_users' => $hasUsers,
+        ];
     }
 
     public function userDashboard()

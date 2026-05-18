@@ -3,7 +3,8 @@ import AdminLayoutWithHeader from '@/Layouts/AdminLayoutWithHeader.vue'
 import { computed } from 'vue'
 import { Link, usePage } from '@inertiajs/vue3'
 
-const user = usePage().props.auth.user
+const page = usePage()
+const user = page.props.auth.user
 
 const greeting = computed(() => {
   const h = new Date().getHours()
@@ -33,6 +34,15 @@ const props = defineProps({
   series_distribution: { type: Array, default: () => [] },
   recent_activity: { type: Array, default: () => [] },
   yearly_stats: { type: Array, default: () => [] },
+  setup_checklist: {
+    type: Object,
+    default: () => ({
+      dcr_template_active: false,
+      ofi_template_active: false,
+      car_template_active: false,
+      has_non_admin_users: false,
+    }),
+  },
 })
 
 const totalPending = computed(
@@ -66,6 +76,16 @@ function getStatus(status) {
 const maxYearlyTotal = computed(() =>
   props.yearly_stats.reduce((m, r) => Math.max(m, r.grand_total), 1)
 )
+
+const logoConfigured = computed(() => !!page.props.system_settings?.logo_url)
+
+const setupComplete = computed(() =>
+  props.setup_checklist.dcr_template_active &&
+  props.setup_checklist.ofi_template_active &&
+  props.setup_checklist.car_template_active &&
+  props.setup_checklist.has_non_admin_users &&
+  logoConfigured.value
+)
 </script>
 
 <template>
@@ -83,6 +103,117 @@ const maxYearlyTotal = computed(() =>
       <div>
         <h1 class="text-xl font-semibold text-slate-800 tracking-tight">System Overview</h1>
         <p class="text-sm text-slate-400 mt-0.5">A snapshot of your QMS document system.</p>
+      </div>
+
+      <!-- ── Onboarding Setup Checklist ── -->
+      <div
+        v-if="!setupComplete"
+        class="rounded-xl border border-indigo-200 bg-indigo-50 px-5 py-4 space-y-3"
+      >
+        <div class="flex items-center gap-2">
+          <svg class="w-5 h-5 text-indigo-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M9 11l3 3L22 4"/>
+            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+          </svg>
+          <p class="text-sm font-semibold text-indigo-800">Complete your system setup</p>
+        </div>
+        <ul class="space-y-2 pl-1">
+          <!-- DCR Template -->
+          <li class="flex items-center gap-2 text-sm">
+            <svg v-if="setup_checklist.dcr_template_active" class="w-4 h-4 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+            <svg v-else class="w-4 h-4 text-indigo-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+            <span :class="setup_checklist.dcr_template_active ? 'line-through text-slate-400' : 'text-indigo-800'">
+              Activate a DCR QMS template
+            </span>
+            <Link
+              v-if="!setup_checklist.dcr_template_active"
+              href="/settings?tab=system"
+              class="ml-auto text-xs font-medium text-indigo-600 hover:underline shrink-0"
+            >
+              Go to Settings
+            </Link>
+          </li>
+          <!-- OFI Template -->
+          <li class="flex items-center gap-2 text-sm">
+            <svg v-if="setup_checklist.ofi_template_active" class="w-4 h-4 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+            <svg v-else class="w-4 h-4 text-indigo-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+            <span :class="setup_checklist.ofi_template_active ? 'line-through text-slate-400' : 'text-indigo-800'">
+              Activate an OFI QMS template
+            </span>
+            <Link
+              v-if="!setup_checklist.ofi_template_active"
+              href="/settings?tab=system"
+              class="ml-auto text-xs font-medium text-indigo-600 hover:underline shrink-0"
+            >
+              Go to Settings
+            </Link>
+          </li>
+          <!-- CAR Template -->
+          <li class="flex items-center gap-2 text-sm">
+            <svg v-if="setup_checklist.car_template_active" class="w-4 h-4 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+            <svg v-else class="w-4 h-4 text-indigo-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+            <span :class="setup_checklist.car_template_active ? 'line-through text-slate-400' : 'text-indigo-800'">
+              Activate a CAR QMS template
+            </span>
+            <Link
+              v-if="!setup_checklist.car_template_active"
+              href="/settings?tab=system"
+              class="ml-auto text-xs font-medium text-indigo-600 hover:underline shrink-0"
+            >
+              Go to Settings
+            </Link>
+          </li>
+          <!-- Create User -->
+          <li class="flex items-center gap-2 text-sm">
+            <svg v-if="setup_checklist.has_non_admin_users" class="w-4 h-4 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+            <svg v-else class="w-4 h-4 text-indigo-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+            <span :class="setup_checklist.has_non_admin_users ? 'line-through text-slate-400' : 'text-indigo-800'">
+              Create at least one non-admin user
+            </span>
+            <Link
+              v-if="!setup_checklist.has_non_admin_users"
+              href="/users"
+              class="ml-auto text-xs font-medium text-indigo-600 hover:underline shrink-0"
+            >
+              Go to Users
+            </Link>
+          </li>
+          <!-- Upload Logo -->
+          <li class="flex items-center gap-2 text-sm">
+            <svg v-if="logoConfigured" class="w-4 h-4 text-emerald-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M20 6L9 17l-5-5"/>
+            </svg>
+            <svg v-else class="w-4 h-4 text-indigo-300 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10"/>
+            </svg>
+            <span :class="logoConfigured ? 'line-through text-slate-400' : 'text-indigo-800'">
+              Upload an organization logo
+            </span>
+            <Link
+              v-if="!logoConfigured"
+              href="/settings?tab=system"
+              class="ml-auto text-xs font-medium text-indigo-600 hover:underline shrink-0"
+            >
+              Go to Settings
+            </Link>
+          </li>
+        </ul>
       </div>
 
       <!-- ── Row 1: Summary Cards ── -->
