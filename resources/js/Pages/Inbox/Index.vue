@@ -188,7 +188,7 @@ function typeBadgeClass(typeValue) {
                     v-model="rejectReason"
                     rows="4"
                     class="mt-4 w-full rounded-xl border border-slate-200 px-4 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-200"
-                    placeholder="Enter rejection reason..."
+                    placeholder="Describe what needs to be corrected before resubmitting..."
                 ></textarea>
 
                 <div class="mt-6 flex justify-end gap-2">
