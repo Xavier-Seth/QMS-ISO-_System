@@ -1190,36 +1190,40 @@ onBeforeUnmount(() => {
             <section class="border-b-2 border-black px-2.5 py-1.5 pb-1">
               <h3 class="mb-2 text-[10pt] font-bold leading-[1.1]">7. FOLLOW-UP COMMENTS</h3>
 
-              <div class="flex flex-col text-center text-[9pt] leading-[1.2]">
-                <div class="flex items-end">
-                  <div class="w-[10%]">Date</div>
-                  <div class="w-[30%]">Status</div>
-                  <div class="w-[20%]">Auditor</div>
-                  <div class="w-[20%]">Representative</div>
-                  <div class="w-[20%]">Effective? (Y/N)</div>
+              <div class="text-center text-[9pt] leading-[1.2]">
+                <div class="flex border border-black font-bold">
+                  <div class="w-[10%] border-r border-black px-0.5 py-[2px]">Date</div>
+                  <div class="w-[30%] border-r border-black px-0.5 py-[2px]">Status</div>
+                  <div class="w-[20%] border-r border-black px-0.5 py-[2px]">Auditor</div>
+                  <div class="w-[20%] border-r border-black px-0.5 py-[2px]">Representative</div>
+                  <div class="w-[20%] px-0.5 py-[2px]">Effective? (Y/N)</div>
                 </div>
-              </div>
 
-              <div class="mt-0.5 flex flex-col gap-1.5">
-                <div class="flex min-h-[18px] items-end" v-for="(row, index) in form.followUp" :key="index">
-                  <div class="w-[10%] border-b border-black px-0.5 py-[1px]">
-                    <input v-model="row.date" type="date" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
-                  </div>
+                <div class="border-l border-r border-b border-black">
+                  <div
+                    v-for="(row, index) in form.followUp"
+                    :key="index"
+                    class="flex min-h-[18px] items-center border-b border-black last:border-b-0"
+                  >
+                    <div class="w-[10%] border-r border-black px-0.5 py-[1px]">
+                      <input v-model="row.date" type="text" placeholder="dd/mm/yyyy" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    </div>
 
-                  <div class="w-[30%] border-b border-black px-0.5 py-[1px]">
-                    <input v-model="row.status" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
-                  </div>
+                    <div class="w-[30%] border-r border-black px-0.5 py-[1px]">
+                      <input v-model="row.status" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    </div>
 
-                  <div class="w-[20%] border-b border-black px-0.5 py-[1px]">
-                    <input v-model="row.auditor" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
-                  </div>
+                    <div class="w-[20%] border-r border-black px-0.5 py-[1px]">
+                      <input v-model="row.auditor" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    </div>
 
-                  <div class="w-[20%] border-b border-black px-0.5 py-[1px]">
-                    <input v-model="row.rep" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
-                  </div>
+                    <div class="w-[20%] border-r border-black px-0.5 py-[1px]">
+                      <input v-model="row.rep" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    </div>
 
-                  <div class="w-[20%] border-b border-black px-0.5 py-[1px]">
-                    <input v-model="row.effective" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    <div class="w-[20%] px-0.5 py-[1px]">
+                      <input v-model="row.effective" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1259,14 +1263,6 @@ onBeforeUnmount(() => {
 
             <section class="px-2.5 py-1.5">
               <h3 class="mb-[5pt] text-[10pt] font-bold leading-[1.1]">9. CAUSE AND EFFECT DIAGRAM</h3>
-
-              <div class="mb-3">
-                <div class="mb-1 text-[10pt] font-bold">EFFECT/PROBLEM</div>
-                <textarea
-                  v-model="form.effectProblem"
-                  class="min-h-[42px] w-full resize-none overflow-hidden border border-black bg-transparent px-2 py-1 text-[10pt] leading-[1.2] outline-none"
-                ></textarea>
-              </div>
 
               <div class="grid grid-cols-2 gap-3">
                 <div>

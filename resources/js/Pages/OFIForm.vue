@@ -1104,43 +1104,40 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
-              <div class="flex flex-col text-center text-[9pt] leading-[1.2]">
-                <div class="flex items-end">
-                  <div class="w-[8%]"></div>
-                  <div class="w-[45%]"></div>
-                  <div class="w-[9%] text-[9pt]">Effective?</div>
-                  <div class="w-[19%]"></div>
-                  <div class="w-[19%]"></div>
+              <div class="text-center text-[9pt] leading-[1.2]">
+                <div class="flex border border-black font-bold">
+                  <div class="w-[8%] border-r border-black px-0.5 py-[2px]">Date</div>
+                  <div class="w-[45%] border-r border-black px-0.5 py-[2px]">Status/Comments</div>
+                  <div class="w-[9%] border-r border-black px-0.5 py-[2px]">Effective? Y/N</div>
+                  <div class="w-[19%] border-r border-black px-0.5 py-[2px]">Auditor</div>
+                  <div class="w-[19%] px-0.5 py-[2px]">Representative</div>
                 </div>
-                <div class="flex items-end text-[9pt]">
-                  <div class="w-[8%]">Date</div>
-                  <div class="w-[45%]">Status/Comments</div>
-                  <div class="w-[9%]">(Y/N)</div>
-                  <div class="w-[19%]">Auditor</div>
-                  <div class="w-[19%]">Representative</div>
-                </div>
-              </div>
 
-              <div class="mt-0.5 flex flex-col gap-1.5">
-                <div class="flex min-h-[18px] items-end" v-for="(row, index) in form.followUp" :key="index">
-                  <div class="w-[8%] border-b border-black px-0.5 py-[1px]">
-                    <input v-model="row.date" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
-                  </div>
+                <div class="border-l border-r border-b border-black">
+                  <div
+                    v-for="(row, index) in form.followUp"
+                    :key="index"
+                    class="flex min-h-[18px] items-stretch border-b border-black last:border-b-0"
+                  >
+                    <div class="w-[8%] border-r border-black px-0.5 py-[1px]">
+                      <input v-model="row.date" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    </div>
 
-                  <div class="w-[45%] border-b border-black px-0.5 py-[1px]">
-                    <input v-model="row.status" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
-                  </div>
+                    <div class="w-[45%] border-r border-black px-0.5 py-[1px]">
+                      <input v-model="row.status" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    </div>
 
-                  <div class="w-[9%] border-b border-black px-0.5 py-[1px]">
-                    <input v-model="row.effective" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
-                  </div>
+                    <div class="w-[9%] border-r border-black px-0.5 py-[1px]">
+                      <input v-model="row.effective" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    </div>
 
-                  <div class="w-[19%] border-b border-black px-0.5 py-[1px]">
-                    <input v-model="row.auditor" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
-                  </div>
+                    <div class="w-[19%] border-r border-black px-0.5 py-[1px]">
+                      <input v-model="row.auditor" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    </div>
 
-                  <div class="w-[19%] border-b border-black px-0.5 py-[1px]">
-                    <input v-model="row.rep" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    <div class="w-[19%] px-0.5 py-[1px]">
+                      <input v-model="row.rep" class="h-4 w-full bg-transparent text-center text-[9pt] outline-none" />
+                    </div>
                   </div>
                 </div>
               </div>
