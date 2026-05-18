@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('document_type_revisions', function (Blueprint $table) {
@@ -14,7 +15,7 @@ return new class extends Migration {
                 ->constrained('document_types')
                 ->cascadeOnDelete();
 
-            $table->unsignedTinyInteger('revision_no'); // 1..5
+            $table->unsignedSmallInteger('revision_no');
             $table->date('revision_date')->nullable();
 
             $table->timestamps();

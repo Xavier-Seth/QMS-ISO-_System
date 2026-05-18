@@ -14,7 +14,11 @@ return new class extends Migration
             $table->string('institution_name')->default('Leyte Normal University');
             $table->string('office_name')->default('QMS (ISO) Office');
             $table->boolean('maintenance_mode')->default(false);
+            $table->string('backup_frequency')->default('weekly');
+            $table->string('storage_location')->default('local');
+            $table->boolean('auto_backup')->default(false);
             $table->string('e_signature_path')->nullable();
+            $table->string('logo_path')->nullable();
             $table->timestamps();
         });
     }
