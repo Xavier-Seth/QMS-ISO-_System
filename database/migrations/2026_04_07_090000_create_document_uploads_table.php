@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -39,12 +40,12 @@ return new class extends Migration
             $table->unsignedSmallInteger('year')->nullable();
             $table->string('performance_category')->nullable();
             $table->string('performance_record_type', 30)->nullable();
-            $table->string('period')->nullable();
+            $table->enum('period', ['JAN_JUN', 'JUL_DEC'])->nullable();
             $table->enum('status', ['Active', 'Obsolete'])->nullable();
 
             $table->string('file_name');
             $table->string('file_path');
-            $table->string('storage_disk', 50)->default('public');
+            $table->string('storage_disk', 50)->default('private');
             $table->string('preview_disk', 50)->nullable();
             $table->string('preview_path')->nullable();
             $table->string('preview_mime', 100)->nullable();
@@ -72,6 +73,10 @@ return new class extends Migration
             $table->index('dcr_record_id', 'document_uploads_dcr_record_id_idx');
             $table->index('car_record_id', 'document_uploads_car_record_id_idx');
         });
+
+        DB::statement('ALTER TABLE document_uploads ADD CONSTRAINT uploads_single_module_fk CHECK (
+            (ofi_record_id IS NOT NULL) + (dcr_record_id IS NOT NULL) + (car_record_id IS NOT NULL) <= 1
+        )');
     }
 
     public function down(): void
