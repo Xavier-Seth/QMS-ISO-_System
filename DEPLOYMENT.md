@@ -411,7 +411,7 @@ Before handing off to users, do a quick smoke test:
 6. Log back in as admin, go to **Inbox**, approve the record
 7. Confirm the document appears under **Documents**
 
-If Step 4 fails with a template error, go back to Step 2 and ensure the correct module template is uploaded and set as active.
+If Step 6 item 4 (Download DOCX) fails with a template error, go back to Step 2 and ensure the correct module template is uploaded and set as active for that module.
 
 ---
 
