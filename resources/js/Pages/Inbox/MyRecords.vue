@@ -30,7 +30,7 @@ const tabs = computed(() => {
     { key: 'all', label: 'All', count: source.all ?? 0 },
     { key: 'pending', label: 'Pending', count: source.pending ?? 0 },
     { key: 'approved', label: 'Approved', count: source.approved ?? 0 },
-    { key: 'rejected', label: 'Rejected', count: source.rejected ?? 0 },
+    { key: 'rejected', label: 'Returned', count: source.rejected ?? 0 },
   ]
 })
 
@@ -135,73 +135,86 @@ function typeBadgeClass(type) {
             </thead>
 
             <tbody>
-              <tr
+              <template
                 v-for="record in records.data"
                 :key="`${record.type}-${record.id}`"
-                class="border-b border-slate-100 hover:bg-slate-50"
               >
-                <!-- TYPE -->
-                <td class="px-5 py-4">
-                  <span
-                    class="rounded-full px-2.5 py-1 text-xs font-semibold ring-1"
-                    :class="typeBadgeClass(record.type)"
-                  >
-                    {{ record.type_label }}
-                  </span>
-                </td>
-
-                <!-- RECORD -->
-                <td class="px-5 py-4 font-medium text-slate-900">
-                  {{ record.record_no || '—' }}
-                </td>
-
-                <!-- SUBJECT -->
-                <td class="px-5 py-4 text-slate-600">
-                  {{ record.subject || '—' }}
-                </td>
-
-                <!-- WORKFLOW -->
-                <td class="px-5 py-4">
-                  <span
-                    class="rounded-full px-2 py-1 text-xs ring-1"
-                    :class="workflowBadgeClass(record.workflow_status)"
-                  >
-                    {{ record.workflow_status || 'draft' }}
-                  </span>
-                </td>
-
-                <!-- RESOLUTION -->
-                <td class="px-5 py-4">
-                  <span
-                    class="rounded-full px-2 py-1 text-xs ring-1"
-                    :class="resolutionBadgeClass(record.resolution_status)"
-                  >
-                    {{ record.resolution_status || 'open' }}
-                  </span>
-                </td>
-
-                <!-- DATE -->
-                <td class="px-5 py-4 text-slate-600">
-                  {{ formatDate(record.created_at) }}
-                </td>
-
-                <!-- REMARKS -->
-                <td class="px-5 py-4 text-slate-600">
-                  {{ record.remarks || '—' }}
-                </td>
-
-                <!-- ACTION -->
-                <td class="px-5 py-4">
-                  <div class="flex justify-end gap-2">
-                    <Link
-                      :href="record.view_url"
-                      class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                <tr class="border-b border-slate-100 hover:bg-slate-50">
+                  <!-- TYPE -->
+                  <td class="px-5 py-4">
+                    <span
+                      class="rounded-full px-2.5 py-1 text-xs font-semibold ring-1"
+                      :class="typeBadgeClass(record.type)"
                     >
-                      {{ record.workflow_status === 'rejected' ? 'Edit / Resubmit' : 'View' }}
-                    </Link>
-                  </div>
-                </td>
-              </tr>
+                      {{ record.type_label }}
+                    </span>
+                  </td>
+
+                  <!-- RECORD -->
+                  <td class="px-5 py-4 font-medium text-slate-900">
+                    {{ record.record_no || '—' }}
+                  </td>
+
+                  <!-- SUBJECT -->
+                  <td class="px-5 py-4 text-slate-600">
+                    {{ record.subject || '—' }}
+                  </td>
+
+                  <!-- WORKFLOW -->
+                  <td class="px-5 py-4">
+                    <span
+                      class="rounded-full px-2 py-1 text-xs ring-1"
+                      :class="workflowBadgeClass(record.workflow_status)"
+                    >
+                      {{ record.workflow_status === 'rejected' ? 'Returned for Revision' : (record.workflow_status || 'draft') }}
+                    </span>
+                  </td>
+
+                  <!-- RESOLUTION -->
+                  <td class="px-5 py-4">
+                    <span
+                      class="rounded-full px-2 py-1 text-xs ring-1"
+                      :class="resolutionBadgeClass(record.resolution_status)"
+                    >
+                      {{ record.resolution_status || 'open' }}
+                    </span>
+                  </td>
+
+                  <!-- DATE -->
+                  <td class="px-5 py-4 text-slate-600">
+                    {{ formatDate(record.created_at) }}
+                  </td>
+
+                  <!-- REMARKS -->
+                  <td class="px-5 py-4 text-slate-600">
+                    {{ record.remarks || '—' }}
+                  </td>
+
+                  <!-- ACTION -->
+                  <td class="px-5 py-4">
+                    <div class="flex justify-end gap-2">
+                      <Link
+                        :href="record.view_url"
+                        class="rounded-lg border border-slate-200 px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-50"
+                      >
+                        {{ record.workflow_status === 'rejected' ? 'Edit / Resubmit' : 'View' }}
+                      </Link>
+                    </div>
+                  </td>
+                </tr>
+
+                <tr
+                  v-if="record.workflow_status === 'rejected'"
+                  class="border-b border-amber-100 bg-amber-50"
+                >
+                  <td colspan="8" class="px-5 py-3">
+                    <div class="flex items-start gap-2 text-sm text-amber-800">
+                      <span class="mt-0.5 shrink-0 font-semibold">Reason for return:</span>
+                      <span>{{ record.remarks }}</span>
+                    </div>
+                  </td>
+                </tr>
+              </template>
 
               <tr v-if="!records.data.length">
                 <td colspan="8" class="px-5 py-8 text-center text-sm text-slate-500">
