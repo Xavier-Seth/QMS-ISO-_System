@@ -15,6 +15,7 @@
 5. [Running the Application](#running-the-application)
 6. [Third-Party Services and Dependencies](#third-party-services-and-dependencies)
 7. [Common Deployment Issues](#common-deployment-issues)
+8. [First-Time Setup After Login](#first-time-setup-after-login)
 
 ---
 
