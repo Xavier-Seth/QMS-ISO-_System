@@ -13,6 +13,7 @@ use App\Services\OFIFormGenerator;
 use App\Services\QmsDynamicFieldValidator;
 use App\Services\QmsTemplateResolver;
 use App\Support\QmsTemplateModules;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -80,6 +81,41 @@ class OfiRecordController extends Controller
 
         $generator = new OFIFormGenerator($this->templatePath());
         $generator->generate($data, $outputPath);
+    }
+
+    private function syncPublishedUploads(OfiRecord $ofiRecord): void
+    {
+        /** @var Collection<int, DocumentUpload> $uploads */
+        $uploads = DocumentUpload::query()
+            ->where('ofi_record_id', $ofiRecord->id)
+            ->get();
+
+        if ($uploads->isEmpty()) {
+            return;
+        }
+
+        $storageDisk = 'private';
+        $disk = Storage::disk($storageDisk);
+        $tmpDir = $this->ensureTmpDir();
+
+        /** @var DocumentUpload $upload */
+        foreach ($uploads as $upload) {
+            $fileName = $upload->file_name ?: ('OFI_'.($ofiRecord->ofi_no ?: $ofiRecord->id).'.docx');
+            $tmpPath = $tmpDir.'/'.uniqid('ofi_sync_', true).'_'.$fileName;
+
+            $this->generateDocxToPath($ofiRecord, $tmpPath);
+
+            $storedPath = $upload->file_path ?: ('documents/ofi/'.$fileName);
+            $disk->put($storedPath, file_get_contents($tmpPath));
+
+            $upload->update([
+                'file_name' => $fileName,
+                'file_path' => $storedPath,
+                'storage_disk' => $storageDisk,
+            ]);
+
+            @unlink($tmpPath);
+        }
     }
 
     private function isAdminUser(): bool
@@ -368,6 +404,8 @@ class OfiRecordController extends Controller
             'data' => $payload,
             'updated_by' => auth()->id(),
         ]);
+
+        $this->syncPublishedUploads($ofiRecord->fresh());
 
         $fresh = $ofiRecord->fresh();
 
