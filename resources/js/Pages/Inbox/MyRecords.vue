@@ -129,7 +129,6 @@ function typeBadgeClass(type) {
                 <th class="px-5 py-3 font-semibold text-slate-700">Workflow</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Resolution</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Date Submitted</th>
-                <th class="px-5 py-3 font-semibold text-slate-700">Remarks</th>
                 <th class="px-5 py-3 text-right font-semibold text-slate-700">Actions</th>
               </tr>
             </thead>
@@ -185,11 +184,6 @@ function typeBadgeClass(type) {
                     {{ formatDate(record.created_at) }}
                   </td>
 
-                  <!-- REMARKS -->
-                  <td class="px-5 py-4 text-slate-600">
-                    {{ record.remarks || '—' }}
-                  </td>
-
                   <!-- ACTION -->
                   <td class="px-5 py-4">
                     <div class="flex justify-end gap-2">
@@ -207,7 +201,7 @@ function typeBadgeClass(type) {
                   v-if="record.workflow_status === 'rejected'"
                   class="border-b border-amber-100 bg-amber-50"
                 >
-                  <td colspan="8" class="px-5 py-3">
+                  <td colspan="7" class="px-5 py-3">
                     <div class="flex items-start gap-2 text-sm text-amber-800">
                       <span class="mt-0.5 shrink-0 font-semibold">Reason for return:</span>
                       <span>{{ record.remarks }}</span>
@@ -217,7 +211,7 @@ function typeBadgeClass(type) {
               </template>
 
               <tr v-if="!records.data.length">
-                <td colspan="8" class="px-5 py-8 text-center text-sm text-slate-500">
+                <td colspan="7" class="px-5 py-8 text-center text-sm text-slate-500">
                   No records found.
                 </td>
               </tr>
