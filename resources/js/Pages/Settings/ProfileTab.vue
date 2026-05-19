@@ -3,10 +3,12 @@ import { computed, ref } from "vue";
 import { useForm, usePage } from "@inertiajs/vue3";
 import { useLoadingOverlay } from "@/Composables/useLoadingOverlay";
 import { useToast } from "@/Composables/useToast";
+import { useRoleFormatter } from "@/Composables/useRoleFormatter";
 
 const page = usePage();
 const loading = useLoadingOverlay();
 const toast = useToast();
+const { formatRole } = useRoleFormatter();
 
 const user = computed(() => page.props.auth?.user ?? {});
 
@@ -170,7 +172,7 @@ const errorClass =
 
                     <div>
                         <label :class="labelClass">Role:</label>
-                        <input :value="form.role" type="text" disabled :class="inputClass" />
+                        <input :value="formatRole(form.role)" type="text" disabled :class="inputClass" />
                     </div>
 
                     <div>

@@ -5,6 +5,7 @@ import { ref } from "vue";
 import { useLoadingOverlay } from "@/Composables/useLoadingOverlay";
 import { useToast } from "@/Composables/useToast";
 import { useConfirm } from "@/Composables/useConfirm";
+import { useRoleFormatter } from "@/Composables/useRoleFormatter";
 
 const props = defineProps({
   users: Object,
@@ -14,6 +15,7 @@ const props = defineProps({
 const loading = useLoadingOverlay();
 const toast = useToast();
 const confirm = useConfirm();
+const { formatRole } = useRoleFormatter();
 
 const q = ref(props.filters?.q ?? "");
 const expandedId = ref(null);
@@ -321,7 +323,7 @@ const submitResetPassword = () => {
                           <span class="text-slate-500">Username:</span> {{ u.username }}
                         </div>
                         <div class="mt-1">
-                          <span class="text-slate-500">Role:</span> {{ u.role }}
+                          <span class="text-slate-500">Role:</span> {{ formatRole(u.role) }}
                         </div>
                       </div>
                     </div>
@@ -421,7 +423,7 @@ const submitResetPassword = () => {
                       v-model="createForm.role"
                       class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
                     >
-                      <option value="admin_officer">Admin Officer</option>
+                      <option value="admin_officer">Office Owner</option>
                       <option value="admin">Admin</option>
                     </select>
                     <p v-if="createForm.errors.role" class="mt-1 text-xs text-red-600">
