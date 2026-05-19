@@ -66,7 +66,7 @@ class DocumentUpload extends Model
 
     public function getStorageDiskName(): string
     {
-        return $this->storage_disk ?: 'public';
+        return $this->storage_disk ?: 'private';
     }
 
     public function getPreviewDiskName(): ?string
@@ -81,9 +81,9 @@ class DocumentUpload extends Model
 
     public function isGeneratedRecordDocument(): bool
     {
-        return !is_null($this->ofi_record_id)
-            || !is_null($this->dcr_record_id)
-            || !is_null($this->car_record_id);
+        return ! is_null($this->ofi_record_id)
+            || ! is_null($this->dcr_record_id)
+            || ! is_null($this->car_record_id);
     }
 
     public function isPerformanceUpload(): bool

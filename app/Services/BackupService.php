@@ -3,6 +3,9 @@
 namespace App\Services;
 
 use App\Models\DocumentUpload;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use ZipArchive;
@@ -10,6 +13,19 @@ use ZipArchive;
 class BackupService
 {
     private string $backupDir = 'backups';
+
+    private const ALLOWED_RESTORE_DISKS = ['private', 'public'];
+
+    /** Preview cache fields are excluded from the manifest — they are never backed up. */
+    private const PREVIEW_FIELDS = [
+        'preview_disk',
+        'preview_path',
+        'preview_mime',
+        'preview_generated_at',
+        'preview_last_accessed_at',
+        'preview_source_hash',
+        'preview_size',
+    ];
 
     public function createBackup(): array
     {
@@ -33,6 +49,13 @@ class BackupService
 
         DocumentUpload::with('documentType.series')->chunk(100, function ($uploads) use ($zip, &$fileCount, &$filesManifest) {
             foreach ($uploads as $upload) {
+                // L1 — skip uploads with no file_name; a null file_name produces a broken zip_entry
+                if (blank($upload->file_name)) {
+                    Log::warning('[BACKUP] Skipping upload with null file_name', ['upload_id' => $upload->id]);
+
+                    continue;
+                }
+
                 $diskName = $upload->getStorageDiskName();
                 $storageDisk = Storage::disk($diskName);
 
@@ -43,7 +66,7 @@ class BackupService
                 $type = $upload->documentType;
                 $seriesCode = $type?->series?->code_prefix ?? 'unknown';
                 $typeCode = $type?->code ?? 'unknown';
-                $entryName = "{$seriesCode}/{$typeCode}/{$upload->file_name}";
+                $entryName = "{$seriesCode}/{$typeCode}/{$upload->id}_{$upload->file_name}";
                 $absolutePath = $storageDisk->path($upload->file_path);
                 $zip->addFile($absolutePath, $entryName);
                 $filesManifest[] = [
@@ -51,6 +74,13 @@ class BackupService
                     'file_name' => $upload->file_name,
                     'file_path' => $upload->file_path,
                     'storage_disk' => $diskName,
+                    // L3 — preview_* fields excluded; they reference cache files not in the backup
+                    'upload_row' => array_merge(
+                        ['id' => $upload->id],
+                        collect($upload->only($upload->getFillable()))
+                            ->except(self::PREVIEW_FIELDS)
+                            ->toArray()
+                    ),
                 ];
                 $fileCount++;
             }
@@ -113,7 +143,6 @@ class BackupService
             return 0;
         }
 
-        // Issue B: require a readable, valid manifest in any non-empty archive
         $manifestIndex = $zip->locateName('manifest.json');
 
         if ($manifestIndex === false) {
@@ -143,6 +172,7 @@ class BackupService
             $diskMap[$key] = [
                 'disk' => $entry['storage_disk'],
                 'path' => $entry['file_path'],
+                'upload_row' => $entry['upload_row'] ?? null,
             ];
         }
 
@@ -160,10 +190,11 @@ class BackupService
                 continue;
             }
 
-            // Zipslip guard: normalize backslashes, reject traversal and absolute paths
+            // Zipslip guard: normalize backslashes, reject traversal, absolute paths, and null bytes
             $normalized = str_replace('\\', '/', $entryName);
 
             if (str_contains($normalized, '..') ||
+                str_contains($normalized, "\0") ||
                 str_starts_with($normalized, '/') ||
                 preg_match('/^[a-zA-Z]:/', $normalized)) {
                 $zip->close();
@@ -178,20 +209,65 @@ class BackupService
             }
 
             $target = $diskMap[$entryName] ?? null;
+            $disk = $target['disk'] ?? 'private';
+
+            // S1 — whitelist allowed disk names to prevent writes to unexpected disks
+            if (! in_array($disk, self::ALLOWED_RESTORE_DISKS, true)) {
+                $zip->close();
+                throw new RuntimeException("Restore refused: unknown storage disk '{$disk}'.");
+            }
+
             $validated[] = [
-                'disk' => $target['disk'] ?? 'private',
+                'disk' => $disk,
                 'path' => $target['path'] ?? $entryName,
                 'bytes' => $bytes,
+                'upload_row' => $target['upload_row'] ?? null,
             ];
         }
 
         $zip->close();
 
-        // Pass 2 — all entries validated; write atomically
-        foreach ($validated as $entry) {
-            Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
-        }
+        // Pass 2 — all entries validated; write files to disk and upsert DB rows.
+        // DB::transaction rolls back all DB row changes if any DB write fails.
+        // File writes already on disk are NOT rolled back on transaction failure.
+        // $successCount tracks files written to disk, not fully-restored records.
+        $successCount = 0;
 
-        return count($validated);
+        DB::transaction(function () use ($validated, &$successCount) {
+            foreach ($validated as $entry) {
+                Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
+                $successCount++;
+
+                if (! empty($entry['upload_row'])) {
+                    $row = $entry['upload_row'];
+
+                    // L2 — skip DB upsert if id is missing; avoids silent auto-increment ID mismatch
+                    if (empty($row['id'])) {
+                        Log::warning('[RESTORE] Skipping DB upsert — upload_row.id is null or missing', [
+                            'file_path' => $entry['path'],
+                        ]);
+
+                        continue;
+                    }
+
+                    $row['uploaded_by'] = User::find($row['uploaded_by'] ?? null)
+                        ? $row['uploaded_by']
+                        : null;
+                    $uploadId = $row['id'];
+                    unset($row['id']);
+
+                    $existing = DocumentUpload::find($uploadId);
+                    if ($existing) {
+                        $existing->fill($row)->save();
+                    } else {
+                        $instance = new DocumentUpload;
+                        $instance->id = $uploadId;
+                        $instance->fill($row)->save();
+                    }
+                }
+            }
+        });
+
+        return $successCount;
     }
 }
