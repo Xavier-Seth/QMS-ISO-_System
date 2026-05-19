@@ -116,7 +116,7 @@ const displayName = computed(() => {
 
             <div class="text-right hidden sm:block">
               <div class="text-xs text-slate-500 leading-none">
-                Admin User
+                {{ me?.role === 'admin_officer' ? 'Office Owner' : me?.role === 'admin' ? 'Admin' : 'User' }}
               </div>
 
               <div class="text-sm font-medium text-slate-800 leading-tight">
