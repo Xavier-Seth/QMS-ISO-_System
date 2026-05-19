@@ -39,6 +39,7 @@ const isRedirectingPerformance = ref(false)
 
 const createModalOpen = ref(false)
 const obsoleteModalOpen = ref(false)
+const restoreModalOpen = ref(false)
 const deleteModalOpen = ref(false)
 
 const selectedRow = ref(null)
@@ -61,6 +62,8 @@ const createForm = useForm({
 const obsoleteForm = useForm({
   status_note: '',
 })
+
+const restoreForm = useForm({})
 
 const mode = computed(() => {
   const url = page.url || ''
@@ -391,6 +394,32 @@ function submitObsolete() {
   })
 }
 
+function openRestoreModal(row) {
+  closeActionMenu()
+  selectedRow.value = row
+  restoreForm.reset()
+  restoreForm.clearErrors()
+  restoreModalOpen.value = true
+}
+
+function submitRestore() {
+  if (!selectedRow.value) return
+
+  restoreForm.patch(`/documents/types/${selectedRow.value.id}/restore`, {
+    preserveScroll: true,
+    onSuccess: () => {
+      toast.success(`${selectedRow.value.code} restored to active.`)
+      restoreModalOpen.value = false
+      selectedRow.value = null
+      restoreForm.reset()
+      restoreForm.clearErrors()
+    },
+    onError: () => {
+      toast.error('Failed to restore document type.')
+    },
+  })
+}
+
 function openDeleteModal(row) {
   closeActionMenu()
   selectedRow.value = row
@@ -452,8 +481,8 @@ function handleGlobalClick(event) {
   }
 }
 
-watch([createModalOpen, obsoleteModalOpen, deleteModalOpen], () => {
-  if (createModalOpen.value || obsoleteModalOpen.value || deleteModalOpen.value) {
+watch([createModalOpen, obsoleteModalOpen, restoreModalOpen, deleteModalOpen], () => {
+  if (createModalOpen.value || obsoleteModalOpen.value || restoreModalOpen.value || deleteModalOpen.value) {
     closeActionMenu()
   }
 })
@@ -783,6 +812,15 @@ onBeforeUnmount(() => {
                       </button>
 
                       <button
+                        v-if="(row.status || '').toLowerCase() === 'obsolete'"
+                        type="button"
+                        class="block w-full px-4 py-2 text-left text-sm text-emerald-700 transition hover:bg-emerald-50"
+                        @click="openRestoreModal(row)"
+                      >
+                        Restore to Active
+                      </button>
+
+                      <button
                         type="button"
                         class="block w-full px-4 py-2 text-left text-sm text-rose-700 transition hover:bg-rose-50"
                         @click="openDeleteModal(row)"
@@ -890,6 +928,15 @@ onBeforeUnmount(() => {
                             @click="openObsoleteModal(row)"
                           >
                             Mark as Obsolete
+                          </button>
+
+                          <button
+                            v-if="(row.status || '').toLowerCase() === 'obsolete'"
+                            type="button"
+                            class="block w-full px-4 py-2 text-left text-sm text-emerald-700 transition hover:bg-emerald-50"
+                            @click="openRestoreModal(row)"
+                          >
+                            Restore to Active
                           </button>
 
                           <button
@@ -1095,6 +1142,49 @@ onBeforeUnmount(() => {
               class="rounded-xl bg-amber-600 px-4 py-2 text-sm text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {{ obsoleteForm.processing ? 'Saving...' : 'Confirm Obsolete' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="restoreModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      >
+        <div class="w-full max-w-xl rounded-2xl bg-white shadow-xl">
+          <div class="border-b border-slate-200 px-6 py-4">
+            <h2 class="text-lg font-semibold text-slate-900">Restore to Active</h2>
+            <p class="mt-1 text-sm text-slate-500">
+              This document type will be restored to active and can receive new uploads again.
+            </p>
+          </div>
+
+          <div class="px-6 py-5">
+            <div class="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">
+              <div class="font-semibold">{{ selectedRow?.code }} — {{ selectedRow?.name }}</div>
+              <div class="mt-1">Current uploads: {{ selectedRow?.documents_count || 0 }}</div>
+            </div>
+
+            <p class="mt-4 text-sm text-slate-600">
+              Are you sure you want to restore this document type to active?
+            </p>
+          </div>
+
+          <div class="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+            <button
+              type="button"
+              @click="restoreModalOpen = false"
+              class="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              @click="submitRestore"
+              :disabled="restoreForm.processing"
+              class="rounded-xl bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {{ restoreForm.processing ? 'Restoring...' : 'Restore to Active' }}
             </button>
           </div>
         </div>

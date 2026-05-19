@@ -257,6 +257,26 @@ class DocumentController extends Controller
         return back()->with('success', "{$documentType->code} marked as obsolete.");
     }
 
+    public function restore(DocumentType $documentType)
+    {
+        $documentType->update([
+            'status' => 'Active',
+            'status_note' => null,
+        ]);
+
+        $this->activityLogService->log([
+            'module' => 'documents',
+            'action' => 'updated',
+            'entity_type' => DocumentType::class,
+            'entity_id' => $documentType->id,
+            'record_label' => $documentType->code,
+            'file_type' => null,
+            'description' => 'Restored document type '.$documentType->code.' to active.',
+        ]);
+
+        return back()->with('success', "{$documentType->code} restored to active.");
+    }
+
     public function destroyType(DocumentType $documentType)
     {
         $documentType->load(['series']);

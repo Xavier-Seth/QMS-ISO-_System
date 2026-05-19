@@ -271,6 +271,9 @@ Route::middleware('auth')->group(function () {
         Route::patch('/documents/types/{documentType}/obsolete', [DocumentController::class, 'markObsolete'])
             ->name('documents.types.obsolete');
 
+        Route::patch('/documents/types/{documentType}/restore', [DocumentController::class, 'restore'])
+            ->name('documents.types.restore');
+
         Route::delete('/documents/types/{documentType}', [DocumentController::class, 'destroyType'])
             ->name('documents.types.destroy');
 
