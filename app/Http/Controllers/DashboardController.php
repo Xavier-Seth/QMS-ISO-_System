@@ -107,6 +107,32 @@ class DashboardController extends Controller
             ->filter(fn ($s) => $s['total_types'] > 0)
             ->values();
 
+        // ── Admin's own drafts ────────────────────────────────────────────────
+        $userId = auth()->id();
+
+        $myDrafts = DB::table('ofi_records')
+            ->selectRaw("'OFI' as type, id, ofi_no as record_no, updated_at")
+            ->where('created_by', $userId)->where('status', 'draft')
+            ->unionAll(
+                DB::table('dcr_records')
+                    ->selectRaw("'DCR' as type, id, dcr_no as record_no, updated_at")
+                    ->where('created_by', $userId)->where('status', 'draft')
+            )
+            ->unionAll(
+                DB::table('car_records')
+                    ->selectRaw("'CAR' as type, id, car_no as record_no, updated_at")
+                    ->where('created_by', $userId)->where('status', 'draft')
+            )
+            ->orderByDesc('updated_at')
+            ->get()
+            ->map(fn ($row) => [
+                'type' => $row->type,
+                'id' => $row->id,
+                'record_no' => $row->record_no ?: ($row->type.' #'.$row->id),
+                'updated_at' => Carbon::parse($row->updated_at)->diffForHumans(),
+            ])
+            ->values();
+
         // ── Recent QMS form activity (last 5 records across OFI / DCR / CAR) ─
         $activityRows = DB::table('ofi_records')
             ->selectRaw("'OFI' as type, id, ofi_no as record_no_raw, created_by, workflow_status, updated_at")
@@ -203,6 +229,7 @@ class DashboardController extends Controller
             ],
             'needs_revision' => $needsRevision,
             'recent_uploads' => $recentUploads,
+            'my_drafts' => $myDrafts,
             'series_distribution' => $seriesDistribution,
             'recent_activity' => $recentActivity,
             'yearly_stats' => $yearlyStats,

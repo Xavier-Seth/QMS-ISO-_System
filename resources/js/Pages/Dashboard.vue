@@ -32,6 +32,7 @@ const props = defineProps({
   needs_revision: { type: Array, default: () => [] },
   recent_uploads: { type: Array, default: () => [] },
   series_distribution: { type: Array, default: () => [] },
+  my_drafts: { type: Array, default: () => [] },
   recent_activity: { type: Array, default: () => [] },
   yearly_stats: { type: Array, default: () => [] },
   setup_checklist: {
@@ -71,6 +72,12 @@ const typeColor = {
 
 function getStatus(status) {
   return statusColor[status] ?? statusColor.draft
+}
+
+function showRoute(type, id) {
+  if (type === 'OFI') return `/ofi/records/${id}`
+  if (type === 'DCR') return `/dcr/records/${id}`
+  return `/car/records/${id}`
 }
 
 const maxYearlyTotal = computed(() =>
@@ -331,26 +338,25 @@ const setupComplete = computed(() =>
           </ul>
         </div>
 
-        <!-- Recent Form Activity -->
+        <!-- My Drafts -->
         <div class="bg-white rounded-xl border border-slate-200 p-5">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-sm font-semibold text-slate-700">Recent Form Activity</h2>
-            <Link href="/inbox" class="text-xs text-indigo-500 hover:underline font-medium">
-              View inbox
-            </Link>
+          <div class="flex items-center gap-2 mb-4">
+            <h2 class="text-sm font-semibold text-slate-700">My Drafts</h2>
+            <span v-if="my_drafts.length > 0" class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
+              {{ my_drafts.length }}
+            </span>
           </div>
 
-          <div v-if="recent_activity.length === 0" class="text-sm text-slate-400 py-4 text-center">
-            No recent activity.
+          <div v-if="my_drafts.length === 0" class="text-sm text-slate-400 py-4 text-center">
+            No drafts in progress.
           </div>
 
           <ul v-else class="divide-y divide-slate-100">
             <li
-              v-for="(item, i) in recent_activity"
-              :key="i"
+              v-for="item in my_drafts"
+              :key="item.type + item.id"
               class="py-3 flex items-center gap-3"
             >
-              <!-- Type badge -->
               <span
                 class="shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-md"
                 :class="typeColor[item.type] ?? 'bg-slate-100 text-slate-500'"
@@ -360,22 +366,15 @@ const setupComplete = computed(() =>
 
               <div class="flex-1 min-w-0">
                 <p class="text-sm font-medium text-slate-700 truncate">{{ item.record_no }}</p>
-                <p class="text-xs text-slate-400 truncate">{{ item.actor }}</p>
+                <p class="text-xs text-slate-400 mt-0.5">{{ item.updated_at }}</p>
               </div>
 
-              <div class="shrink-0 text-right">
-                <span
-                  class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full"
-                  :class="[getStatus(item.workflow_status).bg, getStatus(item.workflow_status).text]"
-                >
-                  <span
-                    class="w-1.5 h-1.5 rounded-full"
-                    :class="getStatus(item.workflow_status).dot"
-                  />
-                  {{ item.workflow_status }}
-                </span>
-                <p class="text-[11px] text-slate-400 mt-0.5">{{ item.updated_at }}</p>
-              </div>
+              <Link
+                :href="showRoute(item.type, item.id)"
+                class="shrink-0 text-xs font-medium text-indigo-500 hover:underline"
+              >
+                Continue
+              </Link>
             </li>
           </ul>
         </div>
