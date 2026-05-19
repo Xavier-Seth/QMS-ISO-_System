@@ -5,6 +5,7 @@ import { ref } from "vue";
 import { useLoadingOverlay } from "@/Composables/useLoadingOverlay";
 import { useToast } from "@/Composables/useToast";
 import { useConfirm } from "@/Composables/useConfirm";
+import { useRoleFormatter } from "@/Composables/useRoleFormatter";
 
 const props = defineProps({
   users: Object,
@@ -14,11 +15,7 @@ const props = defineProps({
 const loading = useLoadingOverlay();
 const toast = useToast();
 const confirm = useConfirm();
-
-const formatRole = (role) => {
-  const labels = { admin_officer: 'Office Owner', admin: 'Admin' };
-  return labels[role] ?? role;
-};
+const { formatRole } = useRoleFormatter();
 
 const q = ref(props.filters?.q ?? "");
 const expandedId = ref(null);

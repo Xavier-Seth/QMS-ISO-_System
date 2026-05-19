@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { usePage } from "@inertiajs/vue3";
 import NotificationDropdown from "@/Components/NotificationDropdown.vue";
+import { useRoleFormatter } from "@/Composables/useRoleFormatter";
 
 const props = defineProps({
   showSearch: { type: Boolean, default: false },
@@ -13,6 +14,7 @@ const emit = defineEmits(["search", "toggle-sidebar"]);
 
 const page = usePage();
 const me = computed(() => page.props.auth?.user);
+const { formatRole } = useRoleFormatter();
 
 const q = ref(props.searchValue);
 
@@ -116,7 +118,7 @@ const displayName = computed(() => {
 
             <div class="text-right hidden sm:block">
               <div class="text-xs text-slate-500 leading-none">
-                {{ me?.role === 'admin_officer' ? 'Office Owner' : me?.role === 'admin' ? 'Admin' : 'User' }}
+                {{ formatRole(me?.role) }}
               </div>
 
               <div class="text-sm font-medium text-slate-800 leading-tight">
