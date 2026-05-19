@@ -106,6 +106,26 @@ const setupComplete = computed(() =>
 
     <div class="px-4 py-5 md:px-8 md:py-7 space-y-6 bg-[#f4f6f8] min-h-screen">
 
+      <!-- ── Pending alert banner ── -->
+      <div
+        v-if="totalPending > 0"
+        class="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4"
+      >
+        <div class="flex items-center gap-3">
+          <svg class="w-5 h-5 text-amber-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="12"/>
+            <line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <p class="text-sm text-amber-700 font-medium">
+            You have <strong>{{ totalPending }}</strong> record{{ totalPending !== 1 ? 's' : '' }} awaiting review in your inbox.
+          </p>
+        </div>
+        <Link href="/inbox" class="shrink-0 text-sm font-semibold text-amber-700 hover:text-amber-900 underline underline-offset-2">
+          Go to Inbox
+        </Link>
+      </div>
+
       <!-- Page heading -->
       <div>
         <h1 class="text-xl font-semibold text-slate-800 tracking-tight">System Overview</h1>
@@ -227,7 +247,7 @@ const setupComplete = computed(() =>
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
         <!-- Documents -->
-        <div class="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+        <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium text-slate-400 uppercase tracking-widest">Document Types</span>
             <span class="inline-flex items-center gap-1.5 text-xs font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
@@ -253,7 +273,7 @@ const setupComplete = computed(() =>
         </div>
 
         <!-- OFI -->
-        <div class="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+        <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium text-slate-400 uppercase tracking-widest">OFI Records</span>
             <span v-if="summary.pending_ofi > 0"
@@ -262,11 +282,10 @@ const setupComplete = computed(() =>
             </span>
           </div>
           <div class="text-3xl font-bold text-slate-800 tabular-nums">{{ summary.total_ofi }}</div>
-          <p class="text-xs text-slate-400">Opportunity for Improvement forms</p>
         </div>
 
         <!-- DCR -->
-        <div class="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+        <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium text-slate-400 uppercase tracking-widest">DCR Records</span>
             <span v-if="summary.pending_dcr > 0"
@@ -275,11 +294,10 @@ const setupComplete = computed(() =>
             </span>
           </div>
           <div class="text-3xl font-bold text-slate-800 tabular-nums">{{ summary.total_dcr }}</div>
-          <p class="text-xs text-slate-400">Document Change Requests</p>
         </div>
 
         <!-- CAR -->
-        <div class="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+        <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-2">
           <div class="flex items-center justify-between">
             <span class="text-xs font-medium text-slate-400 uppercase tracking-widest">CAR Records</span>
             <span v-if="summary.pending_car > 0"
@@ -288,7 +306,6 @@ const setupComplete = computed(() =>
             </span>
           </div>
           <div class="text-3xl font-bold text-slate-800 tabular-nums">{{ summary.total_car }}</div>
-          <p class="text-xs text-slate-400">Corrective Action Requests</p>
         </div>
 
       </div>
@@ -297,15 +314,15 @@ const setupComplete = computed(() =>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
 
         <!-- Recent Uploads -->
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-          <div class="flex items-center justify-between mb-4">
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center justify-between mb-3">
             <h2 class="text-sm font-semibold text-slate-700">Recently Uploaded</h2>
             <Link href="/documents" class="text-xs text-indigo-500 hover:underline font-medium">
               Browse
             </Link>
           </div>
 
-          <div v-if="recent_uploads.length === 0" class="text-sm text-slate-400 py-4 text-center">
+          <div v-if="recent_uploads.length === 0" class="text-sm text-slate-400 py-3 text-center">
             No uploads yet.
           </div>
 
@@ -313,11 +330,11 @@ const setupComplete = computed(() =>
             <li
               v-for="upload in recent_uploads"
               :key="upload.id"
-              class="py-3 flex items-start gap-3"
+              class="py-2 flex items-start gap-3"
             >
               <!-- File icon -->
-              <div class="mt-0.5 shrink-0 w-8 h-8 rounded-lg bg-indigo-50 flex items-center justify-center">
-                <svg class="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+              <div class="mt-0.5 shrink-0 w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <svg class="w-3.5 h-3.5 text-indigo-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
                   <polyline points="14 2 14 8 20 8"/>
                 </svg>
@@ -339,15 +356,15 @@ const setupComplete = computed(() =>
         </div>
 
         <!-- My Drafts -->
-        <div class="bg-white rounded-xl border border-slate-200 p-5">
-          <div class="flex items-center gap-2 mb-4">
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="flex items-center gap-2 mb-3">
             <h2 class="text-sm font-semibold text-slate-700">My Drafts</h2>
             <span v-if="my_drafts.length > 0" class="text-xs font-semibold px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500">
               {{ my_drafts.length }}
             </span>
           </div>
 
-          <div v-if="my_drafts.length === 0" class="text-sm text-slate-400 py-4 text-center">
+          <div v-if="my_drafts.length === 0" class="text-sm text-slate-400 py-3 text-center">
             No drafts in progress.
           </div>
 
@@ -355,7 +372,7 @@ const setupComplete = computed(() =>
             <li
               v-for="item in my_drafts"
               :key="item.type + item.id"
-              class="py-3 flex items-center gap-3"
+              class="py-2 flex items-center gap-3"
             >
               <span
                 class="shrink-0 text-[11px] font-bold px-2 py-0.5 rounded-md"
@@ -449,65 +466,6 @@ const setupComplete = computed(() =>
           <span class="ml-auto text-xs text-slate-400">"Approved" counts as closed</span>
         </div>
 
-        <!-- Detailed table (collapsible feel — always shown, clean) -->
-        <div class="mt-5 overflow-x-auto">
-          <table class="w-full text-xs text-left border-collapse">
-            <thead>
-              <tr class="border-b border-slate-100">
-                <th class="pb-2 pr-4 font-semibold text-slate-500 w-14">Year</th>
-                <th class="pb-2 px-3 font-semibold text-violet-500 text-right">OFI Total</th>
-                <th class="pb-2 px-3 font-semibold text-violet-400 text-right">OFI Closed</th>
-                <th class="pb-2 px-3 font-semibold text-sky-500 text-right">DCR Total</th>
-                <th class="pb-2 px-3 font-semibold text-sky-400 text-right">DCR Closed</th>
-                <th class="pb-2 px-3 font-semibold text-rose-500 text-right">CAR Total</th>
-                <th class="pb-2 px-3 font-semibold text-rose-400 text-right">CAR Closed</th>
-                <th class="pb-2 pl-3 font-semibold text-slate-500 text-right">Grand Total</th>
-                <th class="pb-2 pl-3 font-semibold text-emerald-600 text-right">Approved</th>
-              </tr>
-            </thead>
-            <tbody class="divide-y divide-slate-50">
-              <tr
-                v-for="row in [...yearly_stats].reverse()"
-                :key="'t' + row.year"
-                class="hover:bg-slate-50 transition-colors"
-              >
-                <td class="py-2 pr-4 font-bold text-slate-700 tabular-nums">{{ row.year }}</td>
-                <td class="py-2 px-3 text-right tabular-nums text-slate-600">{{ row.ofi_total }}</td>
-                <td class="py-2 px-3 text-right tabular-nums text-slate-400">{{ row.ofi_closed }}</td>
-                <td class="py-2 px-3 text-right tabular-nums text-slate-600">{{ row.dcr_total }}</td>
-                <td class="py-2 px-3 text-right tabular-nums text-slate-400">{{ row.dcr_closed }}</td>
-                <td class="py-2 px-3 text-right tabular-nums text-slate-600">{{ row.car_total }}</td>
-                <td class="py-2 px-3 text-right tabular-nums text-slate-400">{{ row.car_closed }}</td>
-                <td class="py-2 pl-3 text-right tabular-nums font-semibold text-slate-700">{{ row.grand_total }}</td>
-                <td class="py-2 pl-3 text-right tabular-nums font-semibold text-emerald-600">
-                  {{ row.grand_closed }}
-                  <span class="font-normal text-slate-400">({{ row.close_rate }}%)</span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-
-      </div>
-
-      <!-- ── Pending alert banner (only shown if any pending) ── -->
-      <div
-        v-if="totalPending > 0"
-        class="flex items-center justify-between gap-4 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4"
-      >
-        <div class="flex items-center gap-3">
-          <svg class="w-5 h-5 text-amber-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
-            <circle cx="12" cy="12" r="10"/>
-            <line x1="12" y1="8" x2="12" y2="12"/>
-            <line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <p class="text-sm text-amber-700 font-medium">
-            You have <strong>{{ totalPending }}</strong> record{{ totalPending !== 1 ? 's' : '' }} awaiting review in your inbox.
-          </p>
-        </div>
-        <Link href="/inbox" class="shrink-0 text-sm font-semibold text-amber-700 hover:text-amber-900 underline underline-offset-2">
-          Go to Inbox
-        </Link>
       </div>
 
     </div>
