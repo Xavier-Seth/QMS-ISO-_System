@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\DocumentUpload;
 use App\Models\User;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use ZipArchive;
@@ -193,32 +194,35 @@ class BackupService
 
         $zip->close();
 
-        // Pass 2 — all entries validated; write files and upsert DB rows
-        // FilesystemException (extends RuntimeException) bubbles up to BackupController on any write failure
+        // Pass 2 — all entries validated; write files and upsert DB rows atomically.
+        // DB::transaction rolls back all DB changes if any write fails.
+        // FilesystemException (extends RuntimeException) bubbles up to BackupController on any write failure.
         $successCount = 0;
 
-        foreach ($validated as $entry) {
-            Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
-            $successCount++;
+        DB::transaction(function () use ($validated, &$successCount) {
+            foreach ($validated as $entry) {
+                Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
+                $successCount++;
 
-            if (! empty($entry['upload_row'])) {
-                $row = $entry['upload_row'];
-                $row['uploaded_by'] = User::find($row['uploaded_by'] ?? null)
-                    ? $row['uploaded_by']
-                    : null;
-                $uploadId = $row['id'];
-                unset($row['id']);
+                if (! empty($entry['upload_row'])) {
+                    $row = $entry['upload_row'];
+                    $row['uploaded_by'] = User::find($row['uploaded_by'] ?? null)
+                        ? $row['uploaded_by']
+                        : null;
+                    $uploadId = $row['id'];
+                    unset($row['id']);
 
-                $existing = DocumentUpload::find($uploadId);
-                if ($existing) {
-                    $existing->fill($row)->save();
-                } else {
-                    $instance = new DocumentUpload;
-                    $instance->id = $uploadId;
-                    $instance->fill($row)->save();
+                    $existing = DocumentUpload::find($uploadId);
+                    if ($existing) {
+                        $existing->fill($row)->save();
+                    } else {
+                        $instance = new DocumentUpload;
+                        $instance->id = $uploadId;
+                        $instance->fill($row)->save();
+                    }
                 }
             }
-        }
+        });
 
         return $successCount;
     }

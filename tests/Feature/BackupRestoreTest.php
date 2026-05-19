@@ -116,7 +116,8 @@ class BackupRestoreTest extends TestCase
         $tmpPath = tempnam(sys_get_temp_dir(), 'restore_test_').'.zip';
 
         $zip = new ZipArchive;
-        $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $opened = $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $this->assertTrue($opened === true, "ZipArchive::open() failed (code: {$opened}) for path: {$tmpPath}");
 
         $manifestFiles = [];
 
