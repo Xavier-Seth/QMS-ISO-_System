@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\DocumentUpload;
+use App\Models\User;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use ZipArchive;
@@ -43,7 +44,7 @@ class BackupService
                 $type = $upload->documentType;
                 $seriesCode = $type?->series?->code_prefix ?? 'unknown';
                 $typeCode = $type?->code ?? 'unknown';
-                $entryName = "{$seriesCode}/{$typeCode}/{$upload->file_name}";
+                $entryName = "{$seriesCode}/{$typeCode}/{$upload->id}_{$upload->file_name}";
                 $absolutePath = $storageDisk->path($upload->file_path);
                 $zip->addFile($absolutePath, $entryName);
                 $filesManifest[] = [
@@ -51,6 +52,10 @@ class BackupService
                     'file_name' => $upload->file_name,
                     'file_path' => $upload->file_path,
                     'storage_disk' => $diskName,
+                    'upload_row' => array_merge(
+                        ['id' => $upload->id],
+                        $upload->only($upload->getFillable())
+                    ),
                 ];
                 $fileCount++;
             }
@@ -113,7 +118,6 @@ class BackupService
             return 0;
         }
 
-        // Issue B: require a readable, valid manifest in any non-empty archive
         $manifestIndex = $zip->locateName('manifest.json');
 
         if ($manifestIndex === false) {
@@ -143,6 +147,7 @@ class BackupService
             $diskMap[$key] = [
                 'disk' => $entry['storage_disk'],
                 'path' => $entry['file_path'],
+                'upload_row' => $entry['upload_row'] ?? null,
             ];
         }
 
@@ -182,29 +187,37 @@ class BackupService
                 'disk' => $target['disk'] ?? 'private',
                 'path' => $target['path'] ?? $entryName,
                 'bytes' => $bytes,
+                'upload_row' => $target['upload_row'] ?? null,
             ];
         }
 
         $zip->close();
 
-        // Pass 2 — all entries validated; write atomically
+        // Pass 2 — all entries validated; write files and upsert DB rows
+        // FilesystemException (extends RuntimeException) bubbles up to BackupController on any write failure
         $successCount = 0;
-        $failures = [];
 
         foreach ($validated as $entry) {
-            $written = Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
-            if ($written) {
-                $successCount++;
-            } else {
-                $failures[] = $entry['path'];
-            }
-        }
+            Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
+            $successCount++;
 
-        if (! empty($failures)) {
-            throw new RuntimeException(
-                'Restore partially failed. Could not write '.count($failures).' file(s): '
-                .implode(', ', array_slice($failures, 0, 5))
-            );
+            if (! empty($entry['upload_row'])) {
+                $row = $entry['upload_row'];
+                $row['uploaded_by'] = User::find($row['uploaded_by'] ?? null)
+                    ? $row['uploaded_by']
+                    : null;
+                $uploadId = $row['id'];
+                unset($row['id']);
+
+                $existing = DocumentUpload::find($uploadId);
+                if ($existing) {
+                    $existing->fill($row)->save();
+                } else {
+                    $instance = new DocumentUpload;
+                    $instance->id = $uploadId;
+                    $instance->fill($row)->save();
+                }
+            }
         }
 
         return $successCount;

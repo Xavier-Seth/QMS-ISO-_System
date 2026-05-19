@@ -189,7 +189,7 @@ Route::middleware('auth')->group(function () {
         */
         Route::post('/settings/backup/create', [BackupController::class, 'create'])
             ->name('settings.backup.create')
-            ->middleware('throttle:3,60');
+            ->middleware('throttle:10,60');
 
         Route::get('/settings/backup/download', [BackupController::class, 'download'])
             ->name('settings.backup.download');
