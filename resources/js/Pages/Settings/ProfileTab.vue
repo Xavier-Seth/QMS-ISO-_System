@@ -170,7 +170,7 @@ const errorClass =
 
                     <div>
                         <label :class="labelClass">Role:</label>
-                        <input :value="form.role" type="text" disabled :class="inputClass" />
+                        <input :value="form.role === 'admin_officer' ? 'Office Owner' : form.role === 'admin' ? 'Admin' : form.role" type="text" disabled :class="inputClass" />
                     </div>
 
                     <div>
