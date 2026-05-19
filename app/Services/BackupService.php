@@ -188,10 +188,25 @@ class BackupService
         $zip->close();
 
         // Pass 2 — all entries validated; write atomically
+        $successCount = 0;
+        $failures = [];
+
         foreach ($validated as $entry) {
-            Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
+            $written = Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
+            if ($written) {
+                $successCount++;
+            } else {
+                $failures[] = $entry['path'];
+            }
         }
 
-        return count($validated);
+        if (! empty($failures)) {
+            throw new RuntimeException(
+                'Restore partially failed. Could not write '.count($failures).' file(s): '
+                .implode(', ', array_slice($failures, 0, 5))
+            );
+        }
+
+        return $successCount;
     }
 }
