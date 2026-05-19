@@ -259,6 +259,8 @@ class DocumentController extends Controller
 
     public function restore(DocumentType $documentType)
     {
+        abort_unless($documentType->isObsolete(), 422, 'This document type is not obsolete.');
+
         $documentType->update([
             'status' => 'Active',
             'status_note' => null,
