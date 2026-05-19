@@ -15,7 +15,7 @@ class UserSeeder extends Seeder
                 [
                     'username' => 'Admin',
                     'name' => 'Admin',
-                    'email' => env('ADMIN_EMAIL', 'admin@qms.local'),
+                    'email' => env('ADMIN_EMAIL', 'qmsaso@lnu.edu.ph'),
                     'password' => Hash::make(env('ADMIN_PASSWORD', 'admin123')),
                     'role' => 'admin',
                     'created_at' => now(),

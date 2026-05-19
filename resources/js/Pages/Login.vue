@@ -165,7 +165,7 @@ const submit = () => {
             </div>
             <div class="forgot-row">
               <span class="forgot-label">Email</span>
-              <a href="mailto:qms.admin@lnu.edu.ph" class="forgot-email-link">qms.admin@lnu.edu.ph</a>
+              <a href="mailto:qmsaso@lnu.edu.ph" class="forgot-email-link">qmsaso@lnu.edu.ph</a>
             </div>
           </div>
           <button type="button" class="forgot-dismiss-btn" @click="showForgotModal = false">Close</button>
