@@ -23,16 +23,14 @@
 
 | Requirement | Minimum                        | Notes                                                                                 |
 | ----------- | ------------------------------ | ------------------------------------------------------------------------------------- |
-| PHP         | 8.2                            | Extensions: pdo, pdo_sqlite or pdo_mysql, zip, fileinfo, mbstring, openssl, xml, curl |
+| PHP         | 8.2                            | Extensions: pdo, pdo_mysql, zip, fileinfo, mbstring, openssl, xml, curl               |
 | Composer    | 2.x                            | PHP dependency manager                                                                |
 | Node.js     | 18+                            | Required for Vite and npm                                                             |
 | npm         | 9+                             | Bundled with Node.js                                                                  |
-| Database    | SQLite 3 (default) or MySQL 8.0.16+ | SQLite requires no extra setup                                                        |
+| Database    | MySQL 8.0.16+                       | Earlier MySQL versions may silently ignore `CHECK` constraints                        |
 | LibreOffice | 7+                             | Required for Office→PDF preview conversion                                            |
 
 > LibreOffice must be installed on the server and the `soffice` binary must be accessible. This is **not optional** if document preview of DOCX/XLSX/PPTX files is needed.
-
-> **MySQL version:** The `document_uploads` table includes a `CHECK` constraint that requires **MySQL 8.0.16 or later**. Earlier versions (MySQL 5.7, MySQL 8.0.0–8.0.15) will silently ignore or error on this constraint. Run `mysql --version` on your server before deploying to confirm compatibility.
 
 ---
 
@@ -89,13 +87,22 @@ php artisan key:generate
 
 Edit `.env` with your environment values (see [Environment Configuration](#environment-configuration) below).
 
-### 3. Create the database (SQLite)
+### 3. Create the database (MySQL)
 
-```bash
-touch database/database.sqlite
+Create the database in MySQL and set the `DB_*` variables in `.env`:
+
+```sql
+CREATE DATABASE archive_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-Skip this step if using MySQL — create the database in MySQL instead and set `DB_*` variables.
+```dotenv
+DB_CONNECTION=mysql
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=archive_system
+DB_USERNAME=root
+DB_PASSWORD=your_password
+```
 
 ### 4. Run migrations
 
@@ -160,23 +167,18 @@ APP_URL=https://your-domain.com
 
 ### Database
 
-**SQLite (default — no server needed):**
-
-```dotenv
-DB_CONNECTION=sqlite
-# DB_DATABASE defaults to database/database.sqlite
-```
-
-**MySQL:**
+This application uses **MySQL**. Configure the following variables:
 
 ```dotenv
 DB_CONNECTION=mysql
 DB_HOST=127.0.0.1
 DB_PORT=3306
-DB_DATABASE=qms_archive
+DB_DATABASE=archive_system
 DB_USERNAME=your_db_user
 DB_PASSWORD=your_db_password
 ```
+
+> MySQL 8.0.16 or later is required. The `document_uploads` table uses a `CHECK` constraint that earlier versions silently ignore or error on.
 
 ### Queue, Session, Cache
 
@@ -538,11 +540,6 @@ php artisan key:generate
 ### Database migration errors
 
 **Symptom:** `SQLSTATE` errors during `php artisan migrate`.
-
-**Fix (SQLite):**
-
-- Ensure the file exists: `touch database/database.sqlite`
-- Ensure the file is writable by the web server process.
 
 **Fix (MySQL):**
 
