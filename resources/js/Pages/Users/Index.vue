@@ -20,6 +20,9 @@ const { formatRole } = useRoleFormatter();
 const q = ref(props.filters?.q ?? "");
 const expandedId = ref(null);
 const showCreate = ref(false);
+const showCreatePassword = ref(false);
+const showNewPassword = ref(false);
+const showConfirmPassword = ref(false);
 
 const createForm = useForm({
   username: "",
@@ -64,6 +67,7 @@ const openCreate = () => {
 
 const closeCreate = () => {
   showCreate.value = false;
+  showCreatePassword.value = false;
 };
 
 const submitCreate = () => {
@@ -145,6 +149,8 @@ const openResetPassword = (user) => {
 const closeResetPassword = () => {
   showResetPassword.value = false;
   resetTarget.value = null;
+  showNewPassword.value = false;
+  showConfirmPassword.value = false;
 };
 
 const submitResetPassword = () => {
@@ -488,11 +494,28 @@ const submitResetPassword = () => {
                     <label class="mb-1 block text-xs font-semibold text-slate-700">
                       Temporary Password
                     </label>
-                    <input
-                      v-model="createForm.password"
-                      type="password"
-                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
-                    />
+                    <div class="relative">
+                      <input
+                        v-model="createForm.password"
+                        :type="showCreatePassword ? 'text' : 'password'"
+                        class="w-full rounded-lg border border-slate-200 px-3 py-2 pr-10 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                      />
+                      <button
+                        type="button"
+                        class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        @click="showCreatePassword = !showCreatePassword"
+                      >
+                        <svg v-if="!showCreatePassword" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="h-4 w-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.644C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .638C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178z" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="h-4 w-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M10.584 10.587A2.25 2.25 0 0013.5 13.5" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M9.88 5.09A9.953 9.953 0 0112 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .638a11.983 11.983 0 01-3.12 4.568M6.228 6.228A11.965 11.965 0 002.037 11.68a1.012 1.012 0 000 .644C3.423 16.493 7.36 19.5 12 19.5a9.95 9.95 0 005.205-1.462" />
+                        </svg>
+                      </button>
+                    </div>
                     <p v-if="createForm.errors.password" class="mt-1 text-xs text-red-600">
                       {{ createForm.errors.password }}
                     </p>
@@ -567,11 +590,28 @@ const submitResetPassword = () => {
                 <div class="flex flex-col gap-4">
                   <div>
                     <label class="mb-1 block text-xs font-semibold text-slate-700">New Password</label>
-                    <input
-                      v-model="resetPasswordForm.new_password"
-                      type="password"
-                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
-                    />
+                    <div class="relative">
+                      <input
+                        v-model="resetPasswordForm.new_password"
+                        :type="showNewPassword ? 'text' : 'password'"
+                        class="w-full rounded-lg border border-slate-200 px-3 py-2 pr-10 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                      />
+                      <button
+                        type="button"
+                        class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        @click="showNewPassword = !showNewPassword"
+                      >
+                        <svg v-if="!showNewPassword" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="h-4 w-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.644C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .638C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178z" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="h-4 w-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M10.584 10.587A2.25 2.25 0 0013.5 13.5" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M9.88 5.09A9.953 9.953 0 0112 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .638a11.983 11.983 0 01-3.12 4.568M6.228 6.228A11.965 11.965 0 002.037 11.68a1.012 1.012 0 000 .644C3.423 16.493 7.36 19.5 12 19.5a9.95 9.95 0 005.205-1.462" />
+                        </svg>
+                      </button>
+                    </div>
                     <p v-if="resetPasswordForm.errors.new_password" class="mt-1 text-xs text-red-600">
                       {{ resetPasswordForm.errors.new_password }}
                     </p>
@@ -579,11 +619,28 @@ const submitResetPassword = () => {
 
                   <div>
                     <label class="mb-1 block text-xs font-semibold text-slate-700">Confirm Password</label>
-                    <input
-                      v-model="resetPasswordForm.new_password_confirmation"
-                      type="password"
-                      class="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
-                    />
+                    <div class="relative">
+                      <input
+                        v-model="resetPasswordForm.new_password_confirmation"
+                        :type="showConfirmPassword ? 'text' : 'password'"
+                        class="w-full rounded-lg border border-slate-200 px-3 py-2 pr-10 text-sm transition duration-150 focus:border-[#C9A84C] focus:outline-none focus:ring-2 focus:ring-[#C9A84C]/20"
+                      />
+                      <button
+                        type="button"
+                        class="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        @click="showConfirmPassword = !showConfirmPassword"
+                      >
+                        <svg v-if="!showConfirmPassword" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="h-4 w-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.644C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .638C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.964-7.178z" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        <svg v-else xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor" class="h-4 w-4">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M3 3l18 18" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M10.584 10.587A2.25 2.25 0 0013.5 13.5" />
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M9.88 5.09A9.953 9.953 0 0112 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .638a11.983 11.983 0 01-3.12 4.568M6.228 6.228A11.965 11.965 0 002.037 11.68a1.012 1.012 0 000 .644C3.423 16.493 7.36 19.5 12 19.5a9.95 9.95 0 005.205-1.462" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
 
