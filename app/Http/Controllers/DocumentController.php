@@ -48,7 +48,7 @@ class DocumentController extends Controller
         }
 
         $seriesOptions = DocumentSeries::query()
-            ->where('code_prefix', '!=', 'MANUAL')
+            ->whereIn('code_prefix', ['F-QMS', 'R-QMS'])
             ->orderBy('code_prefix')
             ->get(['id', 'code_prefix', 'name'])
             ->map(fn ($s) => [
