@@ -1,11 +1,18 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import { reactive, onMounted, onBeforeUnmount, ref, computed } from 'vue'
-import { usePage } from '@inertiajs/vue3'
+import { Link, usePage } from '@inertiajs/vue3'
 import axios from 'axios'
 import logo from '@/images/LNU_logo.png'
 import { useLoadingOverlay } from '@/Composables/useLoadingOverlay'
 import { useToast } from '@/Composables/useToast'
+
+const fromParam = new URLSearchParams(window.location.search).get('from')
+const backHref = fromParam === 'inbox'
+  ? '/inbox'
+  : fromParam === 'my-records'
+    ? '/my-records'
+    : null
 
 const loading = useLoadingOverlay()
 const toast = useToast()
@@ -664,6 +671,12 @@ onBeforeUnmount(() => {
     <div class="min-h-screen overflow-y-auto bg-slate-100 font-sans lg:h-screen lg:overflow-hidden">
       <div class="flex h-full flex-col gap-6 px-10 py-8">
         <div class="flex shrink-0 flex-wrap items-end justify-between gap-3">
+          <Link
+            v-if="backHref"
+            :href="backHref"
+            class="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 hover:bg-slate-50 shrink-0"
+          >← Back</Link>
+
           <div class="min-w-0">
             <div class="flex items-center gap-3">
               <h1 class="truncate text-2xl font-bold tracking-tight text-slate-900">Create OFI Form</h1>
