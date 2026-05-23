@@ -17,6 +17,7 @@ class InboxController extends Controller
 
         $activeTab = (string) $request->input('tab', 'ofi');
         $workflowStatus = (string) $request->input('workflow_status', 'pending');
+        $q = trim((string) $request->input('q', ''));
 
         $allowedTabs = ['ofi', 'car', 'dcr'];
         $allowedWorkflowStatuses = ['pending', 'approved', 'rejected'];
@@ -32,9 +33,9 @@ class InboxController extends Controller
         $perPage = 10;
 
         $records = match ($activeTab) {
-            'car' => $this->paginateAdminCarRecords($workflowStatus, $perPage),
-            'dcr' => $this->paginateAdminDcrRecords($workflowStatus, $perPage),
-            default => $this->paginateAdminOfiRecords($workflowStatus, $perPage),
+            'car' => $this->paginateAdminCarRecords($workflowStatus, $q, $perPage),
+            'dcr' => $this->paginateAdminDcrRecords($workflowStatus, $q, $perPage),
+            default => $this->paginateAdminOfiRecords($workflowStatus, $q, $perPage),
         };
 
         return Inertia::render('Inbox/Index', [
@@ -42,6 +43,7 @@ class InboxController extends Controller
             'filters' => [
                 'tab' => $activeTab,
                 'workflow_status' => $workflowStatus,
+                'q' => $q,
             ],
             'pendingCounts' => [
                 'ofi' => $this->adminPendingCount(OfiRecord::class),
@@ -57,6 +59,7 @@ class InboxController extends Controller
 
         $activeTab = (string) $request->input('tab', 'ofi');
         $workflowStatus = (string) $request->input('workflow_status', 'all');
+        $q = trim((string) $request->input('q', ''));
 
         $allowedTabs = ['ofi', 'car', 'dcr'];
         $allowedWorkflowStatuses = ['all', 'pending', 'approved', 'rejected'];
@@ -72,9 +75,9 @@ class InboxController extends Controller
         $perPage = 10;
 
         $records = match ($activeTab) {
-            'car' => $this->paginateUserCarRecords($workflowStatus, $perPage),
-            'dcr' => $this->paginateUserDcrRecords($workflowStatus, $perPage),
-            default => $this->paginateUserOfiRecords($workflowStatus, $perPage),
+            'car' => $this->paginateUserCarRecords($workflowStatus, $q, $perPage),
+            'dcr' => $this->paginateUserDcrRecords($workflowStatus, $q, $perPage),
+            default => $this->paginateUserOfiRecords($workflowStatus, $q, $perPage),
         };
 
         return Inertia::render('Inbox/MyRecords', [
@@ -82,6 +85,7 @@ class InboxController extends Controller
             'filters' => [
                 'tab' => $activeTab,
                 'workflow_status' => $workflowStatus,
+                'q' => $q,
             ],
             'pendingCounts' => [
                 'ofi' => $this->userPendingCount(OfiRecord::class),
@@ -116,7 +120,7 @@ class InboxController extends Controller
     // Admin paginated queries
     // -------------------------------------------------------------------------
 
-    private function paginateAdminOfiRecords(string $workflowStatus, int $perPage): LengthAwarePaginator
+    private function paginateAdminOfiRecords(string $workflowStatus, string $q, int $perPage): LengthAwarePaginator
     {
         $query = OfiRecord::query()
             ->with([
@@ -130,6 +134,17 @@ class InboxController extends Controller
             $query->where('workflow_status', $workflowStatus);
         }
 
+        if ($q !== '') {
+            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
+            $query->where(fn ($sub) => $sub
+                ->where('ofi_no', 'LIKE', $escaped.'%')
+                ->orWhereHas('creator', fn ($u) => $u
+                    ->where('name', 'LIKE', '%'.$escaped.'%')
+                    ->orWhere('department', 'LIKE', '%'.$escaped.'%')
+                )
+            );
+        }
+
         return $query
             ->latest()
             ->paginate($perPage)
@@ -137,7 +152,7 @@ class InboxController extends Controller
             ->withQueryString();
     }
 
-    private function paginateAdminCarRecords(string $workflowStatus, int $perPage): LengthAwarePaginator
+    private function paginateAdminCarRecords(string $workflowStatus, string $q, int $perPage): LengthAwarePaginator
     {
         $query = CarRecord::query()
             ->with([
@@ -151,6 +166,17 @@ class InboxController extends Controller
             $query->where('workflow_status', $workflowStatus);
         }
 
+        if ($q !== '') {
+            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
+            $query->where(fn ($sub) => $sub
+                ->where('car_no', 'LIKE', $escaped.'%')
+                ->orWhereHas('creator', fn ($u) => $u
+                    ->where('name', 'LIKE', '%'.$escaped.'%')
+                    ->orWhere('department', 'LIKE', '%'.$escaped.'%')
+                )
+            );
+        }
+
         return $query
             ->latest()
             ->paginate($perPage)
@@ -158,7 +184,7 @@ class InboxController extends Controller
             ->withQueryString();
     }
 
-    private function paginateAdminDcrRecords(string $workflowStatus, int $perPage): LengthAwarePaginator
+    private function paginateAdminDcrRecords(string $workflowStatus, string $q, int $perPage): LengthAwarePaginator
     {
         $query = DcrRecord::query()
             ->with([
@@ -170,6 +196,17 @@ class InboxController extends Controller
 
         if ($workflowStatus !== 'all') {
             $query->where('workflow_status', $workflowStatus);
+        }
+
+        if ($q !== '') {
+            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
+            $query->where(fn ($sub) => $sub
+                ->where('dcr_no', 'LIKE', $escaped.'%')
+                ->orWhereHas('creator', fn ($u) => $u
+                    ->where('name', 'LIKE', '%'.$escaped.'%')
+                    ->orWhere('department', 'LIKE', '%'.$escaped.'%')
+                )
+            );
         }
 
         return $query
@@ -183,7 +220,7 @@ class InboxController extends Controller
     // User paginated queries
     // -------------------------------------------------------------------------
 
-    private function paginateUserOfiRecords(string $workflowStatus, int $perPage): LengthAwarePaginator
+    private function paginateUserOfiRecords(string $workflowStatus, string $q, int $perPage): LengthAwarePaginator
     {
         $query = OfiRecord::query()
             ->with([
@@ -196,6 +233,17 @@ class InboxController extends Controller
             $query->where('workflow_status', $workflowStatus);
         }
 
+        if ($q !== '') {
+            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
+            $query->where(fn ($sub) => $sub
+                ->where('ofi_no', 'LIKE', $escaped.'%')
+                ->orWhereHas('creator', fn ($u) => $u
+                    ->where('name', 'LIKE', '%'.$escaped.'%')
+                    ->orWhere('department', 'LIKE', '%'.$escaped.'%')
+                )
+            );
+        }
+
         return $query
             ->latest()
             ->paginate($perPage)
@@ -203,7 +251,7 @@ class InboxController extends Controller
             ->withQueryString();
     }
 
-    private function paginateUserCarRecords(string $workflowStatus, int $perPage): LengthAwarePaginator
+    private function paginateUserCarRecords(string $workflowStatus, string $q, int $perPage): LengthAwarePaginator
     {
         $query = CarRecord::query()
             ->with([
@@ -216,6 +264,17 @@ class InboxController extends Controller
             $query->where('workflow_status', $workflowStatus);
         }
 
+        if ($q !== '') {
+            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
+            $query->where(fn ($sub) => $sub
+                ->where('car_no', 'LIKE', $escaped.'%')
+                ->orWhereHas('creator', fn ($u) => $u
+                    ->where('name', 'LIKE', '%'.$escaped.'%')
+                    ->orWhere('department', 'LIKE', '%'.$escaped.'%')
+                )
+            );
+        }
+
         return $query
             ->latest()
             ->paginate($perPage)
@@ -223,7 +282,7 @@ class InboxController extends Controller
             ->withQueryString();
     }
 
-    private function paginateUserDcrRecords(string $workflowStatus, int $perPage): LengthAwarePaginator
+    private function paginateUserDcrRecords(string $workflowStatus, string $q, int $perPage): LengthAwarePaginator
     {
         $query = DcrRecord::query()
             ->with([
@@ -234,6 +293,17 @@ class InboxController extends Controller
 
         if ($workflowStatus !== 'all') {
             $query->where('workflow_status', $workflowStatus);
+        }
+
+        if ($q !== '') {
+            $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
+            $query->where(fn ($sub) => $sub
+                ->where('dcr_no', 'LIKE', $escaped.'%')
+                ->orWhereHas('creator', fn ($u) => $u
+                    ->where('name', 'LIKE', '%'.$escaped.'%')
+                    ->orWhere('department', 'LIKE', '%'.$escaped.'%')
+                )
+            );
         }
 
         return $query

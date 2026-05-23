@@ -1,7 +1,7 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 
 const props = defineProps({
   records: {
@@ -23,6 +23,14 @@ const props = defineProps({
 --------------------------- */
 const activeTab = ref(props.filters?.tab ?? 'ofi')
 const workflowStatus = ref(props.filters?.workflow_status ?? 'pending')
+const q = ref(props.filters?.q ?? '')
+
+let debounceTimer = null
+
+watch(q, () => {
+  clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(applyFilters, 400)
+})
 
 const typeTabs = [
   { key: 'ofi', label: 'OFI' },
@@ -38,6 +46,7 @@ const workflowOptions = [
 
 function switchTab(tabKey) {
   activeTab.value = tabKey
+  q.value = ''
   applyFilters()
 }
 
@@ -52,6 +61,7 @@ function applyFilters() {
     {
       tab: activeTab.value,
       workflow_status: workflowStatus.value,
+      q: q.value || undefined,
     },
     {
       preserveScroll: true,
@@ -199,22 +209,31 @@ function resolutionBadgeClass(status) {
           </button>
         </div>
 
-        <!-- Workflow sub-filter -->
-        <div class="flex flex-wrap items-center gap-2 px-6 py-3">
-          <button
-            v-for="opt in workflowOptions"
-            :key="opt.key"
-            type="button"
-            class="inline-flex items-center rounded-xl border px-4 py-1.5 text-sm transition"
-            :class="
-              workflowStatus === opt.key
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
-            "
-            @click="setWorkflow(opt.key)"
-          >
-            {{ opt.label }}
-          </button>
+        <!-- Workflow sub-filter + search -->
+        <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <button
+              v-for="opt in workflowOptions"
+              :key="opt.key"
+              type="button"
+              class="inline-flex items-center rounded-xl border px-4 py-1.5 text-sm transition"
+              :class="
+                workflowStatus === opt.key
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+              "
+              @click="setWorkflow(opt.key)"
+            >
+              {{ opt.label }}
+            </button>
+          </div>
+
+          <input
+            v-model="q"
+            type="text"
+            placeholder="Search by record no., name, department…"
+            class="w-full max-w-sm rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+          />
         </div>
       </div>
 
