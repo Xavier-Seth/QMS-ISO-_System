@@ -101,8 +101,13 @@ class ManualController extends Controller
         $this->authorize('manageManual', $documentType);
 
         $validated = $request->validate([
-            'file' => [
+            'files' => [
                 'required',
+                'array',
+                'min:1',
+                'max:20',
+            ],
+            'files.*' => [
                 'file',
                 'mimes:pdf,doc,docx',
                 'max:20480',
@@ -114,29 +119,35 @@ class ManualController extends Controller
             ],
         ]);
 
-        $file = $request->file('file');
-
         $directory = sprintf(
             'manuals/%s/%s',
             strtolower($category),
             $access
         );
 
-        $storedPath = $file->store($directory, 'public');
+        $count = 0;
 
-        DocumentUpload::create([
-            'document_type_id' => $documentType->id,
-            'uploaded_by' => $request->user()->id,
-            'status' => 'Active',
-            'file_name' => $file->getClientOriginalName(),
-            'file_path' => $storedPath,
-            'storage_disk' => 'public',
-            'remarks' => $validated['remarks'] ?? null,
-        ]);
+        foreach ($request->file('files') as $file) {
+            $storedPath = $file->store($directory, 'public');
+
+            DocumentUpload::create([
+                'document_type_id' => $documentType->id,
+                'uploaded_by' => $request->user()->id,
+                'status' => 'Active',
+                'file_name' => $file->getClientOriginalName(),
+                'file_path' => $storedPath,
+                'storage_disk' => 'public',
+                'remarks' => $validated['remarks'] ?? null,
+            ]);
+
+            $count++;
+        }
+
+        $label = $count === 1 ? '1 file uploaded successfully.' : "{$count} files uploaded successfully.";
 
         return redirect()
             ->route('manual.show', ['category' => strtolower($category)])
-            ->with('success', ucwords(str_replace('_', ' ', $access)).' manual file uploaded successfully.');
+            ->with('success', $label);
     }
 
     public function destroy(Request $request, DocumentUpload $upload): RedirectResponse
