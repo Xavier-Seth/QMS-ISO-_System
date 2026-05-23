@@ -11,13 +11,18 @@ class DocumentTypePolicy
      * View a manual page slot/type.
      *
      * Rules:
+     * - Master copy manual: admin only
      * - Controlled manual: admin only
      * - Uncontrolled manual: any authenticated user
      */
     public function viewManual(User $user, DocumentType $documentType): bool
     {
-        if (!$documentType->isManual()) {
+        if (! $documentType->isManual()) {
             return false;
+        }
+
+        if ($documentType->isMasterCopyManual()) {
+            return $user->role === 'admin';
         }
 
         if ($documentType->isControlledManual()) {

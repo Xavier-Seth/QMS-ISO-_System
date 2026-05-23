@@ -2,9 +2,9 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Database\Seeder;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
+use Illuminate\Database\Seeder;
 
 class ManualDocumentTypesSeeder extends Seeder
 {
@@ -72,6 +72,36 @@ class ManualDocumentTypesSeeder extends Seeder
                 'title' => 'REM Uncontrolled Manual',
                 'manual_category' => 'REM',
                 'manual_access' => 'uncontrolled',
+            ],
+            [
+                'code' => 'MANUAL-ASM-MASTER-COPY',
+                'title' => 'ASM Master Copy Manual',
+                'manual_category' => 'ASM',
+                'manual_access' => 'master_copy',
+            ],
+            [
+                'code' => 'MANUAL-QSM-MASTER-COPY',
+                'title' => 'QSM Master Copy Manual',
+                'manual_category' => 'QSM',
+                'manual_access' => 'master_copy',
+            ],
+            [
+                'code' => 'MANUAL-HRM-MASTER-COPY',
+                'title' => 'HRM Master Copy Manual',
+                'manual_category' => 'HRM',
+                'manual_access' => 'master_copy',
+            ],
+            [
+                'code' => 'MANUAL-RIEM-MASTER-COPY',
+                'title' => 'RIEM Master Copy Manual',
+                'manual_category' => 'RIEM',
+                'manual_access' => 'master_copy',
+            ],
+            [
+                'code' => 'MANUAL-REM-MASTER-COPY',
+                'title' => 'REM Master Copy Manual',
+                'manual_category' => 'REM',
+                'manual_access' => 'master_copy',
             ],
         ];
 

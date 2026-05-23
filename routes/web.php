@@ -150,7 +150,7 @@ Route::middleware('auth')->group(function () {
 
     Route::post('/manual/{category}/{access}/upload', [ManualController::class, 'upload'])
         ->where('category', 'asm|qsm|hrm|riem|rem')
-        ->where('access', 'controlled|uncontrolled')
+        ->where('access', 'controlled|uncontrolled|master_copy')
         ->name('manual.upload');
 
     Route::get('/manual/uploads/{upload}/preview', [ManualController::class, 'preview'])
@@ -158,6 +158,12 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/manual/uploads/{upload}/download', [ManualController::class, 'download'])
         ->name('manual.uploads.download');
+
+    Route::post('/manual/uploads/{upload}/toggle-status', [ManualController::class, 'toggleStatus'])
+        ->name('manual.uploads.toggle-status');
+
+    Route::delete('/manual/uploads/{upload}', [ManualController::class, 'destroy'])
+        ->name('manual.uploads.destroy');
 
     /*
     |--------------------------------------------------------------------------
