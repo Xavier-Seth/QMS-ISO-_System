@@ -92,10 +92,22 @@ const showUploadModal = ref(false)
 const fileInputKey = ref(0)
 
 const uploadForm = useForm({
-  file: null,
+  files: [],
   access: '',
   remarks: '',
 })
+
+const selectedFiles = ref([])
+
+const fileCount = computed(() => selectedFiles.value.length)
+
+const uploadButtonLabel = computed(() => {
+  if (uploadForm.processing) return 'Uploading…'
+  if (fileCount.value === 0) return 'Upload Files'
+  return fileCount.value === 1 ? 'Upload 1 File' : `Upload ${fileCount.value} Files`
+})
+
+const tooManyFiles = computed(() => fileCount.value > 20)
 
 const uploadableAccessTypes = computed(() => {
   const types = []
@@ -109,6 +121,7 @@ const openUploadModal = () => {
   uploadForm.reset()
   uploadForm.clearErrors()
   uploadForm.access = activeTab.value
+  selectedFiles.value = []
   fileInputKey.value++
   showUploadModal.value = true
 }
@@ -117,15 +130,26 @@ const closeUploadModal = () => {
   showUploadModal.value = false
   uploadForm.reset()
   uploadForm.clearErrors()
+  selectedFiles.value = []
 }
 
 const onFileChange = (event) => {
-  uploadForm.file = event.target.files?.[0] ?? null
+  const picked = Array.from(event.target.files ?? [])
+  selectedFiles.value = picked
+}
+
+const removeFile = (index) => {
+  selectedFiles.value = selectedFiles.value.filter((_, i) => i !== index)
+  fileInputKey.value++
 }
 
 const submitUpload = () => {
-  if (!uploadForm.file) {
-    toast.error?.('Please select a file first.')
+  if (fileCount.value === 0) {
+    toast.error?.('Please select at least one file.')
+    return
+  }
+  if (tooManyFiles.value) {
+    toast.error?.('You can upload a maximum of 20 files at once.')
     return
   }
   if (!uploadForm.access) {
@@ -133,15 +157,17 @@ const submitUpload = () => {
     return
   }
 
+  uploadForm.files = selectedFiles.value
+
   const label = uploadableAccessTypes.value.find((t) => t.value === uploadForm.access)?.label ?? uploadForm.access
-  loading.show?.(`Uploading ${label} manual...`)
+  loading.show?.(`Uploading ${label} manual${fileCount.value > 1 ? 's' : ''}...`)
 
   uploadForm.post(`/manual/${props.category.toLowerCase()}/${uploadForm.access}/upload`, {
     forceFormData: true,
     preserveScroll: true,
     onSuccess: () => {
       closeUploadModal()
-      toast.success?.('Manual file uploaded successfully.')
+      toast.success?.(`${fileCount.value === 1 ? '1 file' : `${fileCount.value} files`} uploaded successfully.`)
     },
     onError: () => {
       toast.error?.('Upload failed. Please check the form and try again.')
@@ -498,16 +524,45 @@ const tabBadgeClass = (key) => {
             </div>
 
             <div>
-              <label class="text-xs font-medium text-slate-600">Manual File</label>
+              <label class="text-xs font-medium text-slate-600">Manual Files</label>
               <input
                 :key="fileInputKey"
                 type="file"
+                multiple
                 accept=".pdf,.doc,.docx"
                 class="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
                 @change="onFileChange"
               />
-              <div v-if="uploadForm.errors.file" class="mt-1 text-sm text-rose-600">
-                {{ uploadForm.errors.file }}
+              <div v-if="tooManyFiles" class="mt-1 text-sm text-rose-600">
+                Maximum 20 files per upload. Please remove {{ fileCount - 20 }} file{{ fileCount - 20 === 1 ? '' : 's' }}.
+              </div>
+              <div v-if="uploadForm.errors.files" class="mt-1 text-sm text-rose-600">
+                {{ uploadForm.errors.files }}
+              </div>
+
+              <!-- Selected files preview list -->
+              <div v-if="selectedFiles.length" class="mt-3 space-y-1">
+                <div class="text-xs font-medium text-slate-500">
+                  {{ fileCount }} file{{ fileCount === 1 ? '' : 's' }} selected
+                </div>
+                <ul class="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 divide-y divide-slate-100">
+                  <li
+                    v-for="(file, index) in selectedFiles"
+                    :key="index"
+                    class="flex items-center justify-between gap-2 px-3 py-2 text-sm"
+                  >
+                    <span class="truncate text-slate-700">{{ file.name }}</span>
+                    <button
+                      type="button"
+                      class="shrink-0 text-slate-400 hover:text-rose-600 transition"
+                      @click="removeFile(index)"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </li>
+                </ul>
               </div>
             </div>
 
@@ -538,11 +593,11 @@ const tabBadgeClass = (key) => {
 
             <button
               type="button"
-              :disabled="uploadForm.processing"
+              :disabled="uploadForm.processing || tooManyFiles"
               class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
               @click="submitUpload"
             >
-              {{ uploadForm.processing ? 'Uploading…' : 'Upload File' }}
+              {{ uploadButtonLabel }}
             </button>
           </div>
         </div>

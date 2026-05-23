@@ -231,7 +231,7 @@ class ManualControllerTest extends TestCase
 
         $response = $this->actingAs($admin)
             ->post(route('manual.upload', ['category' => 'asm', 'access' => 'controlled']), [
-                'file' => $file,
+                'files' => [$file],
             ]);
 
         $response->assertRedirect(route('manual.show', ['category' => 'asm']));
@@ -242,6 +242,48 @@ class ManualControllerTest extends TestCase
             'status' => 'Active',
             'file_name' => 'manual.pdf',
         ]);
+    }
+
+    public function test_admin_can_bulk_upload_multiple_files(): void
+    {
+        Storage::fake('public');
+
+        $series = $this->makeSeries();
+        $admin = $this->makeAdmin();
+        $type = $this->makeType($series, 'ASM', 'controlled');
+
+        $files = [
+            UploadedFile::fake()->create('first.pdf', 100, 'application/pdf'),
+            UploadedFile::fake()->create('second.pdf', 100, 'application/pdf'),
+            UploadedFile::fake()->create('third.pdf', 100, 'application/pdf'),
+        ];
+
+        $response = $this->actingAs($admin)
+            ->post(route('manual.upload', ['category' => 'asm', 'access' => 'controlled']), [
+                'files' => $files,
+            ]);
+
+        $response->assertRedirect(route('manual.show', ['category' => 'asm']));
+        $response->assertSessionHas('success', '3 files uploaded successfully.');
+
+        $this->assertDatabaseCount('document_uploads', 3);
+    }
+
+    public function test_upload_rejects_more_than_20_files(): void
+    {
+        Storage::fake('public');
+
+        $series = $this->makeSeries();
+        $admin = $this->makeAdmin();
+        $this->makeType($series, 'ASM', 'controlled');
+
+        $files = array_fill(0, 21, UploadedFile::fake()->create('manual.pdf', 100, 'application/pdf'));
+
+        $this->actingAs($admin)
+            ->post(route('manual.upload', ['category' => 'asm', 'access' => 'controlled']), [
+                'files' => $files,
+            ])
+            ->assertSessionHasErrors('files');
     }
 
     public function test_upload_does_not_obsolete_existing_files(): void
@@ -258,7 +300,7 @@ class ManualControllerTest extends TestCase
 
         $this->actingAs($admin)
             ->post(route('manual.upload', ['category' => 'asm', 'access' => 'controlled']), [
-                'file' => $file,
+                'files' => [$file],
             ]);
 
         $this->assertDatabaseHas('document_uploads', [
@@ -279,7 +321,7 @@ class ManualControllerTest extends TestCase
 
         $this->actingAs($user)
             ->post(route('manual.upload', ['category' => 'asm', 'access' => 'controlled']), [
-                'file' => $file,
+                'files' => [$file],
             ])
             ->assertForbidden();
     }
