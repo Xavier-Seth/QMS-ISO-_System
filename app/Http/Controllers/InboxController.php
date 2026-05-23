@@ -130,9 +130,7 @@ class InboxController extends Controller
             ->where('status', 'submitted')
             ->whereHas('creator', fn ($query) => $query->where('role', '!=', 'admin'));
 
-        if ($workflowStatus !== 'all') {
-            $query->where('workflow_status', $workflowStatus);
-        }
+        $query->where('workflow_status', $workflowStatus);
 
         if ($q !== '') {
             $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
@@ -162,9 +160,7 @@ class InboxController extends Controller
             ->where('status', 'submitted')
             ->whereHas('creator', fn ($query) => $query->where('role', '!=', 'admin'));
 
-        if ($workflowStatus !== 'all') {
-            $query->where('workflow_status', $workflowStatus);
-        }
+        $query->where('workflow_status', $workflowStatus);
 
         if ($q !== '') {
             $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
@@ -194,9 +190,7 @@ class InboxController extends Controller
             ->where('status', 'submitted')
             ->whereHas('creator', fn ($query) => $query->where('role', '!=', 'admin'));
 
-        if ($workflowStatus !== 'all') {
-            $query->where('workflow_status', $workflowStatus);
-        }
+        $query->where('workflow_status', $workflowStatus);
 
         if ($q !== '') {
             $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q);
