@@ -6,7 +6,7 @@ import { ref, watch } from 'vue'
 const props = defineProps({
   records: Object,
   filters: Object,
-  pendingCounts: {
+  returnedCounts: {
     type: Object,
     default: () => ({ ofi: 0, car: 0, dcr: 0 }),
   },
@@ -111,8 +111,9 @@ function resolutionBadgeClass(status) {
           >
             {{ tab.label }}
             <span
-              v-if="pendingCounts[tab.key] > 0"
+              v-if="returnedCounts[tab.key] > 0"
               class="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500"
+              title="Has records returned for revision"
             ></span>
           </button>
         </div>

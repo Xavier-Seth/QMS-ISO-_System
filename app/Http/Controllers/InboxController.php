@@ -87,10 +87,10 @@ class InboxController extends Controller
                 'workflow_status' => $workflowStatus,
                 'q' => $q,
             ],
-            'pendingCounts' => [
-                'ofi' => $this->userPendingCount(OfiRecord::class),
-                'car' => $this->userPendingCount(CarRecord::class),
-                'dcr' => $this->userPendingCount(DcrRecord::class),
+            'returnedCounts' => [
+                'ofi' => $this->userReturnedCount(OfiRecord::class),
+                'car' => $this->userReturnedCount(CarRecord::class),
+                'dcr' => $this->userReturnedCount(DcrRecord::class),
             ],
         ]);
     }
@@ -108,11 +108,11 @@ class InboxController extends Controller
             ->count();
     }
 
-    private function userPendingCount(string $model): int
+    private function userReturnedCount(string $model): int
     {
         return $model::query()
             ->where('created_by', auth()->id())
-            ->where('workflow_status', 'pending')
+            ->where('workflow_status', 'rejected')
             ->count();
     }
 
