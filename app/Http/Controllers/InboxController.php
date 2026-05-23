@@ -333,7 +333,7 @@ class InboxController extends Controller
             'rejection_reason' => $record->rejection_reason,
             'rejected_at' => $record->rejected_at,
             'rejected_by_name' => $record->rejectedBy?->name ?? null,
-            'view_url' => '/ofi-form?record='.$record->id,
+            'view_url' => '/ofi-form?record='.$record->id.'&from=inbox',
             'approve_url' => '/inbox/ofi/'.$record->id.'/approve',
             'reject_url' => '/inbox/ofi/'.$record->id.'/reject',
         ];
@@ -355,7 +355,7 @@ class InboxController extends Controller
             'rejection_reason' => $record->rejection_reason,
             'rejected_at' => $record->rejected_at,
             'rejected_by_name' => $record->rejectedBy?->name ?? null,
-            'view_url' => '/car?record='.$record->id,
+            'view_url' => '/car?record='.$record->id.'&from=inbox',
             'approve_url' => '/inbox/car/'.$record->id.'/approve',
             'reject_url' => '/inbox/car/'.$record->id.'/reject',
         ];
@@ -377,7 +377,7 @@ class InboxController extends Controller
             'rejection_reason' => $record->rejection_reason,
             'rejected_at' => $record->rejected_at,
             'rejected_by_name' => $record->rejectedBy?->name ?? null,
-            'view_url' => '/dcr?record='.$record->id,
+            'view_url' => '/dcr?record='.$record->id.'&from=inbox',
             'approve_url' => '/inbox/dcr/'.$record->id.'/approve',
             'reject_url' => '/inbox/dcr/'.$record->id.'/reject',
         ];
@@ -402,7 +402,7 @@ class InboxController extends Controller
                 : '—',
             'created_at' => $record->created_at,
             'date_submitted' => optional($record->created_at)->format('M d, Y g:i A'),
-            'view_url' => '/ofi-form?record='.$record->id,
+            'view_url' => '/ofi-form?record='.$record->id.'&from=my-records',
         ];
     }
 
@@ -421,7 +421,7 @@ class InboxController extends Controller
                 : '—',
             'created_at' => $record->created_at,
             'date_submitted' => optional($record->created_at)->format('M d, Y g:i A'),
-            'view_url' => '/car?record='.$record->id,
+            'view_url' => '/car?record='.$record->id.'&from=my-records',
         ];
     }
 
@@ -440,7 +440,7 @@ class InboxController extends Controller
                 : '—',
             'created_at' => $record->created_at,
             'date_submitted' => optional($record->created_at)->format('M d, Y g:i A'),
-            'view_url' => '/dcr?record='.$record->id,
+            'view_url' => '/dcr?record='.$record->id.'&from=my-records',
         ];
     }
 }
