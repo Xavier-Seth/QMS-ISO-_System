@@ -209,7 +209,7 @@ function goToPage(url) {
 let searchTimeout = null
 
 watch(search, () => {
-  if (!selectedRecordType.value || !selectedYear.value || !selectedPeriod.value) return
+  if (!showFilesSection.value) return
 
   clearTimeout(searchTimeout)
   searchTimeout = setTimeout(() => {
@@ -218,7 +218,7 @@ watch(search, () => {
 })
 
 watch(sort, () => {
-  if (!selectedRecordType.value || !selectedYear.value || !selectedPeriod.value) return
+  if (!showFilesSection.value) return
   visitPerformance({ sort: sort.value || 'latest', page: 1 })
 })
 
@@ -329,8 +329,8 @@ const selectedRecordTypeLabel = computed(() => props.meta?.record_type_label || 
 const selectedPeriodLabel = computed(() => props.meta?.period_label || 'Period')
 
 const showYearSection = computed(() => !!selectedRecordType.value)
-const showPeriodSection = computed(() => !!selectedRecordType.value && !!selectedYear.value)
-const showFilesSection = computed(() => !!selectedRecordType.value && !!selectedYear.value && !!selectedPeriod.value)
+const showPeriodSection = computed(() => !!selectedRecordType.value && !!selectedYear.value && !!props.meta?.uses_period)
+const showFilesSection = computed(() => !!selectedRecordType.value && !!selectedYear.value && (!props.meta?.uses_period || !!selectedPeriod.value))
 
 function resetUploadForm() {
   uploadError.value = ''
@@ -405,7 +405,7 @@ function submitUpload() {
     return
   }
 
-  if (!uploadForm.value.period) {
+  if (props.meta?.uses_period && !uploadForm.value.period) {
     uploadError.value = 'Period is required.'
     return
   }
@@ -419,7 +419,9 @@ function submitUpload() {
   form.append('performance_category', selectedCategory.value)
   form.append('performance_record_type', uploadForm.value.performance_record_type)
   form.append('year', String(uploadForm.value.year))
-  form.append('period', uploadForm.value.period)
+  if (props.meta?.uses_period) {
+    form.append('period', uploadForm.value.period)
+  }
 
   uploadForm.value.files.forEach((file) => {
     form.append('files[]', file)
@@ -451,7 +453,7 @@ function submitUpload() {
         category: selectedCategory.value,
         record_type: selectedUploadRecordType,
         year: selectedUploadYear,
-        period: selectedUploadPeriod,
+        ...(props.meta?.uses_period ? { period: selectedUploadPeriod } : {}),
       })
     },
     onFinish: () => {
@@ -476,7 +478,7 @@ function submitUpload() {
                 Performance Commitment and Review Forms
               </h1>
               <p class="mt-1 text-sm text-slate-300">
-                Browse IPCR, DPCR, and UPCR by record type, year, and period.
+                Browse IPCR, DPCR, UPCR, and OPCR performance files by record type and year.
               </p>
             </div>
 
@@ -724,7 +726,7 @@ function submitUpload() {
                 <div>
                   <h2 class="text-base font-semibold text-slate-900">
                     <template v-if="showFilesSection">
-                      {{ selectedCategoryLabel }} / {{ selectedRecordTypeLabel }} / {{ selectedYear }} / {{ selectedPeriodLabel }}
+                      {{ selectedCategoryLabel }} / {{ selectedRecordTypeLabel }} / {{ selectedYear }}<template v-if="meta?.uses_period"> / {{ selectedPeriodLabel }}</template>
                     </template>
                     <template v-else-if="selectedRecordType">
                       {{ selectedCategoryLabel }} / {{ selectedRecordTypeLabel }}
@@ -741,7 +743,7 @@ function submitUpload() {
                     <template v-else-if="selectedRecordType && !selectedYear">
                       Select a year folder from the left panel.
                     </template>
-                    <template v-else-if="selectedRecordType && selectedYear && !selectedPeriod">
+                    <template v-else-if="selectedRecordType && selectedYear && meta?.uses_period && !selectedPeriod">
                       Select a period folder from the left panel.
                     </template>
                     <template v-else>
@@ -805,7 +807,7 @@ function submitUpload() {
               </div>
             </div>
 
-            <div v-else-if="selectedRecordType && selectedYear && !selectedPeriod" class="p-10 text-center">
+            <div v-else-if="selectedRecordType && selectedYear && meta?.uses_period && !selectedPeriod" class="p-10 text-center">
               <div class="text-lg font-semibold text-slate-900">Select a period folder</div>
               <div class="mt-2 text-sm text-slate-600">
                 Choose January–June or July–December from the left panel.
@@ -925,7 +927,7 @@ function submitUpload() {
 
             <div class="border-t border-slate-200 bg-slate-50 px-6 py-3 text-xs text-slate-500">
               Performance files are organized as folders:
-              Category → Record Type → Year → Period → Files
+              Category → Record Type → Year → Period → Files. OPCR skips the Period step.
             </div>
           </div>
         </div>
@@ -1008,7 +1010,7 @@ function submitUpload() {
                     </select>
                   </div>
 
-                  <div>
+                  <div v-if="meta?.uses_period">
                     <label class="text-xs font-medium text-slate-600">Period</label>
                     <select
                       v-model="uploadForm.period"

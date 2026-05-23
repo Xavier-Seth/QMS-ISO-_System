@@ -22,7 +22,6 @@ class PerformanceController extends Controller
     {
         $allowedCategories = $this->allowedCategories();
         $allowedRecordTypes = $this->allowedRecordTypes();
-        $allowedPeriods = $this->allowedPeriods();
 
         $selectedCategory = strtoupper(trim((string) $request->input('category', 'IPCR')));
         if (! in_array($selectedCategory, $allowedCategories, true)) {
@@ -36,9 +35,14 @@ class PerformanceController extends Controller
 
         $selectedYear = $request->filled('year') ? (int) $request->input('year') : null;
 
-        $selectedPeriod = strtoupper(trim((string) $request->input('period', '')));
-        if ($selectedPeriod !== '' && ! in_array($selectedPeriod, $allowedPeriods, true)) {
-            $selectedPeriod = '';
+        $usesPeriod = $this->categoryUsesPeriod($selectedCategory);
+
+        $selectedPeriod = '';
+        if ($usesPeriod) {
+            $selectedPeriod = strtoupper(trim((string) $request->input('period', '')));
+            if ($selectedPeriod !== '' && ! in_array($selectedPeriod, $this->allowedPeriods(), true)) {
+                $selectedPeriod = '';
+            }
         }
 
         $search = trim((string) $request->input('q', ''));
@@ -57,20 +61,30 @@ class PerformanceController extends Controller
 
         $categoryTypeIds = $this->performanceTypeIds();
 
+        // Per-category missing check — a missing PERF-OPCR type does not block
+        // IPCR, DPCR, and UPCR navigation. Only the affected category is degraded.
+        $missingByCategory = [];
+        foreach ($allowedCategories as $cat) {
+            $missingByCategory[$cat] = ! isset($categoryTypeIds[$cat]);
+        }
+        $currentCategoryMissing = $missingByCategory[$selectedCategory] ?? true;
+
         $categories = collect($allowedCategories)
-            ->map(function (string $category) use ($categoryTypeIds) {
+            ->map(function (string $category) use ($categoryTypeIds, $missingByCategory) {
                 $typeId = $categoryTypeIds[$category] ?? null;
+                $catUsesPeriod = $this->categoryUsesPeriod($category);
 
                 return [
                     'value' => $category,
                     'label' => $category,
+                    'missing' => $missingByCategory[$category] ?? true,
                     'files_count' => $typeId
                         ? DocumentUpload::query()
                             ->where('document_type_id', $typeId)
                             ->where('performance_category', $category)
                             ->whereNotNull('performance_record_type')
                             ->whereNotNull('year')
-                            ->whereNotNull('period')
+                            ->when($catUsesPeriod, fn ($q) => $q->whereNotNull('period'))
                             ->count()
                         : 0,
                 ];
@@ -92,13 +106,11 @@ class PerformanceController extends Controller
             'per_page' => 10,
         ];
 
-        $missingTypes = count($categoryTypeIds) < count($allowedCategories);
-
-        if (! $missingTypes && $selectedCategory !== '' && isset($categoryTypeIds[$selectedCategory])) {
+        if (! $currentCategoryMissing && $selectedCategory !== '' && isset($categoryTypeIds[$selectedCategory])) {
             $selectedTypeId = $categoryTypeIds[$selectedCategory];
 
             $recordTypes = collect($allowedRecordTypes)
-                ->map(function (string $recordType) use ($selectedCategory, $selectedTypeId) {
+                ->map(function (string $recordType) use ($selectedCategory, $selectedTypeId, $usesPeriod) {
                     return [
                         'value' => $recordType,
                         'label' => $this->recordTypeLabel($recordType),
@@ -107,7 +119,7 @@ class PerformanceController extends Controller
                             ->where('performance_category', $selectedCategory)
                             ->where('performance_record_type', $recordType)
                             ->whereNotNull('year')
-                            ->whereNotNull('period')
+                            ->when($usesPeriod, fn ($q) => $q->whereNotNull('period'))
                             ->count(),
                     ];
                 })
@@ -115,7 +127,7 @@ class PerformanceController extends Controller
         }
 
         if (
-            ! $missingTypes
+            ! $currentCategoryMissing
             && $selectedCategory !== ''
             && $selectedRecordType !== ''
             && isset($categoryTypeIds[$selectedCategory])
@@ -139,10 +151,11 @@ class PerformanceController extends Controller
         }
 
         if (
-            ! $missingTypes
+            ! $currentCategoryMissing
             && $selectedCategory !== ''
             && $selectedRecordType !== ''
             && $selectedYear !== null
+            && $usesPeriod
             && isset($categoryTypeIds[$selectedCategory])
         ) {
             $selectedTypeId = $categoryTypeIds[$selectedCategory];
@@ -160,7 +173,7 @@ class PerformanceController extends Controller
                 ->values()
                 ->all();
 
-            $periods = collect($allowedPeriods)
+            $periods = collect($this->allowedPeriods())
                 ->filter(fn ($period) => in_array($period, $existingPeriods, true))
                 ->map(fn ($period) => [
                     'value' => $period,
@@ -169,14 +182,14 @@ class PerformanceController extends Controller
                 ->values();
         }
 
-        if (
-            ! $missingTypes
+        $filesReady = ! $currentCategoryMissing
             && $selectedCategory !== ''
             && $selectedRecordType !== ''
             && $selectedYear !== null
-            && $selectedPeriod !== ''
-            && isset($categoryTypeIds[$selectedCategory])
-        ) {
+            && (! $usesPeriod || $selectedPeriod !== '')
+            && isset($categoryTypeIds[$selectedCategory]);
+
+        if ($filesReady) {
             $selectedTypeId = $categoryTypeIds[$selectedCategory];
 
             $filesQuery = DocumentUpload::query()
@@ -184,8 +197,13 @@ class PerformanceController extends Controller
                 ->where('document_type_id', $selectedTypeId)
                 ->where('performance_category', $selectedCategory)
                 ->where('performance_record_type', $selectedRecordType)
-                ->where('year', $selectedYear)
-                ->where('period', $selectedPeriod);
+                ->where('year', $selectedYear);
+
+            if ($usesPeriod) {
+                $filesQuery->where('period', $selectedPeriod);
+            } else {
+                $filesQuery->whereNull('period');
+            }
 
             if ($search !== '') {
                 $escaped = $this->escapeLike($search);
@@ -266,12 +284,14 @@ class PerformanceController extends Controller
                 'period_label' => $selectedPeriod !== ''
                     ? $this->periodLabel($selectedPeriod)
                     : null,
-                'can_upload' => ! $missingTypes
+                'uses_period' => $usesPeriod,
+                'can_upload' => ! $currentCategoryMissing
                     && $selectedCategory !== ''
                     && $selectedRecordType !== '',
-                'missing_types' => $missingTypes,
-                'missing_types_message' => $missingTypes
-                    ? 'Performance document types are missing or codes do not match the controller mapping.'
+                'missing_types' => $currentCategoryMissing,
+                'missing_by_category' => $missingByCategory,
+                'missing_types_message' => $currentCategoryMissing
+                    ? 'Performance document type for '.$selectedCategory.' is missing or its code does not match the controller mapping.'
                     : null,
             ],
         ]);
@@ -284,11 +304,15 @@ class PerformanceController extends Controller
 
     public function upload(Request $request)
     {
+        // Derive uses_period before validation so the period rule can be conditional.
+        $rawCategory = strtoupper(trim((string) $request->input('performance_category', '')));
+        $usesPeriod = $this->categoryUsesPeriod($rawCategory);
+
         $data = $request->validate([
-            'performance_category' => ['required', 'string', 'in:IPCR,DPCR,UPCR'],
+            'performance_category' => ['required', 'string', 'in:'.implode(',', $this->allowedCategories())],
             'performance_record_type' => ['required', 'string', 'in:TARGET,ACCOMPLISHMENT'],
             'year' => ['required', 'integer', 'min:2000', 'max:2100'],
-            'period' => ['required', 'string', 'in:JAN_JUN,JUL_DEC'],
+            'period' => $usesPeriod ? ['required', 'string', 'in:JAN_JUN,JUL_DEC'] : ['nullable'],
             'files' => ['required', 'array', 'min:1'],
             'files.*' => [
                 'required',
@@ -299,7 +323,7 @@ class PerformanceController extends Controller
             'remarks' => ['nullable', 'string', 'max:1000'],
         ], [
             'performance_category.required' => 'Performance category is required.',
-            'performance_category.in' => 'Performance category must be IPCR, DPCR, or UPCR.',
+            'performance_category.in' => 'Performance category must be IPCR, DPCR, UPCR, or OPCR.',
             'performance_record_type.required' => 'Record type is required.',
             'performance_record_type.in' => 'Record type must be Target or Accomplishment.',
             'year.required' => 'Year is required.',
@@ -316,7 +340,7 @@ class PerformanceController extends Controller
         $category = strtoupper((string) $data['performance_category']);
         $recordType = strtoupper((string) $data['performance_record_type']);
         $year = (int) $data['year'];
-        $period = strtoupper((string) $data['period']);
+        $period = $usesPeriod ? strtoupper((string) $data['period']) : null;
 
         $typeId = $this->performanceTypeId($category);
 
@@ -329,10 +353,11 @@ class PerformanceController extends Controller
         $created = 0;
 
         foreach ($request->file('files', []) as $file) {
-            $path = $file->store(
-                "performance/{$category}/{$recordType}/{$year}/{$period}",
-                'public'
-            );
+            $storagePath = $usesPeriod
+                ? "performance/{$category}/{$recordType}/{$year}/{$period}"
+                : "performance/{$category}/{$recordType}/{$year}";
+
+            $path = $file->store($storagePath, 'public');
 
             $upload = DocumentUpload::create([
                 'document_type_id' => $typeId,
@@ -362,12 +387,15 @@ class PerformanceController extends Controller
             $created++;
         }
 
-        return redirect()->route('performance.index', [
+        $redirectParams = array_filter([
             'category' => $category,
             'record_type' => $recordType,
             'year' => $year,
-            'period' => $period,
-        ])->with('success', $created > 1
+            'period' => $usesPeriod ? $period : null,
+        ], fn ($v) => $v !== null);
+
+        return redirect()->route('performance.index', $redirectParams)
+            ->with('success', $created > 1
                 ? 'Files uploaded successfully.'
                 : 'File uploaded successfully.');
     }
@@ -412,9 +440,23 @@ class PerformanceController extends Controller
         return $this->documentDownloadService->download($upload);
     }
 
+    /**
+     * Single source of truth for category configuration.
+     * Add new categories here — all helpers and queries derive from this map.
+     */
+    private function categoryConfig(): array
+    {
+        return [
+            'IPCR' => ['uses_period' => true,  'type_code' => 'PERF-IPCR'],
+            'DPCR' => ['uses_period' => true,  'type_code' => 'PERF-DPCR'],
+            'UPCR' => ['uses_period' => true,  'type_code' => 'PERF-UPCR'],
+            'OPCR' => ['uses_period' => false, 'type_code' => 'PERF-OPCR'],
+        ];
+    }
+
     private function allowedCategories(): array
     {
-        return ['IPCR', 'DPCR', 'UPCR'];
+        return array_keys($this->categoryConfig());
     }
 
     private function allowedRecordTypes(): array
@@ -427,13 +469,15 @@ class PerformanceController extends Controller
         return ['JAN_JUN', 'JUL_DEC'];
     }
 
+    private function categoryUsesPeriod(string $category): bool
+    {
+        return $this->categoryConfig()[strtoupper($category)]['uses_period'] ?? true;
+    }
+
     private function performanceTypeIds(): array
     {
-        $codes = [
-            'IPCR' => 'PERF-IPCR',
-            'DPCR' => 'PERF-DPCR',
-            'UPCR' => 'PERF-UPCR',
-        ];
+        $config = $this->categoryConfig();
+        $codes = array_map(fn ($cfg) => $cfg['type_code'], $config);
 
         $types = DocumentType::query()
             ->whereIn('code', array_values($codes))
@@ -441,8 +485,8 @@ class PerformanceController extends Controller
 
         $resolved = [];
 
-        foreach ($codes as $category => $code) {
-            $id = $types->get($code);
+        foreach ($config as $category => $cfg) {
+            $id = $types->get($cfg['type_code']);
 
             if ($id) {
                 $resolved[$category] = (int) $id;
@@ -480,21 +524,29 @@ class PerformanceController extends Controller
     private function isPerformanceUpload(DocumentUpload $upload): bool
     {
         $validTypeIds = array_values($this->performanceTypeIds());
+        $category = strtoupper((string) $upload->performance_category);
+        $usesPeriod = $this->categoryUsesPeriod($category);
 
         return in_array((int) $upload->document_type_id, $validTypeIds, true)
-            && in_array(strtoupper((string) $upload->performance_category), $this->allowedCategories(), true)
+            && in_array($category, $this->allowedCategories(), true)
             && in_array(strtoupper((string) $upload->performance_record_type), $this->allowedRecordTypes(), true)
             && filled($upload->year)
-            && in_array(strtoupper((string) $upload->period), $this->allowedPeriods(), true);
+            && (! $usesPeriod || in_array(strtoupper((string) $upload->period), $this->allowedPeriods(), true));
     }
 
     private function performanceRecordLabelFromUpload(DocumentUpload $upload): string
     {
         $category = strtoupper((string) $upload->performance_category);
+        $usesPeriod = $this->categoryUsesPeriod($category);
         $recordType = $this->recordTypeLabel((string) $upload->performance_record_type);
         $year = (string) $upload->year;
-        $period = $this->periodLabel((string) $upload->period);
 
-        return trim("{$category} - {$recordType} - {$year} - {$period}");
+        $parts = [$category, $recordType, $year];
+
+        if ($usesPeriod) {
+            $parts[] = $this->periodLabel((string) $upload->period);
+        }
+
+        return trim(implode(' - ', $parts));
     }
 }
