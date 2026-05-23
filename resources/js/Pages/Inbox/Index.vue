@@ -1,7 +1,7 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
-import { ref, watch } from 'vue'
+import { onUnmounted, ref, watch } from 'vue'
 
 const props = defineProps({
   records: {
@@ -32,6 +32,8 @@ watch(q, () => {
   debounceTimer = setTimeout(applyFilters, 400)
 })
 
+onUnmounted(() => clearTimeout(debounceTimer))
+
 const typeTabs = [
   { key: 'ofi', label: 'OFI' },
   { key: 'car', label: 'CAR' },
@@ -45,12 +47,14 @@ const workflowOptions = [
 ]
 
 function switchTab(tabKey) {
+  clearTimeout(debounceTimer)
   activeTab.value = tabKey
   q.value = ''
   applyFilters()
 }
 
 function setWorkflow(key) {
+  clearTimeout(debounceTimer)
   workflowStatus.value = key
   applyFilters()
 }
@@ -232,6 +236,7 @@ function resolutionBadgeClass(status) {
             v-model="q"
             type="text"
             placeholder="Search by record no., name, department…"
+            aria-label="Search records"
             class="w-full max-w-sm rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
           />
         </div>
