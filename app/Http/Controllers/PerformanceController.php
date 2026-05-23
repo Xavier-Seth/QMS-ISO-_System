@@ -323,7 +323,7 @@ class PerformanceController extends Controller
             'remarks' => ['nullable', 'string', 'max:1000'],
         ], [
             'performance_category.required' => 'Performance category is required.',
-            'performance_category.in' => 'Performance category must be IPCR, DPCR, UPCR, or OPCR.',
+            'performance_category.in' => 'Performance category must be '.implode(', ', $this->allowedCategories()).'.',
             'performance_record_type.required' => 'Record type is required.',
             'performance_record_type.in' => 'Record type must be Target or Accomplishment.',
             'year.required' => 'Year is required.',

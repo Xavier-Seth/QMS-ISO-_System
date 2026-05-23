@@ -494,7 +494,7 @@ function submitUpload() {
         </div>
 
         <div class="border-t border-slate-200 px-6 py-5">
-          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
+          <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <button
               v-for="category in categories"
               :key="category.value"
@@ -976,7 +976,7 @@ function submitUpload() {
                   {{ uploadError }}
                 </div>
 
-                <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+                <div class="grid grid-cols-1 gap-4" :class="meta?.uses_period ? 'sm:grid-cols-3' : 'sm:grid-cols-2'">
                   <div>
                     <label class="text-xs font-medium text-slate-600">Record Type</label>
                     <select
