@@ -1,44 +1,63 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
 import { Link, router } from '@inertiajs/vue3'
-import { computed, ref, watch } from 'vue'
+import { ref } from 'vue'
 
 const props = defineProps({
   records: Object,
   filters: Object,
-  counts: Object,
+  pendingCounts: {
+    type: Object,
+    default: () => ({ ofi: 0, car: 0, dcr: 0 }),
+  },
 })
 
+/* ---------------------------
+   Tab + workflow filter state
+--------------------------- */
+const activeTab = ref(props.filters?.tab ?? 'ofi')
 const workflowStatus = ref(props.filters?.workflow_status ?? 'all')
-const type = ref(props.filters?.type ?? 'all')
 
-watch([workflowStatus, type], () => {
-  router.get('/my-records', {
-    workflow_status: workflowStatus.value,
-    type: type.value,
-  }, {
-    preserveState: true,
-    preserveScroll: true,
-    replace: true,
-  })
-})
+const typeTabs = [
+  { key: 'ofi', label: 'OFI' },
+  { key: 'car', label: 'CAR' },
+  { key: 'dcr', label: 'DCR' },
+]
 
-const tabs = computed(() => {
-  const source = props.counts?.[type.value] ?? props.counts?.all ?? {}
+const workflowOptions = [
+  { key: 'all', label: 'All' },
+  { key: 'pending', label: 'Pending' },
+  { key: 'approved', label: 'Approved' },
+  { key: 'rejected', label: 'Returned' },
+]
 
-  return [
-    { key: 'all', label: 'All', count: source.all ?? 0 },
-    { key: 'pending', label: 'Pending', count: source.pending ?? 0 },
-    { key: 'approved', label: 'Approved', count: source.approved ?? 0 },
-    { key: 'rejected', label: 'Returned', count: source.rejected ?? 0 },
-  ]
-})
-
-function formatDate(value) {
-  if (!value) return '—'
-  return new Date(value).toLocaleString()
+function switchTab(tabKey) {
+  activeTab.value = tabKey
+  applyFilters()
 }
 
+function setWorkflow(key) {
+  workflowStatus.value = key
+  applyFilters()
+}
+
+function applyFilters() {
+  router.get(
+    '/my-records',
+    {
+      tab: activeTab.value,
+      workflow_status: workflowStatus.value,
+    },
+    {
+      preserveScroll: true,
+      replace: true,
+    }
+  )
+}
+
+/* ---------------------------
+   Helpers
+--------------------------- */
 function workflowBadgeClass(status) {
   if (status === 'approved') return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
   if (status === 'rejected') return 'bg-rose-50 text-rose-700 ring-rose-200'
@@ -50,12 +69,6 @@ function resolutionBadgeClass(status) {
   if (status === 'closed') return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
   if (status === 'ongoing') return 'bg-blue-50 text-blue-700 ring-blue-200'
   if (status === 'open') return 'bg-sky-50 text-sky-700 ring-sky-200'
-  return 'bg-slate-100 text-slate-700 ring-slate-200'
-}
-
-function typeBadgeClass(type) {
-  if (type === 'car') return 'bg-blue-50 text-blue-700 ring-blue-200'
-  if (type === 'dcr') return 'bg-violet-50 text-violet-700 ring-violet-200'
   return 'bg-slate-100 text-slate-700 ring-slate-200'
 }
 </script>
@@ -72,48 +85,44 @@ function typeBadgeClass(type) {
           </p>
         </div>
 
-        <!-- Tabs + Type Filter -->
-        <div class="border-t border-slate-200 px-6 py-4">
-          <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between lg:flex-row lg:items-center lg:justify-between">
-            <!-- Tabs -->
-            <div class="flex flex-wrap gap-2">
-              <button
-                v-for="tab in tabs"
-                :key="tab.key"
-                type="button"
-                @click="workflowStatus = tab.key"
-                class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm transition"
-                :class="workflowStatus === tab.key
-                  ? 'border-slate-900 bg-slate-900 text-white'
-                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'"
-              >
-                <span>{{ tab.label }}</span>
-                <span
-                  class="rounded-full px-2 py-0.5 text-xs"
-                  :class="workflowStatus === tab.key
-                    ? 'bg-white/15 text-white'
-                    : 'bg-slate-100 text-slate-600'"
-                >
-                  {{ tab.count }}
-                </span>
-              </button>
-            </div>
+        <!-- Tab bar -->
+        <div class="flex items-center border-b border-slate-200 px-4">
+          <button
+            v-for="tab in typeTabs"
+            :key="tab.key"
+            type="button"
+            class="relative px-5 py-3.5 text-sm font-medium transition"
+            :class="
+              activeTab === tab.key
+                ? 'text-slate-900 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900'
+                : 'text-slate-500 hover:text-slate-700'
+            "
+            @click="switchTab(tab.key)"
+          >
+            {{ tab.label }}
+            <span
+              v-if="pendingCounts[tab.key] > 0"
+              class="absolute right-2 top-2 h-2 w-2 rounded-full bg-rose-500"
+            ></span>
+          </button>
+        </div>
 
-            <!-- Type Filter -->
-            <div class="flex items-center gap-2">
-              <label class="text-sm font-medium text-slate-600">Type</label>
-
-              <select
-                v-model="type"
-                class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm text-slate-700"
-              >
-                <option value="all">All</option>
-                <option value="ofi">OFI</option>
-                <option value="car">CAR</option>
-                <option value="dcr">DCR</option>
-              </select>
-            </div>
-          </div>
+        <!-- Workflow sub-filter -->
+        <div class="flex flex-wrap items-center gap-2 px-6 py-3">
+          <button
+            v-for="opt in workflowOptions"
+            :key="opt.key"
+            type="button"
+            class="inline-flex items-center rounded-xl border px-4 py-1.5 text-sm transition"
+            :class="
+              workflowStatus === opt.key
+                ? 'border-slate-900 bg-slate-900 text-white'
+                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+            "
+            @click="setWorkflow(opt.key)"
+          >
+            {{ opt.label }}
+          </button>
         </div>
       </div>
 
@@ -123,7 +132,6 @@ function typeBadgeClass(type) {
           <table class="w-full text-sm">
             <thead class="border-b border-slate-200 bg-slate-50">
               <tr class="text-left">
-                <th class="px-5 py-3 font-semibold text-slate-700">Type</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Record No.</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Subject</th>
                 <th class="px-5 py-3 font-semibold text-slate-700">Workflow</th>
@@ -139,27 +147,14 @@ function typeBadgeClass(type) {
                 :key="`${record.type}-${record.id}`"
               >
                 <tr class="border-b border-slate-100 hover:bg-slate-50">
-                  <!-- TYPE -->
-                  <td class="px-5 py-4">
-                    <span
-                      class="rounded-full px-2.5 py-1 text-xs font-semibold ring-1"
-                      :class="typeBadgeClass(record.type)"
-                    >
-                      {{ record.type_label }}
-                    </span>
-                  </td>
-
-                  <!-- RECORD -->
                   <td class="px-5 py-4 font-medium text-slate-900">
                     {{ record.record_no || '—' }}
                   </td>
 
-                  <!-- SUBJECT -->
                   <td class="px-5 py-4 text-slate-600">
                     {{ record.subject || '—' }}
                   </td>
 
-                  <!-- WORKFLOW -->
                   <td class="px-5 py-4">
                     <span
                       class="rounded-full px-2 py-1 text-xs ring-1"
@@ -169,7 +164,6 @@ function typeBadgeClass(type) {
                     </span>
                   </td>
 
-                  <!-- RESOLUTION -->
                   <td class="px-5 py-4">
                     <span
                       class="rounded-full px-2 py-1 text-xs ring-1"
@@ -179,12 +173,10 @@ function typeBadgeClass(type) {
                     </span>
                   </td>
 
-                  <!-- DATE -->
                   <td class="px-5 py-4 text-slate-600">
-                    {{ formatDate(record.created_at) }}
+                    {{ record.date_submitted || '—' }}
                   </td>
 
-                  <!-- ACTION -->
                   <td class="px-5 py-4">
                     <div class="flex justify-end gap-2">
                       <Link
@@ -201,7 +193,7 @@ function typeBadgeClass(type) {
                   v-if="record.workflow_status === 'rejected'"
                   class="border-b border-amber-100 bg-amber-50"
                 >
-                  <td colspan="7" class="px-5 py-3">
+                  <td colspan="6" class="px-5 py-3">
                     <div class="flex items-start gap-2 text-sm text-amber-800">
                       <span class="mt-0.5 shrink-0 font-semibold">Reason for return:</span>
                       <span>{{ record.remarks }}</span>
@@ -211,7 +203,7 @@ function typeBadgeClass(type) {
               </template>
 
               <tr v-if="!records.data.length">
-                <td colspan="7" class="px-5 py-8 text-center text-sm text-slate-500">
+                <td colspan="6" class="px-5 py-8 text-center text-sm text-slate-500">
                   No records found.
                 </td>
               </tr>
@@ -228,9 +220,11 @@ function typeBadgeClass(type) {
               preserve-scroll
               preserve-state
               class="inline-flex items-center rounded-lg border px-3 py-1.5 text-sm"
-              :class="link.active
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'"
+              :class="
+                link.active
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
+              "
             >
               <span v-html="link.label" />
             </Link>
