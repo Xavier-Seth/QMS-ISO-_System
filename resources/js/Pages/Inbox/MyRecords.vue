@@ -19,14 +19,39 @@ const activeTab = ref(props.filters?.tab ?? 'ofi')
 const workflowStatus = ref(props.filters?.workflow_status ?? 'all')
 const q = ref(props.filters?.q ?? '')
 
+const userIsTyping = ref(false)
 let debounceTimer = null
+let typingTimer = null
 
 watch(q, () => {
+  userIsTyping.value = true
   clearTimeout(debounceTimer)
-  debounceTimer = setTimeout(applyFilters, 400)
+  clearTimeout(typingTimer)
+
+  debounceTimer = setTimeout(() => {
+    applyFilters()
+    typingTimer = setTimeout(() => {
+      userIsTyping.value = false
+    }, 500)
+  }, 220)
 })
 
-onUnmounted(() => clearTimeout(debounceTimer))
+onUnmounted(() => {
+  clearTimeout(debounceTimer)
+  clearTimeout(typingTimer)
+})
+
+watch(
+  () => props.filters,
+  (newFilters) => {
+    if (!userIsTyping.value) {
+      q.value = newFilters?.q ?? ''
+    }
+    activeTab.value = newFilters?.tab ?? 'ofi'
+    workflowStatus.value = newFilters?.workflow_status ?? 'all'
+  },
+  { immediate: true, deep: true }
+)
 
 const typeTabs = [
   { key: 'ofi', label: 'OFI' },
@@ -63,6 +88,7 @@ function applyFilters() {
       q: q.value || undefined,
     },
     {
+      preserveState: true,
       preserveScroll: true,
       replace: true,
     }
