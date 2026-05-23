@@ -98,6 +98,11 @@ class DocumentType extends Model
         return $query->where('manual_access', 'uncontrolled');
     }
 
+    public function scopeManualMasterCopy(Builder $query): Builder
+    {
+        return $query->where('manual_access', 'master_copy');
+    }
+
     public function isManual(): bool
     {
         return $this->manual_category !== null && $this->manual_access !== null;
@@ -111,6 +116,11 @@ class DocumentType extends Model
     public function isUncontrolledManual(): bool
     {
         return $this->isManual() && $this->manual_access === 'uncontrolled';
+    }
+
+    public function isMasterCopyManual(): bool
+    {
+        return $this->isManual() && $this->manual_access === 'master_copy';
     }
 
     public function isObsolete(): bool

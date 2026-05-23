@@ -1,6 +1,6 @@
 <script setup>
 import AdminLayout from '@/Layouts/AdminLayout.vue'
-import { useForm } from '@inertiajs/vue3'
+import { useForm, router } from '@inertiajs/vue3'
 import { computed, ref } from 'vue'
 import { useLoadingOverlay } from '@/Composables/useLoadingOverlay'
 import { useToast } from '@/Composables/useToast'
@@ -15,172 +15,133 @@ const props = defineProps({
 const loading = useLoadingOverlay()
 const toast = useToast()
 
-const controlledForm = useForm({
-  file: null,
-  revision: '',
-  remarks: '',
+// Tabs
+const tabs = computed(() => {
+  const all = []
+  if (props.can?.view_master_copy || props.can?.upload_master_copy) {
+    all.push({ key: 'master_copy', label: 'Master Copy' })
+  }
+  if (props.can?.view_controlled || props.can?.upload_controlled) {
+    all.push({ key: 'controlled', label: 'Controlled' })
+  }
+  if (props.can?.view_uncontrolled || props.can?.upload_uncontrolled) {
+    all.push({ key: 'uncontrolled', label: 'Uncontrolled' })
+  }
+  return all
 })
 
-const uncontrolledForm = useForm({
-  file: null,
-  revision: '',
-  remarks: '',
+const hasAnyTab = computed(() => tabs.value.length > 0)
+
+const isAdmin = computed(() => !!props.can?.view_master_copy || !!props.can?.upload_master_copy)
+
+const activeTab = ref(isAdmin.value ? 'master_copy' : 'uncontrolled')
+
+// Per-tab search state
+const masterCopySearch = ref('')
+const controlledSearch = ref('')
+const uncontrolledSearch = ref('')
+
+const activeSearch = computed({
+  get() {
+    if (activeTab.value === 'master_copy') return masterCopySearch.value
+    if (activeTab.value === 'controlled') return controlledSearch.value
+    return uncontrolledSearch.value
+  },
+  set(value) {
+    if (activeTab.value === 'master_copy') masterCopySearch.value = value
+    else if (activeTab.value === 'controlled') controlledSearch.value = value
+    else uncontrolledSearch.value = value
+  },
 })
 
+const filesFor = (access) => props.manuals?.[access]?.files ?? []
+
+const filterFiles = (access, search) => {
+  const files = filesFor(access)
+  const q = search.toLowerCase().trim()
+  if (!q) return files
+  return files.filter((f) => f.file_name?.toLowerCase().includes(q))
+}
+
+const masterCopyFiles = computed(() => filterFiles('master_copy', masterCopySearch.value))
+const controlledFiles = computed(() => filterFiles('controlled', controlledSearch.value))
+const uncontrolledFiles = computed(() => filterFiles('uncontrolled', uncontrolledSearch.value))
+
+const currentFiles = computed(() => {
+  if (activeTab.value === 'master_copy') return masterCopyFiles.value
+  if (activeTab.value === 'controlled') return controlledFiles.value
+  return uncontrolledFiles.value
+})
+
+const currentCanUpload = computed(() => {
+  if (activeTab.value === 'master_copy') return !!props.can?.upload_master_copy
+  if (activeTab.value === 'controlled') return !!props.can?.upload_controlled
+  return !!props.can?.upload_uncontrolled
+})
+
+const currentCanToggle = computed(() => currentCanUpload.value)
+
+const currentEmptyMessage = computed(() => {
+  if (activeSearch.value.trim()) return 'No files match your search.'
+  if (activeTab.value === 'uncontrolled') return 'No files have been uploaded yet.'
+  return 'Upload a file to get started.'
+})
+
+// Upload modal
 const showUploadModal = ref(false)
-const activeUploadAccess = ref(null)
+const fileInputKey = ref(0)
 
-const controlledFileInputKey = ref(0)
-const uncontrolledFileInputKey = ref(0)
-
-const normalizedCategory = computed(() => (props.category || '').toLowerCase())
-
-const controlledManual = computed(() => props.manuals?.controlled ?? null)
-const uncontrolledManual = computed(() => props.manuals?.uncontrolled ?? null)
-
-const canSeeControlledSection = computed(
-  () => !!props.can?.view_controlled || !!props.can?.upload_controlled
-)
-
-const canSeeUncontrolledSection = computed(
-  () => !!props.can?.view_uncontrolled || !!props.can?.upload_uncontrolled
-)
-
-const hasAnyVisibleManual = computed(
-  () => canSeeControlledSection.value || canSeeUncontrolledSection.value
-)
-
-const controlledHasActiveUpload = computed(() => !!controlledManual.value?.active_upload)
-const uncontrolledHasActiveUpload = computed(() => !!uncontrolledManual.value?.active_upload)
-
-const visibleSectionsCount = computed(() => {
-  let count = 0
-  if (canSeeControlledSection.value) count++
-  if (canSeeUncontrolledSection.value) count++
-  return count
+const uploadForm = useForm({
+  file: null,
+  access: '',
+  remarks: '',
 })
 
-const controlledRows = computed(() => {
-  if (!controlledManual.value?.history?.length) return []
-
-  const activeId = controlledManual.value?.active_upload?.id ?? null
-
-  return [...controlledManual.value.history].sort((a, b) => {
-    if (a.id === activeId) return -1
-    if (b.id === activeId) return 1
-
-    const da = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0
-    const db = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0
-    return db - da
-  })
+const uploadableAccessTypes = computed(() => {
+  const types = []
+  if (props.can?.upload_master_copy) types.push({ value: 'master_copy', label: 'Master Copy' })
+  if (props.can?.upload_controlled) types.push({ value: 'controlled', label: 'Controlled' })
+  if (props.can?.upload_uncontrolled) types.push({ value: 'uncontrolled', label: 'Uncontrolled' })
+  return types
 })
 
-const uncontrolledRows = computed(() => {
-  if (!uncontrolledManual.value?.history?.length) return []
-
-  const activeId = uncontrolledManual.value?.active_upload?.id ?? null
-
-  return [...uncontrolledManual.value.history].sort((a, b) => {
-    if (a.id === activeId) return -1
-    if (b.id === activeId) return 1
-
-    const da = a.uploaded_at ? new Date(a.uploaded_at).getTime() : 0
-    const db = b.uploaded_at ? new Date(b.uploaded_at).getTime() : 0
-    return db - da
-  })
-})
-
-const activeUploadForm = computed(() => {
-  return activeUploadAccess.value === 'controlled' ? controlledForm : uncontrolledForm
-})
-
-const activeFileInputKey = computed(() => {
-  return activeUploadAccess.value === 'controlled'
-    ? controlledFileInputKey.value
-    : uncontrolledFileInputKey.value
-})
-
-const activeUploadTitle = computed(() => {
-  if (activeUploadAccess.value === 'controlled') {
-    return controlledHasActiveUpload.value
-      ? 'Replace Controlled Manual'
-      : 'Upload Controlled Manual'
-  }
-
-  if (activeUploadAccess.value === 'uncontrolled') {
-    return uncontrolledHasActiveUpload.value
-      ? 'Replace Uncontrolled Manual'
-      : 'Upload Uncontrolled Manual'
-  }
-
-  return 'Upload Manual'
-})
-
-const activeUploadDescription = computed(() => {
-  if (activeUploadAccess.value === 'controlled') {
-    return 'Upload a new controlled manual file. The current active version will move to history.'
-  }
-
-  if (activeUploadAccess.value === 'uncontrolled') {
-    return 'Upload a new uncontrolled manual file. The current active version will move to history.'
-  }
-
-  return 'Upload a manual file.'
-})
-
-const onFileChange = (event, form) => {
-  form.file = event.target.files?.[0] ?? null
-}
-
-const resetForm = (form) => {
-  form.reset()
-  form.clearErrors()
-
-  if (form === controlledForm) {
-    controlledFileInputKey.value++
-  }
-
-  if (form === uncontrolledForm) {
-    uncontrolledFileInputKey.value++
-  }
-}
-
-const openUploadModal = (access) => {
-  activeUploadAccess.value = access
-  const form = access === 'controlled' ? controlledForm : uncontrolledForm
-  resetForm(form)
+const openUploadModal = () => {
+  uploadForm.reset()
+  uploadForm.clearErrors()
+  uploadForm.access = activeTab.value
+  fileInputKey.value++
   showUploadModal.value = true
 }
 
 const closeUploadModal = () => {
-  if (activeUploadAccess.value === 'controlled') {
-    resetForm(controlledForm)
-  }
-
-  if (activeUploadAccess.value === 'uncontrolled') {
-    resetForm(uncontrolledForm)
-  }
-
   showUploadModal.value = false
-  activeUploadAccess.value = null
+  uploadForm.reset()
+  uploadForm.clearErrors()
 }
 
-const submitUpload = (access, form) => {
-  if (!form.file) {
+const onFileChange = (event) => {
+  uploadForm.file = event.target.files?.[0] ?? null
+}
+
+const submitUpload = () => {
+  if (!uploadForm.file) {
     toast.error?.('Please select a file first.')
     return
   }
+  if (!uploadForm.access) {
+    toast.error?.('Please select an access type.')
+    return
+  }
 
-  loading.show?.(`Uploading ${access} manual...`)
+  const label = uploadableAccessTypes.value.find((t) => t.value === uploadForm.access)?.label ?? uploadForm.access
+  loading.show?.(`Uploading ${label} manual...`)
 
-  form.post(`/manual/${normalizedCategory.value}/${access}/upload`, {
+  uploadForm.post(`/manual/${props.category.toLowerCase()}/${uploadForm.access}/upload`, {
     forceFormData: true,
     preserveScroll: true,
     onSuccess: () => {
-      resetForm(form)
-      showUploadModal.value = false
-      activeUploadAccess.value = null
-      toast.success?.(`${capitalize(access)} manual uploaded successfully.`)
+      closeUploadModal()
+      toast.success?.('Manual file uploaded successfully.')
     },
     onError: () => {
       toast.error?.('Upload failed. Please check the form and try again.')
@@ -191,52 +152,96 @@ const submitUpload = (access, form) => {
   })
 }
 
+// Delete
+const deleteModalOpen = ref(false)
+const selectedRow = ref(null)
+const deletingType = ref(false)
+
+const deleteButtonText = computed(() => {
+  if (!deletingType.value) return 'Delete Permanently'
+  return 'Deleting...'
+})
+
+const openDeleteModal = (item) => {
+  selectedRow.value = item
+  deleteModalOpen.value = true
+}
+
+const closeDeleteModal = () => {
+  if (deletingType.value) return
+  deleteModalOpen.value = false
+}
+
+const submitDelete = () => {
+  if (!selectedRow.value || deletingType.value) return
+
+  const row = selectedRow.value
+  deletingType.value = true
+
+  router.delete(`/manual/uploads/${row.id}`, {
+    preserveScroll: true,
+    onSuccess: () => {
+      toast.success('File deleted successfully.')
+      deleteModalOpen.value = false
+      selectedRow.value = null
+    },
+    onError: (errors) => {
+      const firstError = Object.values(errors)[0]
+      toast.error(Array.isArray(firstError) ? firstError[0] : firstError)
+    },
+    onFinish: () => {
+      deletingType.value = false
+    },
+  })
+}
+
+// Toggle status
+const toggleStatus = (upload) => {
+  const next = upload.status === 'Active' ? 'Obsolete' : 'Active'
+
+  router.post(
+    `/manual/uploads/${upload.id}/toggle-status`,
+    {},
+    {
+      preserveScroll: true,
+      onSuccess: () => {
+        toast.success?.(`File marked as ${next}.`)
+      },
+      onError: () => {
+        toast.error?.('Could not update file status.')
+      },
+    },
+  )
+}
+
+// Helpers
 const previewUrl = (uploadId) => `/manual/uploads/${uploadId}/preview`
 const downloadUrl = (uploadId) => `/manual/uploads/${uploadId}/download`
 
 const formatDateTime = (value) => {
   if (!value) return '—'
-
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
-
   return date.toLocaleString()
 }
 
-const capitalize = (value) => {
-  if (!value) return ''
-  return value.charAt(0).toUpperCase() + value.slice(1)
-}
-
 const statusBadgeClass = (status) => {
-  if (status === 'Active') {
-    return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
-  }
-
-  if (status === 'Obsolete') {
-    return 'bg-slate-100 text-slate-600 ring-slate-200'
-  }
-
+  if (status === 'Active') return 'bg-emerald-50 text-emerald-700 ring-emerald-200'
+  if (status === 'Obsolete') return 'bg-slate-100 text-slate-600 ring-slate-200'
   return 'bg-amber-50 text-amber-700 ring-amber-200'
 }
 
-const accessBadgeClass = (access) => {
-  if (access === 'controlled') {
-    return 'bg-violet-50 text-violet-700 ring-violet-200'
-  }
-
+const tabBadgeClass = (key) => {
+  if (key === 'master_copy') return 'bg-purple-50 text-purple-700 ring-purple-200'
+  if (key === 'controlled') return 'bg-violet-50 text-violet-700 ring-violet-200'
   return 'bg-sky-50 text-sky-700 ring-sky-200'
-}
-
-const isCurrentUpload = (item, manual) => {
-  return item?.id === manual?.active_upload?.id
 }
 </script>
 
 <template>
   <AdminLayout>
     <div class="space-y-6 p-6">
-      <!-- Top header -->
+      <!-- Page header -->
       <div class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div class="bg-gradient-to-r from-slate-900 to-slate-800 px-4 py-3">
           <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -245,7 +250,7 @@ const isCurrentUpload = (item, manual) => {
                 {{ pageTitle || 'Manuals' }}
               </h1>
               <p class="mt-1 text-sm text-slate-300">
-                Browse the current controlled and uncontrolled manuals for
+                Browse the manual file library for
                 <span class="font-medium text-white">{{ category }}</span>.
               </p>
             </div>
@@ -255,41 +260,16 @@ const isCurrentUpload = (item, manual) => {
                 Category: {{ category || '—' }}
               </span>
               <span class="rounded-lg border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-medium text-white">
-                {{ visibleSectionsCount }} section{{ visibleSectionsCount === 1 ? '' : 's' }} visible
+                {{ tabs.length }} section{{ tabs.length === 1 ? '' : 's' }} visible
               </span>
-            </div>
-          </div>
-        </div>
-
-        <div class="px-4 py-3">
-          <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <div class="text-xs font-medium text-slate-500">Controlled Manual</div>
-              <div class="mt-1 text-sm font-semibold text-slate-900">
-                {{ canSeeControlledSection ? 'Available' : 'No access' }}
-              </div>
-            </div>
-
-            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <div class="text-xs font-medium text-slate-500">Uncontrolled Manual</div>
-              <div class="mt-1 text-sm font-semibold text-slate-900">
-                {{ canSeeUncontrolledSection ? 'Available' : 'No access' }}
-              </div>
-            </div>
-
-            <div class="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-              <div class="text-xs font-medium text-slate-500">Active Manual Files</div>
-              <div class="mt-1 text-sm font-semibold text-slate-900">
-                {{ (controlledHasActiveUpload ? 1 : 0) + (uncontrolledHasActiveUpload ? 1 : 0) }}
-              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Empty state -->
+      <!-- No access -->
       <div
-        v-if="!hasAnyVisibleManual"
+        v-if="!hasAnyTab"
         class="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm"
       >
         <div class="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100">
@@ -308,93 +288,89 @@ const isCurrentUpload = (item, manual) => {
             />
           </svg>
         </div>
-
-        <h2 class="mt-4 text-lg font-semibold text-slate-900">No manual access available</h2>
+        <h2 class="mt-4 text-lg font-semibold text-slate-900">No manual access</h2>
         <p class="mt-2 text-sm text-slate-600">
-          You do not currently have permission to view any manual in this category.
+          You do not have permission to view any manual in this category.
         </p>
       </div>
 
-      <!-- Manual sections stacked vertically -->
+      <!-- Tab panel -->
       <div
         v-else
-        class="grid grid-cols-1 gap-6"
+        class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
       >
-        <!-- Controlled Manual -->
-        <section
-          v-if="canSeeControlledSection"
-          class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-        >
-          <div class="border-b border-slate-200 px-5 py-4">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h2 class="text-base font-semibold text-slate-900">Controlled Manual</h2>
-                  <span
-                    class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1"
-                    :class="accessBadgeClass('controlled')"
-                  >
-                    Controlled
-                  </span>
-                </div>
-
-                <p class="mt-1 text-sm text-slate-500">
-                  Restricted copy for authorized users and manual replacement workflow.
-                </p>
-              </div>
-
-              <button
-                v-if="can?.upload_controlled"
-                type="button"
-                class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-                @click="openUploadModal('controlled')"
+        <!-- Tab bar -->
+        <div class="flex items-center justify-between border-b border-slate-200 px-4">
+          <div class="flex gap-1">
+            <button
+              v-for="tab in tabs"
+              :key="tab.key"
+              type="button"
+              class="relative px-4 py-3.5 text-sm font-medium transition"
+              :class="
+                activeTab === tab.key
+                  ? 'text-slate-900 after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-slate-900'
+                  : 'text-slate-500 hover:text-slate-700'
+              "
+              @click="activeTab = tab.key"
+            >
+              {{ tab.label }}
+              <span
+                class="ml-1.5 inline-flex rounded-full px-1.5 py-0.5 text-[11px] font-semibold ring-1"
+                :class="tabBadgeClass(tab.key)"
               >
-                {{ controlledHasActiveUpload ? 'Replace Manual' : 'Upload Manual' }}
-              </button>
-            </div>
+                {{ filesFor(tab.key).length }}
+              </span>
+            </button>
           </div>
 
-          <div v-if="controlledRows.length" class="overflow-x-auto">
+          <button
+            v-if="currentCanUpload"
+            type="button"
+            class="my-2 inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
+            @click="openUploadModal"
+          >
+            Upload File
+          </button>
+        </div>
+
+        <!-- Search + table -->
+        <div class="p-4">
+          <div class="mb-4">
+            <input
+              v-model="activeSearch"
+              type="text"
+              placeholder="Search by filename…"
+              class="w-full max-w-sm rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-slate-300"
+            />
+          </div>
+
+          <!-- Files table -->
+          <div v-if="currentFiles.length" class="overflow-x-auto">
             <table class="w-full min-w-[480px] text-sm">
               <thead class="border-b border-slate-200 bg-slate-50">
                 <tr class="text-left">
-                  <th class="px-4 py-3 font-semibold text-slate-700">File</th>
-                  <th class="px-4 py-3 font-semibold text-slate-700">Revision</th>
+                  <th class="px-4 py-3 font-semibold text-slate-700">File Name</th>
                   <th class="px-4 py-3 font-semibold text-slate-700">Status</th>
                   <th class="px-4 py-3 font-semibold text-slate-700">Uploaded By</th>
                   <th class="px-4 py-3 font-semibold text-slate-700">Uploaded Date</th>
-                  <th class="px-4 py-3 text-right font-semibold text-slate-700">Action</th>
+                  <th class="px-4 py-3 text-right font-semibold text-slate-700">Actions</th>
                 </tr>
               </thead>
 
               <tbody>
                 <tr
-                  v-for="item in controlledRows"
+                  v-for="item in currentFiles"
                   :key="item.id"
                   class="border-b border-slate-100 align-top transition hover:bg-slate-50"
-                  :class="isCurrentUpload(item, controlledManual) ? 'bg-emerald-50/50' : 'bg-white'"
                 >
                   <td class="px-4 py-3">
-                    <div class="max-w-[240px] md:max-w-[420px] break-words font-medium text-slate-900">
+                    <div class="max-w-[240px] break-words font-medium text-slate-900 md:max-w-[420px]">
                       {{ item.file_name }}
                     </div>
-
-                    <div class="mt-1 flex flex-wrap items-center gap-2">
-                      <span
-                        v-if="isCurrentUpload(item, controlledManual)"
-                        class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"
-                      >
-                        Current
-                      </span>
-
-                      <span class="text-xs text-slate-500">
-                        {{ item.remarks || 'No remarks' }}
-                      </span>
+                    <div v-if="item.remarks" class="mt-0.5 text-xs text-slate-500">
+                      {{ item.remarks }}
                     </div>
-                  </td>
-
-                  <td class="whitespace-nowrap px-4 py-3 text-slate-700">
-                    {{ item.revision || '—' }}
                   </td>
 
                   <td class="px-4 py-3">
@@ -430,6 +406,27 @@ const isCurrentUpload = (item, manual) => {
                       >
                         Download
                       </a>
+                      <button
+                        v-if="currentCanToggle"
+                        type="button"
+                        class="inline-flex items-center justify-center rounded-lg border px-3 py-1.5 text-xs font-medium transition"
+                        :class="
+                          item.status === 'Active'
+                            ? 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                            : 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                        "
+                        @click="toggleStatus(item)"
+                      >
+                        {{ item.status === 'Active' ? 'Mark Obsolete' : 'Restore' }}
+                      </button>
+                      <button
+                        v-if="currentCanToggle"
+                        type="button"
+                        class="inline-flex items-center justify-center rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-xs font-medium text-rose-700 transition hover:bg-rose-100"
+                        @click="openDeleteModal(item)"
+                      >
+                        Delete
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -437,142 +434,15 @@ const isCurrentUpload = (item, manual) => {
             </table>
           </div>
 
-          <div v-else class="px-5 py-10">
-            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center">
-              <div class="text-base font-semibold text-slate-900">No controlled manual uploaded</div>
-              <div class="mt-1 text-sm text-slate-500">
-                Upload a controlled manual to create the first record for this section.
-              </div>
-            </div>
+          <!-- Empty state -->
+          <div
+            v-else
+            class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center"
+          >
+            <div class="text-base font-semibold text-slate-900">No files found</div>
+            <div class="mt-1 text-sm text-slate-500">{{ currentEmptyMessage }}</div>
           </div>
-        </section>
-
-        <!-- Uncontrolled Manual -->
-        <section
-          v-if="canSeeUncontrolledSection"
-          class="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-        >
-          <div class="border-b border-slate-200 px-5 py-4">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div class="min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                  <h2 class="text-base font-semibold text-slate-900">Uncontrolled Manual</h2>
-                  <span
-                    class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1"
-                    :class="accessBadgeClass('uncontrolled')"
-                  >
-                    Uncontrolled
-                  </span>
-                </div>
-
-                <p class="mt-1 text-sm text-slate-500">
-                  Shared copy intended for broader manual access and download.
-                </p>
-              </div>
-
-              <button
-                v-if="can?.upload_uncontrolled"
-                type="button"
-                class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-800"
-                @click="openUploadModal('uncontrolled')"
-              >
-                {{ uncontrolledHasActiveUpload ? 'Replace Manual' : 'Upload Manual' }}
-              </button>
-            </div>
-          </div>
-
-          <div v-if="uncontrolledRows.length" class="overflow-x-auto">
-            <table class="w-full min-w-[480px] text-sm">
-              <thead class="border-b border-slate-200 bg-slate-50">
-                <tr class="text-left">
-                  <th class="px-4 py-3 font-semibold text-slate-700">File</th>
-                  <th class="px-4 py-3 font-semibold text-slate-700">Revision</th>
-                  <th class="px-4 py-3 font-semibold text-slate-700">Status</th>
-                  <th class="px-4 py-3 font-semibold text-slate-700">Uploaded By</th>
-                  <th class="px-4 py-3 font-semibold text-slate-700">Uploaded Date</th>
-                  <th class="px-4 py-3 text-right font-semibold text-slate-700">Action</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                <tr
-                  v-for="item in uncontrolledRows"
-                  :key="item.id"
-                  class="border-b border-slate-100 align-top transition hover:bg-slate-50"
-                  :class="isCurrentUpload(item, uncontrolledManual) ? 'bg-emerald-50/50' : 'bg-white'"
-                >
-                  <td class="px-4 py-3">
-                    <div class="max-w-[240px] md:max-w-[420px] break-words font-medium text-slate-900">
-                      {{ item.file_name }}
-                    </div>
-
-                    <div class="mt-1 flex flex-wrap items-center gap-2">
-                      <span
-                        v-if="isCurrentUpload(item, uncontrolledManual)"
-                        class="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700"
-                      >
-                        Current
-                      </span>
-
-                      <span class="text-xs text-slate-500">
-                        {{ item.remarks || 'No remarks' }}
-                      </span>
-                    </div>
-                  </td>
-
-                  <td class="whitespace-nowrap px-4 py-3 text-slate-700">
-                    {{ item.revision || '—' }}
-                  </td>
-
-                  <td class="px-4 py-3">
-                    <span
-                      class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1"
-                      :class="statusBadgeClass(item.status)"
-                    >
-                      {{ item.status || '—' }}
-                    </span>
-                  </td>
-
-                  <td class="px-4 py-3 text-slate-700">
-                    {{ item.uploader?.name || '—' }}
-                  </td>
-
-                  <td class="whitespace-nowrap px-4 py-3 text-slate-700">
-                    {{ formatDateTime(item.uploaded_at) }}
-                  </td>
-
-                  <td class="px-4 py-3 text-right">
-                    <div class="inline-flex flex-wrap justify-end gap-2">
-                      <a
-                        :href="previewUrl(item.id)"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        class="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition hover:bg-slate-50"
-                      >
-                        Preview
-                      </a>
-                      <a
-                        :href="downloadUrl(item.id)"
-                        class="inline-flex items-center justify-center rounded-lg bg-slate-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-slate-800"
-                      >
-                        Download
-                      </a>
-                    </div>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div v-else class="px-5 py-10">
-            <div class="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-5 py-8 text-center">
-              <div class="text-base font-semibold text-slate-900">No uncontrolled manual uploaded</div>
-              <div class="mt-1 text-sm text-slate-500">
-                Upload an uncontrolled manual to create the first record for this section.
-              </div>
-            </div>
-          </div>
-        </section>
+        </div>
       </div>
 
       <!-- Upload Modal -->
@@ -582,15 +452,11 @@ const isCurrentUpload = (item, manual) => {
       >
         <div class="absolute inset-0" @click="closeUploadModal"></div>
 
-        <div class="relative z-10 w-full max-w-2xl rounded-2xl border border-slate-200 bg-white shadow-2xl">
+        <div class="relative z-10 w-full max-w-lg rounded-2xl border border-slate-200 bg-white shadow-2xl">
           <div class="flex items-start justify-between border-b border-slate-200 px-5 py-4">
             <div>
-              <h3 class="text-base font-semibold text-slate-900">
-                {{ activeUploadTitle }}
-              </h3>
-              <p class="mt-1 text-sm text-slate-500">
-                {{ activeUploadDescription }}
-              </p>
+              <h3 class="text-base font-semibold text-slate-900">Upload Manual File</h3>
+              <p class="mt-1 text-sm text-slate-500">Add a new file to the manual library.</p>
             </div>
 
             <button
@@ -612,44 +478,51 @@ const isCurrentUpload = (item, manual) => {
 
           <div class="space-y-4 px-5 py-5">
             <div>
-              <label class="text-xs font-medium text-slate-600">Manual File</label>
-              <input
-                :key="activeFileInputKey"
-                type="file"
-                accept=".pdf,.doc,.docx"
-                class="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                @change="onFileChange($event, activeUploadForm)"
-              />
-              <div v-if="activeUploadForm.errors.file" class="mt-1 text-sm text-rose-600">
-                {{ activeUploadForm.errors.file }}
+              <label class="text-xs font-medium text-slate-600">Access Type</label>
+              <select
+                v-model="uploadForm.access"
+                class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              >
+                <option value="" disabled>Select access type</option>
+                <option
+                  v-for="type in uploadableAccessTypes"
+                  :key="type.value"
+                  :value="type.value"
+                >
+                  {{ type.label }}
+                </option>
+              </select>
+              <div v-if="uploadForm.errors.access" class="mt-1 text-sm text-rose-600">
+                {{ uploadForm.errors.access }}
               </div>
             </div>
 
-            <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
-              <div class="md:col-span-1">
-                <label class="text-xs font-medium text-slate-600">Revision</label>
-                <input
-                  v-model="activeUploadForm.revision"
-                  type="text"
-                  placeholder="e.g. Rev. 2"
-                  class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                />
-                <div v-if="activeUploadForm.errors.revision" class="mt-1 text-sm text-rose-600">
-                  {{ activeUploadForm.errors.revision }}
-                </div>
+            <div>
+              <label class="text-xs font-medium text-slate-600">Manual File</label>
+              <input
+                :key="fileInputKey"
+                type="file"
+                accept=".pdf,.doc,.docx"
+                class="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
+                @change="onFileChange"
+              />
+              <div v-if="uploadForm.errors.file" class="mt-1 text-sm text-rose-600">
+                {{ uploadForm.errors.file }}
               </div>
+            </div>
 
-              <div class="md:col-span-2">
-                <label class="text-xs font-medium text-slate-600">Remarks</label>
-                <input
-                  v-model="activeUploadForm.remarks"
-                  type="text"
-                  placeholder="Optional remarks"
-                  class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
-                />
-                <div v-if="activeUploadForm.errors.remarks" class="mt-1 text-sm text-rose-600">
-                  {{ activeUploadForm.errors.remarks }}
-                </div>
+            <div>
+              <label class="text-xs font-medium text-slate-600">
+                Remarks <span class="text-slate-400">(optional)</span>
+              </label>
+              <input
+                v-model="uploadForm.remarks"
+                type="text"
+                placeholder="Optional remarks"
+                class="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-300"
+              />
+              <div v-if="uploadForm.errors.remarks" class="mt-1 text-sm text-rose-600">
+                {{ uploadForm.errors.remarks }}
               </div>
             </div>
           </div>
@@ -665,11 +538,51 @@ const isCurrentUpload = (item, manual) => {
 
             <button
               type="button"
-              :disabled="activeUploadForm.processing || !activeUploadAccess"
+              :disabled="uploadForm.processing"
               class="inline-flex items-center justify-center rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
-              @click="submitUpload(activeUploadAccess, activeUploadForm)"
+              @click="submitUpload"
             >
-              {{ activeUploadForm.processing ? 'Uploading...' : 'Save Upload' }}
+              {{ uploadForm.processing ? 'Uploading…' : 'Upload File' }}
+            </button>
+          </div>
+        </div>
+      </div>
+      <!-- Delete Modal -->
+      <div
+        v-if="deleteModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      >
+        <div class="w-full max-w-xl rounded-2xl bg-white shadow-xl">
+          <div class="border-b border-slate-200 px-6 py-4">
+            <h2 class="text-lg font-semibold text-rose-700">Delete Permanently</h2>
+            <p class="mt-1 text-sm text-slate-500">This action cannot be undone.</p>
+          </div>
+
+          <div class="px-6 py-5">
+            <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+              <div class="break-words font-semibold">{{ selectedRow?.file_name }}</div>
+              <div class="mt-2">
+                This will permanently delete the file from storage and cannot be undone.
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+            <button
+              type="button"
+              :disabled="deletingType"
+              class="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="closeDeleteModal"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              :disabled="deletingType"
+              class="rounded-xl bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="submitDelete"
+            >
+              {{ deleteButtonText }}
             </button>
           </div>
         </div>
