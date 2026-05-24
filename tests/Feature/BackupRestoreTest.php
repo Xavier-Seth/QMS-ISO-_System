@@ -8,6 +8,7 @@ use App\Models\DocumentUpload;
 use App\Models\SystemSetting;
 use App\Services\BackupService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -631,6 +632,11 @@ class BackupRestoreTest extends TestCase
         $this->assertIsString($dbRaw);
         $decoded = json_decode($dbRaw, true);
         $this->assertIsArray($decoded, 'database.json does not contain valid JSON.');
+
+        // At minimum the tables created in setUp must appear as keys (even if rows are empty)
+        $this->assertArrayHasKey('document_series', $decoded);
+        $this->assertArrayHasKey('document_types', $decoded);
+        $this->assertArrayHasKey('document_uploads', $decoded);
     }
 
     // -----------------------------------------------------------------------
@@ -658,10 +664,18 @@ class BackupRestoreTest extends TestCase
         $backupResult = $this->service->createBackup();
         $zipPath = Storage::disk('private')->path('backups/'.$backupResult['filename']);
 
-        // Wipe application data to simulate a restore scenario
+        // Wipe application data to simulate a restore scenario.
+        // FK_CHECKS disabled so truncate order does not matter on MySQL CI.
+        $isMysql = DB::connection()->getDriverName() === 'mysql';
+        if ($isMysql) {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        }
         DocumentUpload::truncate();
         DocumentType::truncate();
         DocumentSeries::truncate();
+        if ($isMysql) {
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        }
 
         $this->assertDatabaseCount('document_series', 0);
         $this->assertDatabaseCount('document_types', 0);
@@ -704,6 +718,83 @@ class BackupRestoreTest extends TestCase
         $this->assertSame(1, $result['files']);
         $this->assertSame(0, $result['rows']);
         Storage::disk('private')->assertExists('qms/legacy.pdf');
+
+        @unlink($tmpPath);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 16 — m3: database.json with a non-existent table key is silently skipped
+    // -----------------------------------------------------------------------
+
+    public function test_restore_skips_nonexistent_table_in_database_json(): void
+    {
+        Storage::fake('private');
+
+        $series = DocumentSeries::create(['code_prefix' => 'QMS', 'name' => 'QMS Forms']);
+
+        $dbDump = [
+            'nonexistent_dropped_table' => [['id' => 1, 'col' => 'data']],
+            'document_series' => [[
+                'id' => $series->id,
+                'code_prefix' => 'QMS',
+                'name' => 'QMS Forms Updated',
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ]],
+        ];
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'restore_test_').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('manifest.json', json_encode(['file_count' => 0, 'files' => []]));
+        $zip->addFromString('database.json', json_encode($dbDump));
+        $zip->close();
+
+        // Must not throw; non-existent table silently skipped; valid table restored
+        $result = $this->service->restore($tmpPath);
+
+        $this->assertSame(0, $result['files']);
+        $this->assertGreaterThan(0, $result['rows']);
+        $this->assertDatabaseHas('document_series', ['name' => 'QMS Forms Updated']);
+
+        @unlink($tmpPath);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 17 — m4: database.json containing a SKIP_TABLE key is silently ignored
+    // -----------------------------------------------------------------------
+
+    public function test_restore_ignores_skip_table_in_database_json(): void
+    {
+        Storage::fake('private');
+
+        $series = DocumentSeries::create(['code_prefix' => 'QMS', 'name' => 'QMS Forms']);
+
+        // 'migrations' is a SKIP_TABLE; its data must not be restored
+        $dbDump = [
+            'migrations' => [['id' => 999, 'migration' => 'injected_migration', 'batch' => 99]],
+            'document_series' => [[
+                'id' => $series->id,
+                'code_prefix' => 'QMS',
+                'name' => 'QMS Forms',
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ]],
+        ];
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'restore_test_').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('manifest.json', json_encode(['file_count' => 0, 'files' => []]));
+        $zip->addFromString('database.json', json_encode($dbDump));
+        $zip->close();
+
+        // Must not throw; migrations entry silently skipped
+        $result = $this->service->restore($tmpPath);
+
+        $this->assertSame(0, $result['files']);
+        // Only document_series row counted — migrations silently skipped
+        $this->assertSame(1, $result['rows']);
 
         @unlink($tmpPath);
     }

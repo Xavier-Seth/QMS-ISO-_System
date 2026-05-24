@@ -28,7 +28,7 @@ class BackupService
         'preview_size',
     ];
 
-    /** Framework/transient tables excluded from the database dump. */
+    /** Framework/transient tables excluded from the database dump and restore. */
     private const SKIP_TABLES = [
         'migrations',
         'password_reset_tokens',
@@ -107,6 +107,11 @@ class BackupService
         ]);
 
         $zip->addFromString('manifest.json', $manifest);
+
+        // Note: dumpDatabaseToArray() loads all application table rows into PHP memory before
+        // JSON-encoding. For large datasets (e.g. high-volume activity_logs) this can exhaust
+        // the PHP memory limit. Monitor backup memory usage and consider archiving old rows
+        // before taking a backup if this becomes a constraint.
         $zip->addFromString('database.json', json_encode($this->dumpDatabaseToArray()));
         $zip->close();
 
@@ -184,15 +189,21 @@ class BackupService
         $dbIndex = $zip->locateName('database.json');
 
         if ($dbIndex !== false) {
-            $dbRaw = $zip->getFromIndex($dbIndex);
+            $stat = $zip->statIndex($dbIndex);
 
-            if ($dbRaw !== false) {
-                $decoded = json_decode($dbRaw, true);
+            if ($stat !== false && $stat['size'] > 256 * 1024 * 1024) {
+                Log::warning('[RESTORE] database.json exceeds 256 MB — skipping DB restore to prevent memory exhaustion.');
+            } else {
+                $dbRaw = $zip->getFromIndex($dbIndex);
 
-                if (is_array($decoded)) {
-                    $dbDump = $decoded;
-                } else {
-                    Log::warning('[RESTORE] database.json contains invalid JSON — skipping DB restore.');
+                if ($dbRaw !== false) {
+                    $decoded = json_decode($dbRaw, true);
+
+                    if (is_array($decoded)) {
+                        $dbDump = $decoded;
+                    } else {
+                        Log::warning('[RESTORE] database.json contains invalid JSON — skipping DB restore.');
+                    }
                 }
             }
         }
@@ -261,72 +272,86 @@ class BackupService
         $zip->close();
 
         // Pass 2 — all entries validated; write files and restore DB inside a single transaction.
-        // FK checks are disabled for the duration so table order does not matter during DB restore.
-        // File writes already on disk are NOT rolled back on transaction failure.
+        // FK checks are disabled at the session level (MySQL only) via try/finally so they are
+        // always re-enabled even when the transaction throws. File writes already on disk are NOT
+        // rolled back on transaction failure. DB atomicity is best-effort: individual chunk
+        // failures in restoreDatabase() are caught and logged without aborting the transaction,
+        // so a partial table restore is possible when upserts fail on individual chunks.
         $successCount = 0;
         $dbRowCount = 0;
         $isMysql = DB::connection()->getDriverName() === 'mysql';
 
-        DB::transaction(function () use ($validated, $dbDump, &$successCount, &$dbRowCount, $isMysql) {
-            if ($isMysql) {
-                DB::statement('SET FOREIGN_KEY_CHECKS=0');
-            }
+        if ($isMysql) {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        }
 
-            foreach ($validated as $entry) {
-                Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
-                $successCount++;
+        try {
+            DB::transaction(function () use ($validated, $dbDump, &$successCount, &$dbRowCount) {
+                foreach ($validated as $entry) {
+                    Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
+                    $successCount++;
 
-                // When database.json is present all tables are restored from the dump;
-                // per-file upload_row upserts are only used for old ZIPs without database.json.
-                if ($dbDump !== null || empty($entry['upload_row'])) {
-                    continue;
+                    // When database.json is present all tables are restored from the dump;
+                    // per-file upload_row upserts are only used for old ZIPs without database.json.
+                    if ($dbDump !== null || empty($entry['upload_row'])) {
+                        continue;
+                    }
+
+                    $row = $entry['upload_row'];
+
+                    // L2 — skip DB upsert if id is missing; avoids silent auto-increment ID mismatch
+                    if (empty($row['id'])) {
+                        Log::warning('[RESTORE] Skipping DB upsert — upload_row.id is null or missing', [
+                            'file_path' => $entry['path'],
+                        ]);
+
+                        continue;
+                    }
+
+                    $row['uploaded_by'] = User::find($row['uploaded_by'] ?? null)
+                        ? $row['uploaded_by']
+                        : null;
+                    $uploadId = $row['id'];
+                    unset($row['id']);
+
+                    $existing = DocumentUpload::find($uploadId);
+                    if ($existing) {
+                        $existing->fill($row)->save();
+                    } else {
+                        $instance = new DocumentUpload;
+                        $instance->id = $uploadId;
+                        $instance->fill($row)->save();
+                    }
                 }
 
-                $row = $entry['upload_row'];
-
-                // L2 — skip DB upsert if id is missing; avoids silent auto-increment ID mismatch
-                if (empty($row['id'])) {
-                    Log::warning('[RESTORE] Skipping DB upsert — upload_row.id is null or missing', [
-                        'file_path' => $entry['path'],
-                    ]);
-
-                    continue;
+                if ($dbDump !== null) {
+                    $dbRowCount = $this->restoreDatabase($dbDump);
                 }
-
-                $row['uploaded_by'] = User::find($row['uploaded_by'] ?? null)
-                    ? $row['uploaded_by']
-                    : null;
-                $uploadId = $row['id'];
-                unset($row['id']);
-
-                $existing = DocumentUpload::find($uploadId);
-                if ($existing) {
-                    $existing->fill($row)->save();
-                } else {
-                    $instance = new DocumentUpload;
-                    $instance->id = $uploadId;
-                    $instance->fill($row)->save();
-                }
-            }
-
-            if ($dbDump !== null) {
-                $dbRowCount = $this->restoreDatabase($dbDump);
-            }
-
+            });
+        } finally {
             if ($isMysql) {
                 DB::statement('SET FOREIGN_KEY_CHECKS=1');
             }
-        });
+        }
 
         return ['files' => $successCount, 'rows' => $dbRowCount];
     }
 
+    private function applicationTableListing(): array
+    {
+        // getTableListing() may return schema-qualified names (e.g. "archive_system.users"
+        // on MySQL, "main.users" on SQLite). Strip the prefix so DB queries use bare table names.
+        return collect(Schema::getTableListing())
+            ->map(fn (string $t) => str_contains($t, '.') ? substr($t, strrpos($t, '.') + 1) : $t)
+            ->reject(fn (string $t) => in_array($t, self::SKIP_TABLES, true))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     private function dumpDatabaseToArray(): array
     {
-        $skip = self::SKIP_TABLES;
-        $tables = collect(Schema::getTableListing())
-            ->reject(fn (string $t) => in_array($t, $skip, true))
-            ->values();
+        $tables = $this->applicationTableListing();
 
         $dump = [];
 
@@ -351,22 +376,29 @@ class BackupService
 
     private function restoreDatabase(array $dbDump): int
     {
+        $allowed = array_flip($this->applicationTableListing());
+
         $rowCount = 0;
 
         foreach ($dbDump as $table => $rows) {
-            if (empty($rows)) {
+            if (! isset($allowed[$table]) || empty($rows)) {
                 continue;
             }
 
-            $updateCols = array_values(array_diff(array_keys($rows[0]), ['id']));
+            $updateCols = array_values(array_diff(Schema::getColumnListing($table), ['id']));
+
+            if (empty($updateCols)) {
+                continue;
+            }
 
             foreach (array_chunk($rows, 500) as $chunk) {
                 try {
                     DB::table($table)->upsert($chunk, ['id'], $updateCols);
                     $rowCount += count($chunk);
                 } catch (\Throwable $e) {
-                    Log::warning('[RESTORE] DB chunk upsert failed', [
+                    Log::error('[RESTORE] DB chunk upsert failed', [
                         'table' => $table,
+                        'chunk_size' => count($chunk),
                         'error' => $e->getMessage(),
                     ]);
                 }
