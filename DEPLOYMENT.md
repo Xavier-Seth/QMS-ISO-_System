@@ -13,9 +13,10 @@
 3. [Manual Setup](#manual-setup)
 4. [Environment Configuration](#environment-configuration)
 5. [Running the Application](#running-the-application)
-6. [Third-Party Services and Dependencies](#third-party-services-and-dependencies)
-7. [Common Deployment Issues](#common-deployment-issues)
-8. [First-Time Setup After Login](#first-time-setup-after-login)
+6. [Backup System](#backup-system)
+7. [Third-Party Services and Dependencies](#third-party-services-and-dependencies)
+8. [Common Deployment Issues](#common-deployment-issues)
+9. [First-Time Setup After Login](#first-time-setup-after-login)
 
 ---
 
@@ -415,6 +416,32 @@ Before handing off to users, do a quick smoke test:
 7. Confirm the document appears under **Documents**
 
 If Step 6 item 4 (Download DOCX) fails with a template error, go back to Step 2 and ensure the correct module template is uploaded and set as active for that module.
+
+---
+
+## Backup System
+
+Each backup ZIP produced by **Settings → Backup → Create Backup** contains:
+
+1. **All uploaded document files** — stored under `{series_code}/{type_code}/{id}_{filename}` inside the archive.
+2. **`database.json`** — a full dump of every application table, excluding framework/transient tables (`migrations`, `sessions`, `jobs`, `job_batches`, `failed_jobs`, `cache`, `cache_locks`, `password_reset_tokens`).
+
+### No Migrations or Environment Changes Required
+
+The backup DB dump feature requires no new migrations and no new `.env` variables. `BackupService` uses `Schema::getTableListing()` at runtime to discover tables.
+
+### Restore Behavior
+
+| Concern | Behavior |
+|---------|---------|
+| Atomicity | All database writes run inside `DB::transaction()`. On any failure the entire DB restore rolls back; already-written files are not rolled back. |
+| FK constraints (MySQL) | `SET FOREIGN_KEY_CHECKS=0` is issued before restore and re-enabled in `try/finally`, so FK relationships do not block upserts. |
+| Memory limit | If `database.json` inside the ZIP exceeds **256 MB**, the DB restore is skipped and a warning is written to `storage/logs/laravel.log`. Only files are restored in that case. |
+| Backward compat | ZIPs created before May 2026 have no `database.json`. Restoring them restores uploaded files only — no database rows are affected. |
+
+### Staging Recommendation
+
+Always perform a test restore on a staging environment before applying a backup to production. The database restore overwrites existing rows and cannot be undone.
 
 ---
 

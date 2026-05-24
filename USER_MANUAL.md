@@ -432,10 +432,14 @@ Under **Logo**, admins can upload the institution logo.
 
 Under **Backup**, admins can manage system backups:
 
-- **Create Backup** — Creates a ZIP archive of all uploaded documents (max 3 backups per hour).
-- **Download Latest Backup** — Downloads the most recently created backup file.
-- **Restore from Backup** — Upload a previously downloaded `.zip` backup file to restore documents.
+- **Create Backup** — Creates a ZIP archive containing all uploaded document files and a full database snapshot (`database.json`). Rate-limited to 3 requests per hour.
+- **Download Latest Backup** — Downloads the most recently created backup ZIP file.
+- **Restore from Backup** — Upload a previously downloaded `.zip` backup file to restore both uploaded document files and all database records. The database restore is atomic — if any error occurs during restore, no database changes are committed.
 - **Backup Settings** — Configure automatic backup frequency (Daily, Weekly, Monthly), storage location, and auto-backup toggle.
+
+> **Warning:** Restoring from a backup overwrites existing database records with the backup's data. This action cannot be undone. Always test restores on a staging environment before applying to production data.
+
+> **Note:** Backup archives created before May 2026 contain uploaded files only. Restoring one of these older archives will restore document files but will not restore any database records.
 
 ### QMS Template Settings (Admin Only)
 
