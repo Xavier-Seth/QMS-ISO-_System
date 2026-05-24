@@ -798,4 +798,96 @@ class BackupRestoreTest extends TestCase
 
         @unlink($tmpPath);
     }
+
+    // -----------------------------------------------------------------------
+    // Test 18 — non-id single-column PK: dump uses detected PK for orderBy,
+    //           restore uses it as the upsert unique key
+    // -----------------------------------------------------------------------
+
+    public function test_backup_and_restore_handles_non_id_primary_key(): void
+    {
+        Storage::fake('private');
+
+        Schema::create('qms_tags', function (Blueprint $table) {
+            $table->string('code')->primary();
+            $table->string('label');
+            $table->timestamps();
+        });
+
+        try {
+            DB::table('qms_tags')->insert([
+                'code' => 'ISO-9001',
+                'label' => 'Quality Standard',
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ]);
+
+            $backupResult = $this->service->createBackup();
+            $zipPath = Storage::disk('private')->path('backups/'.$backupResult['filename']);
+
+            $zip = new ZipArchive;
+            $zip->open($zipPath);
+            $decoded = json_decode($zip->getFromName('database.json'), true);
+            $zip->close();
+
+            $this->assertArrayHasKey('qms_tags', $decoded);
+            $this->assertCount(1, $decoded['qms_tags']);
+            $this->assertSame('ISO-9001', $decoded['qms_tags'][0]['code']);
+
+            DB::table('qms_tags')->delete();
+            $this->assertDatabaseCount('qms_tags', 0);
+
+            $result = $this->service->restore($zipPath);
+
+            $this->assertGreaterThan(0, $result['rows']);
+            $this->assertDatabaseHas('qms_tags', ['code' => 'ISO-9001', 'label' => 'Quality Standard']);
+        } finally {
+            Schema::dropIfExists('qms_tags');
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 19 — table without any PK: dump uses get() fallback,
+    //           restore uses insertOrIgnore fallback
+    // -----------------------------------------------------------------------
+
+    public function test_backup_and_restore_handles_table_without_primary_key(): void
+    {
+        Storage::fake('private');
+
+        Schema::create('qms_events', function (Blueprint $table) {
+            $table->string('event_type');
+            $table->string('payload')->nullable();
+            $table->timestamp('occurred_at')->nullable();
+        });
+
+        try {
+            DB::table('qms_events')->insert([
+                'event_type' => 'audit',
+                'payload' => 'test payload',
+                'occurred_at' => now()->toDateTimeString(),
+            ]);
+
+            $backupResult = $this->service->createBackup();
+            $zipPath = Storage::disk('private')->path('backups/'.$backupResult['filename']);
+
+            $zip = new ZipArchive;
+            $zip->open($zipPath);
+            $decoded = json_decode($zip->getFromName('database.json'), true);
+            $zip->close();
+
+            $this->assertArrayHasKey('qms_events', $decoded);
+            $this->assertCount(1, $decoded['qms_events']);
+
+            DB::table('qms_events')->delete();
+            $this->assertDatabaseCount('qms_events', 0);
+
+            $result = $this->service->restore($zipPath);
+
+            $this->assertGreaterThan(0, $result['rows']);
+            $this->assertDatabaseHas('qms_events', ['event_type' => 'audit', 'payload' => 'test payload']);
+        } finally {
+            Schema::dropIfExists('qms_events');
+        }
+    }
 }

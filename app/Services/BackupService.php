@@ -337,6 +337,25 @@ class BackupService
         return ['files' => $successCount, 'rows' => $dbRowCount];
     }
 
+    private function getTablePrimaryKey(string $table): ?string
+    {
+        try {
+            $indexes = Schema::getIndexes($table);
+        } catch (\Throwable $e) {
+            Log::warning('[BACKUP] Could not detect primary key', ['table' => $table, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        foreach ($indexes as $index) {
+            if (($index['primary'] ?? false) === true && count($index['columns']) === 1) {
+                return $index['columns'][0];
+            }
+        }
+
+        return null;
+    }
+
     private function applicationTableListing(): array
     {
         // getTableListing() may return schema-qualified names (e.g. "archive_system.users"
@@ -356,14 +375,21 @@ class BackupService
         $dump = [];
 
         foreach ($tables as $table) {
+            $pk = $this->getTablePrimaryKey($table);
             $rows = [];
 
             try {
-                DB::table($table)->orderBy('id')->chunk(500, function ($chunk) use (&$rows) {
-                    foreach ($chunk as $row) {
+                if ($pk !== null) {
+                    DB::table($table)->orderBy($pk)->chunk(500, function ($chunk) use (&$rows) {
+                        foreach ($chunk as $row) {
+                            $rows[] = (array) $row;
+                        }
+                    });
+                } else {
+                    foreach (DB::table($table)->get() as $row) {
                         $rows[] = (array) $row;
                     }
-                });
+                }
             } catch (\Throwable $e) {
                 Log::warning('[BACKUP] Could not dump table', ['table' => $table, 'error' => $e->getMessage()]);
             }
@@ -385,22 +411,39 @@ class BackupService
                 continue;
             }
 
-            $updateCols = array_values(array_diff(Schema::getColumnListing($table), ['id']));
+            $pk = $this->getTablePrimaryKey($table);
 
-            if (empty($updateCols)) {
-                continue;
-            }
+            if ($pk !== null) {
+                $updateCols = array_values(array_diff(Schema::getColumnListing($table), [$pk]));
 
-            foreach (array_chunk($rows, 500) as $chunk) {
-                try {
-                    DB::table($table)->upsert($chunk, ['id'], $updateCols);
-                    $rowCount += count($chunk);
-                } catch (\Throwable $e) {
-                    Log::error('[RESTORE] DB chunk upsert failed', [
-                        'table' => $table,
-                        'chunk_size' => count($chunk),
-                        'error' => $e->getMessage(),
-                    ]);
+                if (empty($updateCols)) {
+                    continue;
+                }
+
+                foreach (array_chunk($rows, 500) as $chunk) {
+                    try {
+                        DB::table($table)->upsert($chunk, [$pk], $updateCols);
+                        $rowCount += count($chunk);
+                    } catch (\Throwable $e) {
+                        Log::error('[RESTORE] DB chunk upsert failed', [
+                            'table' => $table,
+                            'chunk_size' => count($chunk),
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            } else {
+                foreach (array_chunk($rows, 500) as $chunk) {
+                    try {
+                        DB::table($table)->insertOrIgnore($chunk);
+                        $rowCount += count($chunk);
+                    } catch (\Throwable $e) {
+                        Log::error('[RESTORE] DB chunk insert failed', [
+                            'table' => $table,
+                            'chunk_size' => count($chunk),
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
             }
         }
