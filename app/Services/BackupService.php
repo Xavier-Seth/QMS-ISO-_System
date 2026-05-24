@@ -6,6 +6,7 @@ use App\Models\DocumentUpload;
 use App\Models\User;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 use ZipArchive;
@@ -25,6 +26,18 @@ class BackupService
         'preview_last_accessed_at',
         'preview_source_hash',
         'preview_size',
+    ];
+
+    /** Framework/transient tables excluded from the database dump and restore. */
+    private const SKIP_TABLES = [
+        'migrations',
+        'password_reset_tokens',
+        'sessions',
+        'jobs',
+        'job_batches',
+        'failed_jobs',
+        'cache',
+        'cache_locks',
     ];
 
     public function createBackup(): array
@@ -94,6 +107,12 @@ class BackupService
         ]);
 
         $zip->addFromString('manifest.json', $manifest);
+
+        // Note: dumpDatabaseToArray() loads all application table rows into PHP memory before
+        // JSON-encoding. For large datasets (e.g. high-volume activity_logs) this can exhaust
+        // the PHP memory limit. Monitor backup memory usage and consider archiving old rows
+        // before taking a backup if this becomes a constraint.
+        $zip->addFromString('database.json', json_encode($this->dumpDatabaseToArray()));
         $zip->close();
 
         return [
@@ -129,7 +148,8 @@ class BackupService
         ];
     }
 
-    public function restore(string $tmpZipPath): int
+    /** @return array{files: int, rows: int} */
+    public function restore(string $tmpZipPath): array
     {
         $zip = new ZipArchive;
 
@@ -140,7 +160,7 @@ class BackupService
         if ($zip->numFiles === 0) {
             $zip->close();
 
-            return 0;
+            return ['files' => 0, 'rows' => 0];
         }
 
         $manifestIndex = $zip->locateName('manifest.json');
@@ -162,6 +182,30 @@ class BackupService
         if (! is_array($manifestData)) {
             $zip->close();
             throw new RuntimeException('manifest.json is corrupt or contains invalid JSON.');
+        }
+
+        // Attempt to read database.json — absence is not an error (backward compat with old ZIPs)
+        $dbDump = null;
+        $dbIndex = $zip->locateName('database.json');
+
+        if ($dbIndex !== false) {
+            $stat = $zip->statIndex($dbIndex);
+
+            if ($stat !== false && $stat['size'] > 256 * 1024 * 1024) {
+                Log::warning('[RESTORE] database.json exceeds 256 MB — skipping DB restore to prevent memory exhaustion.');
+            } else {
+                $dbRaw = $zip->getFromIndex($dbIndex);
+
+                if ($dbRaw !== false) {
+                    $decoded = json_decode($dbRaw, true);
+
+                    if (is_array($decoded)) {
+                        $dbDump = $decoded;
+                    } else {
+                        Log::warning('[RESTORE] database.json contains invalid JSON — skipping DB restore.');
+                    }
+                }
+            }
         }
 
         // Key by zip_entry (new format) with file_path fallback for old-format backups
@@ -186,7 +230,7 @@ class BackupService
                 continue;
             }
 
-            if ($entryName === 'manifest.json' || str_ends_with($entryName, '/')) {
+            if ($entryName === 'manifest.json' || $entryName === 'database.json' || str_ends_with($entryName, '/')) {
                 continue;
             }
 
@@ -227,18 +271,31 @@ class BackupService
 
         $zip->close();
 
-        // Pass 2 — all entries validated; write files to disk and upsert DB rows.
-        // DB::transaction rolls back all DB row changes if any DB write fails.
-        // File writes already on disk are NOT rolled back on transaction failure.
-        // $successCount tracks files written to disk, not fully-restored records.
+        // Pass 2 — all entries validated; write files and restore DB inside a single transaction.
+        // FK checks are disabled at the session level (MySQL only) via try/finally so they are
+        // always re-enabled even when the transaction throws. File writes already on disk are NOT
+        // rolled back on transaction failure. DB restore is fully atomic — any chunk failure
+        // propagates out of restoreDatabase() and rolls back all DB writes via the outer transaction.
         $successCount = 0;
+        $dbRowCount = 0;
+        $isMysql = DB::connection()->getDriverName() === 'mysql';
 
-        DB::transaction(function () use ($validated, &$successCount) {
-            foreach ($validated as $entry) {
-                Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
-                $successCount++;
+        if ($isMysql) {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        }
 
-                if (! empty($entry['upload_row'])) {
+        try {
+            DB::transaction(function () use ($validated, $dbDump, &$successCount, &$dbRowCount) {
+                foreach ($validated as $entry) {
+                    Storage::disk($entry['disk'])->put($entry['path'], $entry['bytes']);
+                    $successCount++;
+
+                    // When database.json is present all tables are restored from the dump;
+                    // per-file upload_row upserts are only used for old ZIPs without database.json.
+                    if ($dbDump !== null || empty($entry['upload_row'])) {
+                        continue;
+                    }
+
                     $row = $entry['upload_row'];
 
                     // L2 — skip DB upsert if id is missing; avoids silent auto-increment ID mismatch
@@ -265,9 +322,112 @@ class BackupService
                         $instance->fill($row)->save();
                     }
                 }
-            }
-        });
 
-        return $successCount;
+                if ($dbDump !== null) {
+                    $dbRowCount = $this->restoreDatabase($dbDump);
+                }
+            });
+        } finally {
+            if ($isMysql) {
+                DB::statement('SET FOREIGN_KEY_CHECKS=1');
+            }
+        }
+
+        return ['files' => $successCount, 'rows' => $dbRowCount];
+    }
+
+    private function getTablePrimaryKey(string $table): ?string
+    {
+        try {
+            $indexes = Schema::getIndexes($table);
+        } catch (\Throwable $e) {
+            Log::warning('[BACKUP] Could not detect primary key', ['table' => $table, 'error' => $e->getMessage()]);
+
+            return null;
+        }
+
+        foreach ($indexes as $index) {
+            if (($index['primary'] ?? false) === true && count($index['columns']) === 1) {
+                return $index['columns'][0];
+            }
+        }
+
+        return null;
+    }
+
+    private function applicationTableListing(): array
+    {
+        // getTableListing() may return schema-qualified names (e.g. "archive_system.users"
+        // on MySQL, "main.users" on SQLite). Strip the prefix so DB queries use bare table names.
+        return collect(Schema::getTableListing())
+            ->map(fn (string $t) => str_contains($t, '.') ? substr($t, strrpos($t, '.') + 1) : $t)
+            ->reject(fn (string $t) => in_array($t, self::SKIP_TABLES, true))
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function dumpDatabaseToArray(): array
+    {
+        $tables = $this->applicationTableListing();
+
+        $dump = [];
+
+        foreach ($tables as $table) {
+            $pk = $this->getTablePrimaryKey($table);
+            $rows = [];
+
+            try {
+                if ($pk !== null) {
+                    DB::table($table)->orderBy($pk)->chunk(500, function ($chunk) use (&$rows) {
+                        foreach ($chunk as $row) {
+                            $rows[] = (array) $row;
+                        }
+                    });
+                } else {
+                    foreach (DB::table($table)->get() as $row) {
+                        $rows[] = (array) $row;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('[BACKUP] Could not dump table', ['table' => $table, 'error' => $e->getMessage()]);
+            }
+
+            $dump[$table] = $rows;
+        }
+
+        return $dump;
+    }
+
+    private function restoreDatabase(array $dbDump): int
+    {
+        $allowed = array_flip($this->applicationTableListing());
+
+        $rowCount = 0;
+
+        foreach ($dbDump as $table => $rows) {
+            if (! isset($allowed[$table]) || empty($rows)) {
+                continue;
+            }
+
+            $pk = $this->getTablePrimaryKey($table);
+            $updateCols = array_values(array_diff(Schema::getColumnListing($table), $pk ? [$pk] : []));
+
+            if (empty($updateCols) && $pk) {
+                continue;
+            }
+
+            foreach (array_chunk($rows, 500) as $chunk) {
+                if ($pk) {
+                    DB::table($table)->upsert($chunk, [$pk], $updateCols);
+                } else {
+                    DB::table($table)->insertOrIgnore($chunk);
+                }
+
+                $rowCount += count($chunk);
+            }
+        }
+
+        return $rowCount;
     }
 }

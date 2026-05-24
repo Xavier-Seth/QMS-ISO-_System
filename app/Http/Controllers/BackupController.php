@@ -63,10 +63,10 @@ class BackupController extends Controller
         ]);
 
         $tmpPath = $request->file('backup_file')->getPathname();
-        $count = 0;
+        $result = ['files' => 0, 'rows' => 0];
 
         try {
-            $count = $this->backupService->restore($tmpPath);
+            $result = $this->backupService->restore($tmpPath);
         } catch (RuntimeException $e) {
             return back()->with('error', 'Restore failed: '.$e->getMessage());
         }
@@ -77,10 +77,10 @@ class BackupController extends Controller
             'entity_type' => SystemSetting::class,
             'entity_id' => null,
             'record_label' => $request->file('backup_file')->getClientOriginalName(),
-            'description' => "Backup restored: {$count} files",
+            'description' => "Backup restored: {$result['files']} files, {$result['rows']} DB rows",
         ]);
 
-        return back()->with('success', "Backup restored successfully ({$count} files).");
+        return back()->with('success', "Backup restored successfully ({$result['files']} files, {$result['rows']} DB rows).");
     }
 
     public function saveSettings(Request $request): RedirectResponse

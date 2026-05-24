@@ -8,6 +8,7 @@ use App\Models\DocumentUpload;
 use App\Models\SystemSetting;
 use App\Services\BackupService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use RuntimeException;
@@ -159,9 +160,9 @@ class BackupRestoreTest extends TestCase
             ],
         ]);
 
-        $count = $this->service->restore($zipPath);
+        $result = $this->service->restore($zipPath);
 
-        $this->assertSame(1, $count);
+        $this->assertSame(1, $result['files']);
         Storage::disk('private')->assertExists('qms/F-QMS-001/abc123hash.pdf');
         Storage::disk('private')->assertMissing('QMS/F-QMS-001/1_document.pdf');
 
@@ -199,7 +200,7 @@ class BackupRestoreTest extends TestCase
         $zip->close();
 
         $this->assertSame(
-            2,
+            3,
             $numFiles,
             'File with null storage_disk was NOT included in backup — private fallback is not working.'
         );
@@ -261,9 +262,9 @@ class BackupRestoreTest extends TestCase
             ],
         ]);
 
-        $count = $this->service->restore($zipPath);
+        $result = $this->service->restore($zipPath);
 
-        $this->assertSame(2, $count);
+        $this->assertSame(2, $result['files']);
         Storage::disk('private')->assertExists('qms/F-QMS-001/file1.pdf');
         Storage::disk('private')->assertExists('qms/F-QMS-002/file2.pdf');
 
@@ -413,9 +414,9 @@ class BackupRestoreTest extends TestCase
         ]);
 
         // Should not throw — null id skipped gracefully, file still written
-        $count = $this->service->restore($zipPath);
+        $result = $this->service->restore($zipPath);
 
-        $this->assertSame(1, $count);
+        $this->assertSame(1, $result['files']);
         Storage::disk('private')->assertExists('qms/F-QMS-001/file.pdf');
         $this->assertDatabaseCount('document_uploads', 0);
 
@@ -451,8 +452,8 @@ class BackupRestoreTest extends TestCase
         $numFiles = $zip->numFiles;
         $zip->close();
 
-        // Only manifest.json — the null file_name upload was skipped
-        $this->assertSame(1, $numFiles, 'Upload with null file_name was incorrectly included in backup.');
+        // manifest.json + database.json — the null file_name upload was skipped
+        $this->assertSame(2, $numFiles, 'Upload with null file_name was incorrectly included in backup.');
     }
 
     // -----------------------------------------------------------------------
@@ -474,9 +475,10 @@ class BackupRestoreTest extends TestCase
             ],
         ]);
 
-        $count = $this->service->restore($zipPath);
+        $result = $this->service->restore($zipPath);
 
-        $this->assertSame(1, $count);
+        $this->assertSame(1, $result['files']);
+        $this->assertSame(0, $result['rows']);
         Storage::disk('private')->assertExists('qms/F-QMS-001/oldfile.pdf');
         // No DB rows created — graceful skip
         $this->assertDatabaseCount('document_uploads', 0);
@@ -603,5 +605,335 @@ class BackupRestoreTest extends TestCase
         $this->assertArrayNotHasKey('preview_last_accessed_at', $uploadRow);
         $this->assertArrayNotHasKey('preview_source_hash', $uploadRow);
         $this->assertArrayNotHasKey('preview_size', $uploadRow);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 13 — createBackup includes database.json in the ZIP
+    // -----------------------------------------------------------------------
+
+    public function test_create_backup_includes_database_json(): void
+    {
+        Storage::fake('private');
+        Storage::fake('public');
+
+        $result = $this->service->createBackup();
+
+        $zipPath = Storage::disk('private')->path('backups/'.$result['filename']);
+        $zip = new ZipArchive;
+        $opened = $zip->open($zipPath);
+        $this->assertTrue($opened === true, "ZipArchive::open() failed (code: {$opened})");
+
+        $dbIndex = $zip->locateName('database.json');
+        $this->assertNotFalse($dbIndex, 'database.json is missing from the backup ZIP.');
+
+        $dbRaw = $zip->getFromIndex($dbIndex);
+        $zip->close();
+
+        $this->assertIsString($dbRaw);
+        $decoded = json_decode($dbRaw, true);
+        $this->assertIsArray($decoded, 'database.json does not contain valid JSON.');
+
+        // At minimum the tables created in setUp must appear as keys (even if rows are empty)
+        $this->assertArrayHasKey('document_series', $decoded);
+        $this->assertArrayHasKey('document_types', $decoded);
+        $this->assertArrayHasKey('document_uploads', $decoded);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 14 — restore() with database.json restores DB rows from the dump
+    // -----------------------------------------------------------------------
+
+    public function test_restore_with_database_json_restores_db_rows(): void
+    {
+        Storage::fake('private');
+
+        $series = DocumentSeries::create(['code_prefix' => 'QMS', 'name' => 'QMS Forms']);
+        $type = DocumentType::create(['series_id' => $series->id, 'code' => 'F-QMS-001', 'title' => 'Test Doc']);
+
+        Storage::disk('private')->put('qms/F-QMS-001/file.pdf', 'content');
+
+        DocumentUpload::create([
+            'document_type_id' => $type->id,
+            'file_name' => 'file.pdf',
+            'file_path' => 'qms/F-QMS-001/file.pdf',
+            'storage_disk' => 'private',
+            'status' => 'published',
+        ]);
+
+        // Create a backup (which now includes database.json)
+        $backupResult = $this->service->createBackup();
+        $zipPath = Storage::disk('private')->path('backups/'.$backupResult['filename']);
+
+        // Wipe application data to simulate a restore scenario.
+        // FK_CHECKS disabled so truncate order does not matter on MySQL CI.
+        $isMysql = DB::connection()->getDriverName() === 'mysql';
+        if ($isMysql) {
+            DB::statement('SET FOREIGN_KEY_CHECKS=0');
+        }
+        DocumentUpload::truncate();
+        DocumentType::truncate();
+        DocumentSeries::truncate();
+        if ($isMysql) {
+            DB::statement('SET FOREIGN_KEY_CHECKS=1');
+        }
+
+        $this->assertDatabaseCount('document_series', 0);
+        $this->assertDatabaseCount('document_types', 0);
+        $this->assertDatabaseCount('document_uploads', 0);
+
+        $result = $this->service->restore($zipPath);
+
+        $this->assertSame(1, $result['files']);
+        $this->assertGreaterThan(0, $result['rows']);
+        $this->assertDatabaseHas('document_series', ['code_prefix' => 'QMS']);
+        $this->assertDatabaseHas('document_types', ['code' => 'F-QMS-001']);
+        $this->assertDatabaseHas('document_uploads', ['file_name' => 'file.pdf', 'status' => 'published']);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 15 — restore() without database.json is backward-compatible (rows=0)
+    // -----------------------------------------------------------------------
+
+    public function test_restore_without_database_json_returns_zero_rows(): void
+    {
+        Storage::fake('private');
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'compat_').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('manifest.json', json_encode(['file_count' => 1, 'files' => [
+            [
+                'zip_entry' => 'qms/legacy.pdf',
+                'file_name' => 'legacy.pdf',
+                'file_path' => 'qms/legacy.pdf',
+                'storage_disk' => 'private',
+                'upload_row' => null,
+            ],
+        ]]));
+        $zip->addFromString('qms/legacy.pdf', 'legacy content');
+        $zip->close();
+
+        $result = $this->service->restore($tmpPath);
+
+        $this->assertSame(1, $result['files']);
+        $this->assertSame(0, $result['rows']);
+        Storage::disk('private')->assertExists('qms/legacy.pdf');
+
+        @unlink($tmpPath);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 16 — m3: database.json with a non-existent table key is silently skipped
+    // -----------------------------------------------------------------------
+
+    public function test_restore_skips_nonexistent_table_in_database_json(): void
+    {
+        Storage::fake('private');
+
+        $series = DocumentSeries::create(['code_prefix' => 'QMS', 'name' => 'QMS Forms']);
+
+        $dbDump = [
+            'nonexistent_dropped_table' => [['id' => 1, 'col' => 'data']],
+            'document_series' => [[
+                'id' => $series->id,
+                'code_prefix' => 'QMS',
+                'name' => 'QMS Forms Updated',
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ]],
+        ];
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'restore_test_').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('manifest.json', json_encode(['file_count' => 0, 'files' => []]));
+        $zip->addFromString('database.json', json_encode($dbDump));
+        $zip->close();
+
+        // Must not throw; non-existent table silently skipped; valid table restored
+        $result = $this->service->restore($tmpPath);
+
+        $this->assertSame(0, $result['files']);
+        $this->assertGreaterThan(0, $result['rows']);
+        $this->assertDatabaseHas('document_series', ['name' => 'QMS Forms Updated']);
+
+        @unlink($tmpPath);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 17 — m4: database.json containing a SKIP_TABLE key is silently ignored
+    // -----------------------------------------------------------------------
+
+    public function test_restore_ignores_skip_table_in_database_json(): void
+    {
+        Storage::fake('private');
+
+        $series = DocumentSeries::create(['code_prefix' => 'QMS', 'name' => 'QMS Forms']);
+
+        // 'migrations' is a SKIP_TABLE; its data must not be restored
+        $dbDump = [
+            'migrations' => [['id' => 999, 'migration' => 'injected_migration', 'batch' => 99]],
+            'document_series' => [[
+                'id' => $series->id,
+                'code_prefix' => 'QMS',
+                'name' => 'QMS Forms',
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ]],
+        ];
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'restore_test_').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('manifest.json', json_encode(['file_count' => 0, 'files' => []]));
+        $zip->addFromString('database.json', json_encode($dbDump));
+        $zip->close();
+
+        // Must not throw; migrations entry silently skipped
+        $result = $this->service->restore($tmpPath);
+
+        $this->assertSame(0, $result['files']);
+        // Only document_series row counted — migrations silently skipped
+        $this->assertSame(1, $result['rows']);
+
+        @unlink($tmpPath);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 18 — non-id single-column PK: dump uses detected PK for orderBy,
+    //           restore uses it as the upsert unique key
+    // -----------------------------------------------------------------------
+
+    public function test_backup_and_restore_handles_non_id_primary_key(): void
+    {
+        Storage::fake('private');
+
+        Schema::create('qms_tags', function (Blueprint $table) {
+            $table->string('code')->primary();
+            $table->string('label');
+            $table->timestamps();
+        });
+
+        try {
+            DB::table('qms_tags')->insert([
+                'code' => 'ISO-9001',
+                'label' => 'Quality Standard',
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ]);
+
+            $backupResult = $this->service->createBackup();
+            $zipPath = Storage::disk('private')->path('backups/'.$backupResult['filename']);
+
+            $zip = new ZipArchive;
+            $zip->open($zipPath);
+            $decoded = json_decode($zip->getFromName('database.json'), true);
+            $zip->close();
+
+            $this->assertArrayHasKey('qms_tags', $decoded);
+            $this->assertCount(1, $decoded['qms_tags']);
+            $this->assertSame('ISO-9001', $decoded['qms_tags'][0]['code']);
+
+            DB::table('qms_tags')->delete();
+            $this->assertDatabaseCount('qms_tags', 0);
+
+            $result = $this->service->restore($zipPath);
+
+            $this->assertGreaterThan(0, $result['rows']);
+            $this->assertDatabaseHas('qms_tags', ['code' => 'ISO-9001', 'label' => 'Quality Standard']);
+        } finally {
+            Schema::dropIfExists('qms_tags');
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 19 — table without any PK: dump uses get() fallback,
+    //           restore uses insertOrIgnore fallback
+    // -----------------------------------------------------------------------
+
+    public function test_backup_and_restore_handles_table_without_primary_key(): void
+    {
+        Storage::fake('private');
+
+        Schema::create('qms_events', function (Blueprint $table) {
+            $table->string('event_type');
+            $table->string('payload')->nullable();
+            $table->timestamp('occurred_at')->nullable();
+        });
+
+        try {
+            DB::table('qms_events')->insert([
+                'event_type' => 'audit',
+                'payload' => 'test payload',
+                'occurred_at' => now()->toDateTimeString(),
+            ]);
+
+            $backupResult = $this->service->createBackup();
+            $zipPath = Storage::disk('private')->path('backups/'.$backupResult['filename']);
+
+            $zip = new ZipArchive;
+            $zip->open($zipPath);
+            $decoded = json_decode($zip->getFromName('database.json'), true);
+            $zip->close();
+
+            $this->assertArrayHasKey('qms_events', $decoded);
+            $this->assertCount(1, $decoded['qms_events']);
+
+            DB::table('qms_events')->delete();
+            $this->assertDatabaseCount('qms_events', 0);
+
+            $result = $this->service->restore($zipPath);
+
+            $this->assertGreaterThan(0, $result['rows']);
+            $this->assertDatabaseHas('qms_events', ['event_type' => 'audit', 'payload' => 'test payload']);
+        } finally {
+            Schema::dropIfExists('qms_events');
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 20 — fail-fast: DB chunk error propagates, transaction rolls back
+    // -----------------------------------------------------------------------
+
+    public function test_restore_throws_and_rolls_back_when_db_chunk_fails(): void
+    {
+        Storage::fake('private');
+
+        $series = DocumentSeries::create(['code_prefix' => 'QMS', 'name' => 'QMS Forms']);
+
+        // document_series.code_prefix is NOT NULL — inserting null must fail and
+        // propagate out of restoreDatabase() so the outer transaction rolls back.
+        $dbDump = [
+            'document_series' => [[
+                'id' => 9999,
+                'code_prefix' => null,
+                'name' => 'Bad Row',
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ]],
+        ];
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'restore_test_').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('manifest.json', json_encode(['file_count' => 0, 'files' => []]));
+        $zip->addFromString('database.json', json_encode($dbDump));
+        $zip->close();
+
+        $threw = false;
+
+        try {
+            $this->service->restore($tmpPath);
+        } catch (\Throwable $e) {
+            $threw = true;
+            $this->assertInstanceOf(\RuntimeException::class, $e);
+        } finally {
+            @unlink($tmpPath);
+        }
+
+        $this->assertTrue($threw, 'restore() must throw when a DB chunk fails.');
+        // Transaction rolled back — only the original row must exist, id=9999 must not
+        $this->assertDatabaseCount('document_series', 1);
+        $this->assertDatabaseHas('document_series', ['code_prefix' => 'QMS']);
     }
 }
