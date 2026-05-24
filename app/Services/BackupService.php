@@ -274,9 +274,8 @@ class BackupService
         // Pass 2 — all entries validated; write files and restore DB inside a single transaction.
         // FK checks are disabled at the session level (MySQL only) via try/finally so they are
         // always re-enabled even when the transaction throws. File writes already on disk are NOT
-        // rolled back on transaction failure. DB atomicity is best-effort: individual chunk
-        // failures in restoreDatabase() are caught and logged without aborting the transaction,
-        // so a partial table restore is possible when upserts fail on individual chunks.
+        // rolled back on transaction failure. DB restore is fully atomic — any chunk failure
+        // propagates out of restoreDatabase() and rolls back all DB writes via the outer transaction.
         $successCount = 0;
         $dbRowCount = 0;
         $isMysql = DB::connection()->getDriverName() === 'mysql';
@@ -412,39 +411,20 @@ class BackupService
             }
 
             $pk = $this->getTablePrimaryKey($table);
+            $updateCols = array_values(array_diff(Schema::getColumnListing($table), $pk ? [$pk] : []));
 
-            if ($pk !== null) {
-                $updateCols = array_values(array_diff(Schema::getColumnListing($table), [$pk]));
+            if (empty($updateCols) && $pk) {
+                continue;
+            }
 
-                if (empty($updateCols)) {
-                    continue;
+            foreach (array_chunk($rows, 500) as $chunk) {
+                if ($pk) {
+                    DB::table($table)->upsert($chunk, [$pk], $updateCols);
+                } else {
+                    DB::table($table)->insertOrIgnore($chunk);
                 }
 
-                foreach (array_chunk($rows, 500) as $chunk) {
-                    try {
-                        DB::table($table)->upsert($chunk, [$pk], $updateCols);
-                        $rowCount += count($chunk);
-                    } catch (\Throwable $e) {
-                        Log::error('[RESTORE] DB chunk upsert failed', [
-                            'table' => $table,
-                            'chunk_size' => count($chunk),
-                            'error' => $e->getMessage(),
-                        ]);
-                    }
-                }
-            } else {
-                foreach (array_chunk($rows, 500) as $chunk) {
-                    try {
-                        DB::table($table)->insertOrIgnore($chunk);
-                        $rowCount += count($chunk);
-                    } catch (\Throwable $e) {
-                        Log::error('[RESTORE] DB chunk insert failed', [
-                            'table' => $table,
-                            'chunk_size' => count($chunk),
-                            'error' => $e->getMessage(),
-                        ]);
-                    }
-                }
+                $rowCount += count($chunk);
             }
         }
 

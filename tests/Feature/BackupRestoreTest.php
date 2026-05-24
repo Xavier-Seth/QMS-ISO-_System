@@ -890,4 +890,50 @@ class BackupRestoreTest extends TestCase
             Schema::dropIfExists('qms_events');
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Test 20 — fail-fast: DB chunk error propagates, transaction rolls back
+    // -----------------------------------------------------------------------
+
+    public function test_restore_throws_and_rolls_back_when_db_chunk_fails(): void
+    {
+        Storage::fake('private');
+
+        $series = DocumentSeries::create(['code_prefix' => 'QMS', 'name' => 'QMS Forms']);
+
+        // document_series.code_prefix is NOT NULL — inserting null must fail and
+        // propagate out of restoreDatabase() so the outer transaction rolls back.
+        $dbDump = [
+            'document_series' => [[
+                'id' => 9999,
+                'code_prefix' => null,
+                'name' => 'Bad Row',
+                'created_at' => now()->toDateTimeString(),
+                'updated_at' => now()->toDateTimeString(),
+            ]],
+        ];
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'restore_test_').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('manifest.json', json_encode(['file_count' => 0, 'files' => []]));
+        $zip->addFromString('database.json', json_encode($dbDump));
+        $zip->close();
+
+        $threw = false;
+
+        try {
+            $this->service->restore($tmpPath);
+        } catch (\Throwable $e) {
+            $threw = true;
+            $this->assertInstanceOf(\RuntimeException::class, $e);
+        } finally {
+            @unlink($tmpPath);
+        }
+
+        $this->assertTrue($threw, 'restore() must throw when a DB chunk fails.');
+        // Transaction rolled back — only the original row must exist, id=9999 must not
+        $this->assertDatabaseCount('document_series', 1);
+        $this->assertDatabaseHas('document_series', ['code_prefix' => 'QMS']);
+    }
 }
