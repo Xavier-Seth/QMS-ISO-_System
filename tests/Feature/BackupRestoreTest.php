@@ -159,9 +159,9 @@ class BackupRestoreTest extends TestCase
             ],
         ]);
 
-        $count = $this->service->restore($zipPath);
+        $result = $this->service->restore($zipPath);
 
-        $this->assertSame(1, $count);
+        $this->assertSame(1, $result['files']);
         Storage::disk('private')->assertExists('qms/F-QMS-001/abc123hash.pdf');
         Storage::disk('private')->assertMissing('QMS/F-QMS-001/1_document.pdf');
 
@@ -199,7 +199,7 @@ class BackupRestoreTest extends TestCase
         $zip->close();
 
         $this->assertSame(
-            2,
+            3,
             $numFiles,
             'File with null storage_disk was NOT included in backup — private fallback is not working.'
         );
@@ -261,9 +261,9 @@ class BackupRestoreTest extends TestCase
             ],
         ]);
 
-        $count = $this->service->restore($zipPath);
+        $result = $this->service->restore($zipPath);
 
-        $this->assertSame(2, $count);
+        $this->assertSame(2, $result['files']);
         Storage::disk('private')->assertExists('qms/F-QMS-001/file1.pdf');
         Storage::disk('private')->assertExists('qms/F-QMS-002/file2.pdf');
 
@@ -413,9 +413,9 @@ class BackupRestoreTest extends TestCase
         ]);
 
         // Should not throw — null id skipped gracefully, file still written
-        $count = $this->service->restore($zipPath);
+        $result = $this->service->restore($zipPath);
 
-        $this->assertSame(1, $count);
+        $this->assertSame(1, $result['files']);
         Storage::disk('private')->assertExists('qms/F-QMS-001/file.pdf');
         $this->assertDatabaseCount('document_uploads', 0);
 
@@ -451,8 +451,8 @@ class BackupRestoreTest extends TestCase
         $numFiles = $zip->numFiles;
         $zip->close();
 
-        // Only manifest.json — the null file_name upload was skipped
-        $this->assertSame(1, $numFiles, 'Upload with null file_name was incorrectly included in backup.');
+        // manifest.json + database.json — the null file_name upload was skipped
+        $this->assertSame(2, $numFiles, 'Upload with null file_name was incorrectly included in backup.');
     }
 
     // -----------------------------------------------------------------------
@@ -474,9 +474,10 @@ class BackupRestoreTest extends TestCase
             ],
         ]);
 
-        $count = $this->service->restore($zipPath);
+        $result = $this->service->restore($zipPath);
 
-        $this->assertSame(1, $count);
+        $this->assertSame(1, $result['files']);
+        $this->assertSame(0, $result['rows']);
         Storage::disk('private')->assertExists('qms/F-QMS-001/oldfile.pdf');
         // No DB rows created — graceful skip
         $this->assertDatabaseCount('document_uploads', 0);
@@ -603,5 +604,107 @@ class BackupRestoreTest extends TestCase
         $this->assertArrayNotHasKey('preview_last_accessed_at', $uploadRow);
         $this->assertArrayNotHasKey('preview_source_hash', $uploadRow);
         $this->assertArrayNotHasKey('preview_size', $uploadRow);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 13 — createBackup includes database.json in the ZIP
+    // -----------------------------------------------------------------------
+
+    public function test_create_backup_includes_database_json(): void
+    {
+        Storage::fake('private');
+        Storage::fake('public');
+
+        $result = $this->service->createBackup();
+
+        $zipPath = Storage::disk('private')->path('backups/'.$result['filename']);
+        $zip = new ZipArchive;
+        $opened = $zip->open($zipPath);
+        $this->assertTrue($opened === true, "ZipArchive::open() failed (code: {$opened})");
+
+        $dbIndex = $zip->locateName('database.json');
+        $this->assertNotFalse($dbIndex, 'database.json is missing from the backup ZIP.');
+
+        $dbRaw = $zip->getFromIndex($dbIndex);
+        $zip->close();
+
+        $this->assertIsString($dbRaw);
+        $decoded = json_decode($dbRaw, true);
+        $this->assertIsArray($decoded, 'database.json does not contain valid JSON.');
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 14 — restore() with database.json restores DB rows from the dump
+    // -----------------------------------------------------------------------
+
+    public function test_restore_with_database_json_restores_db_rows(): void
+    {
+        Storage::fake('private');
+
+        $series = DocumentSeries::create(['code_prefix' => 'QMS', 'name' => 'QMS Forms']);
+        $type = DocumentType::create(['series_id' => $series->id, 'code' => 'F-QMS-001', 'title' => 'Test Doc']);
+
+        Storage::disk('private')->put('qms/F-QMS-001/file.pdf', 'content');
+
+        DocumentUpload::create([
+            'document_type_id' => $type->id,
+            'file_name' => 'file.pdf',
+            'file_path' => 'qms/F-QMS-001/file.pdf',
+            'storage_disk' => 'private',
+            'status' => 'published',
+        ]);
+
+        // Create a backup (which now includes database.json)
+        $backupResult = $this->service->createBackup();
+        $zipPath = Storage::disk('private')->path('backups/'.$backupResult['filename']);
+
+        // Wipe application data to simulate a restore scenario
+        DocumentUpload::truncate();
+        DocumentType::truncate();
+        DocumentSeries::truncate();
+
+        $this->assertDatabaseCount('document_series', 0);
+        $this->assertDatabaseCount('document_types', 0);
+        $this->assertDatabaseCount('document_uploads', 0);
+
+        $result = $this->service->restore($zipPath);
+
+        $this->assertSame(1, $result['files']);
+        $this->assertGreaterThan(0, $result['rows']);
+        $this->assertDatabaseHas('document_series', ['code_prefix' => 'QMS']);
+        $this->assertDatabaseHas('document_types', ['code' => 'F-QMS-001']);
+        $this->assertDatabaseHas('document_uploads', ['file_name' => 'file.pdf', 'status' => 'published']);
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 15 — restore() without database.json is backward-compatible (rows=0)
+    // -----------------------------------------------------------------------
+
+    public function test_restore_without_database_json_returns_zero_rows(): void
+    {
+        Storage::fake('private');
+
+        $tmpPath = tempnam(sys_get_temp_dir(), 'compat_').'.zip';
+        $zip = new ZipArchive;
+        $zip->open($tmpPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('manifest.json', json_encode(['file_count' => 1, 'files' => [
+            [
+                'zip_entry' => 'qms/legacy.pdf',
+                'file_name' => 'legacy.pdf',
+                'file_path' => 'qms/legacy.pdf',
+                'storage_disk' => 'private',
+                'upload_row' => null,
+            ],
+        ]]));
+        $zip->addFromString('qms/legacy.pdf', 'legacy content');
+        $zip->close();
+
+        $result = $this->service->restore($tmpPath);
+
+        $this->assertSame(1, $result['files']);
+        $this->assertSame(0, $result['rows']);
+        Storage::disk('private')->assertExists('qms/legacy.pdf');
+
+        @unlink($tmpPath);
     }
 }
