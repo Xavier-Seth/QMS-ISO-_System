@@ -221,7 +221,7 @@ class ManualControllerTest extends TestCase
 
     public function test_admin_can_upload_file_and_new_row_is_active(): void
     {
-        Storage::fake('public');
+        Storage::fake('private');
 
         $series = $this->makeSeries();
         $admin = $this->makeAdmin();
@@ -241,12 +241,16 @@ class ManualControllerTest extends TestCase
             'document_type_id' => $type->id,
             'status' => 'Active',
             'file_name' => 'manual.pdf',
+            'storage_disk' => 'private',
         ]);
+
+        $storedPath = DocumentUpload::query()->latest('id')->value('file_path');
+        Storage::disk('private')->assertExists($storedPath);
     }
 
     public function test_admin_can_bulk_upload_multiple_files(): void
     {
-        Storage::fake('public');
+        Storage::fake('private');
 
         $series = $this->makeSeries();
         $admin = $this->makeAdmin();
@@ -271,7 +275,7 @@ class ManualControllerTest extends TestCase
 
     public function test_upload_rejects_more_than_20_files(): void
     {
-        Storage::fake('public');
+        Storage::fake('private');
 
         $series = $this->makeSeries();
         $admin = $this->makeAdmin();
@@ -288,7 +292,7 @@ class ManualControllerTest extends TestCase
 
     public function test_upload_does_not_obsolete_existing_files(): void
     {
-        Storage::fake('public');
+        Storage::fake('private');
 
         $series = $this->makeSeries();
         $admin = $this->makeAdmin();
@@ -311,7 +315,7 @@ class ManualControllerTest extends TestCase
 
     public function test_non_admin_cannot_upload(): void
     {
-        Storage::fake('public');
+        Storage::fake('private');
 
         $series = $this->makeSeries();
         $this->makeType($series, 'ASM', 'controlled');

@@ -166,8 +166,9 @@ const submitUpload = () => {
     forceFormData: true,
     preserveScroll: true,
     onSuccess: () => {
+      const uploadedCount = fileCount.value
       closeUploadModal()
-      toast.success?.(`${fileCount.value === 1 ? '1 file' : `${fileCount.value} files`} uploaded successfully.`)
+      toast.success?.(`${uploadedCount === 1 ? '1 file' : `${uploadedCount} files`} uploaded successfully.`)
     },
     onError: () => {
       toast.error?.('Upload failed. Please check the form and try again.')

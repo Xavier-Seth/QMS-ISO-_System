@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class SettingsController extends Controller
 {
@@ -72,11 +73,11 @@ class SettingsController extends Controller
         $user->office_location = $validated['office_location'] ?? null;
 
         if ($request->hasFile('profile_photo')) {
-            if ($user->profile_photo && Storage::disk('public')->exists($user->profile_photo)) {
-                Storage::disk('public')->delete($user->profile_photo);
+            if ($user->profile_photo && Storage::disk('private')->exists($user->profile_photo)) {
+                Storage::disk('private')->delete($user->profile_photo);
             }
 
-            $user->profile_photo = $request->file('profile_photo')->store('profile-photos', 'public');
+            $user->profile_photo = $request->file('profile_photo')->store('profile-photos', 'private');
         }
 
         if (! empty($validated['new_password'])) {
@@ -116,6 +117,36 @@ class SettingsController extends Controller
         return back()->with('success', 'General settings updated successfully.');
     }
 
+    public function profilePhoto(Request $request): BinaryFileResponse
+    {
+        $user = $request->user();
+
+        abort_unless(
+            $user->profile_photo && Storage::disk('private')->exists($user->profile_photo),
+            404
+        );
+
+        return response()->file(Storage::disk('private')->path($user->profile_photo), [
+            'Cache-Control' => 'private, max-age=0, must-revalidate',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    public function signatureImage(): BinaryFileResponse
+    {
+        $settings = SystemSetting::instance();
+
+        abort_unless(
+            $settings->e_signature_path && Storage::disk('private')->exists($settings->e_signature_path),
+            404
+        );
+
+        return response()->file(Storage::disk('private')->path($settings->e_signature_path), [
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
     public function uploadSignature(Request $request): RedirectResponse
     {
         $request->validate([
@@ -124,11 +155,11 @@ class SettingsController extends Controller
 
         $settings = SystemSetting::instance();
 
-        if ($settings->e_signature_path && Storage::disk('public')->exists($settings->e_signature_path)) {
-            Storage::disk('public')->delete($settings->e_signature_path);
+        if ($settings->e_signature_path && Storage::disk('private')->exists($settings->e_signature_path)) {
+            Storage::disk('private')->delete($settings->e_signature_path);
         }
 
-        $path = $request->file('e_signature')->store('signatures', 'public');
+        $path = $request->file('e_signature')->store('signatures', 'private');
         $settings->update(['e_signature_path' => $path]);
 
         $this->activityLogService->log([
@@ -147,8 +178,8 @@ class SettingsController extends Controller
     {
         $settings = SystemSetting::instance();
 
-        if ($settings->e_signature_path && Storage::disk('public')->exists($settings->e_signature_path)) {
-            Storage::disk('public')->delete($settings->e_signature_path);
+        if ($settings->e_signature_path && Storage::disk('private')->exists($settings->e_signature_path)) {
+            Storage::disk('private')->delete($settings->e_signature_path);
         }
 
         $settings->update(['e_signature_path' => null]);
