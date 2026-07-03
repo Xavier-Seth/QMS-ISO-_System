@@ -135,7 +135,7 @@ class SettingsSystemTest extends TestCase
 
     public function test_admin_can_upload_e_signature(): void
     {
-        Storage::fake('public');
+        Storage::fake('private');
 
         $admin = User::factory()->create(['role' => 'admin']);
         $file = UploadedFile::fake()->image('signature.png');
@@ -146,7 +146,7 @@ class SettingsSystemTest extends TestCase
 
         $settings = SystemSetting::first();
         $this->assertNotNull($settings->e_signature_path);
-        Storage::disk('public')->assertExists($settings->e_signature_path);
+        Storage::disk('private')->assertExists($settings->e_signature_path);
     }
 
     public function test_non_admin_cannot_upload_e_signature(): void
@@ -172,20 +172,20 @@ class SettingsSystemTest extends TestCase
 
     public function test_uploading_new_signature_deletes_old_one(): void
     {
-        Storage::fake('public');
+        Storage::fake('private');
 
         $admin = User::factory()->create(['role' => 'admin']);
         $settings = SystemSetting::first();
 
         $oldPath = 'signatures/old-sig.png';
-        Storage::disk('public')->put($oldPath, 'old');
+        Storage::disk('private')->put($oldPath, 'old');
         $settings->update(['e_signature_path' => $oldPath]);
 
         $this->actingAs($admin)->post('/settings/signature', [
             'e_signature' => UploadedFile::fake()->image('new-sig.png'),
         ]);
 
-        Storage::disk('public')->assertMissing($oldPath);
+        Storage::disk('private')->assertMissing($oldPath);
     }
 
     public function test_upload_signature_logs_activity(): void
@@ -211,20 +211,20 @@ class SettingsSystemTest extends TestCase
 
     public function test_admin_can_remove_e_signature(): void
     {
-        Storage::fake('public');
+        Storage::fake('private');
 
         $admin = User::factory()->create(['role' => 'admin']);
         $settings = SystemSetting::first();
 
         $path = 'signatures/sig.png';
-        Storage::disk('public')->put($path, 'data');
+        Storage::disk('private')->put($path, 'data');
         $settings->update(['e_signature_path' => $path]);
 
         $this->actingAs($admin)->delete('/settings/signature')->assertRedirect();
 
         $settings->refresh();
         $this->assertNull($settings->e_signature_path);
-        Storage::disk('public')->assertMissing($path);
+        Storage::disk('private')->assertMissing($path);
     }
 
     public function test_non_admin_cannot_remove_e_signature(): void

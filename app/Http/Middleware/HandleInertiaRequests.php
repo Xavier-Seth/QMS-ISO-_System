@@ -32,7 +32,7 @@ class HandleInertiaRequests extends Middleware
                     'department' => $request->user()->department,
                     'office_location' => $request->user()->office_location,
                     'profile_photo' => $request->user()->profile_photo
-                        ? Storage::url($request->user()->profile_photo)
+                        ? route('profile.photo').'?v='.md5($request->user()->profile_photo)
                         : null,
                 ] : null,
             ],
@@ -46,7 +46,7 @@ class HandleInertiaRequests extends Middleware
                 ? rescue(fn () => $request->user()->unreadNotifications()->count(), 0, true)
                 : 0,
 
-            'system_settings' => fn () => rescue(function () {
+            'system_settings' => fn () => rescue(function () use ($request) {
                 $settings = SystemSetting::first();
 
                 if (! $settings) {
@@ -58,8 +58,8 @@ class HandleInertiaRequests extends Middleware
                     'institution_name' => $settings->institution_name,
                     'office_name' => $settings->office_name,
                     'maintenance_mode' => $settings->maintenance_mode,
-                    'e_signature_url' => $settings->e_signature_path
-                        ? Storage::url($settings->e_signature_path)
+                    'e_signature_url' => $settings->e_signature_path && $request->user()?->can('admin-only')
+                        ? route('settings.signature.image').'?v='.md5($settings->e_signature_path)
                         : null,
                     'logo_url' => $settings->logo_path
                         ? Storage::url($settings->logo_path)

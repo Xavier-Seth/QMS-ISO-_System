@@ -57,6 +57,9 @@ Route::middleware('auth')->group(function () {
     Route::post('/settings/profile', [SettingsController::class, 'updateProfile'])
         ->name('settings.profile.update');
 
+    Route::get('/profile/photo', [SettingsController::class, 'profilePhoto'])
+        ->name('profile.photo');
+
     /*
     |--------------------------------------------------------------------------
     | OFI
@@ -175,6 +178,9 @@ Route::middleware('auth')->group(function () {
 
         Route::post('/settings/system', [SettingsController::class, 'updateSystem'])
             ->name('settings.system.update');
+
+        Route::get('/settings/signature/image', [SettingsController::class, 'signatureImage'])
+            ->name('settings.signature.image');
 
         Route::post('/settings/signature', [SettingsController::class, 'uploadSignature'])
             ->name('settings.signature.upload');

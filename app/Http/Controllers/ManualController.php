@@ -128,7 +128,7 @@ class ManualController extends Controller
         $count = 0;
 
         foreach ($request->file('files') as $file) {
-            $storedPath = $file->store($directory, 'public');
+            $storedPath = $file->store($directory, 'private');
 
             DocumentUpload::create([
                 'document_type_id' => $documentType->id,
@@ -136,7 +136,7 @@ class ManualController extends Controller
                 'status' => 'Active',
                 'file_name' => $file->getClientOriginalName(),
                 'file_path' => $storedPath,
-                'storage_disk' => 'public',
+                'storage_disk' => 'private',
                 'remarks' => $validated['remarks'] ?? null,
             ]);
 
