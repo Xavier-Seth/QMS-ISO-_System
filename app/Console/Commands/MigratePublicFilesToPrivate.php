@@ -112,11 +112,20 @@ class MigratePublicFilesToPrivate extends Command
         }
 
         if (! $this->dryRun) {
-            $stream = Storage::disk('public')->readStream($path);
-            Storage::disk('private')->writeStream($path, $stream);
+            $stream = null;
 
-            if (is_resource($stream)) {
-                fclose($stream);
+            try {
+                $stream = Storage::disk('public')->readStream($path);
+                Storage::disk('private')->writeStream($path, $stream);
+            } catch (\Throwable $e) {
+                $this->error("  [failed] {$label} — copy to private disk failed ({$path}): {$e->getMessage()}");
+                $this->missing++;
+
+                return false;
+            } finally {
+                if (is_resource($stream)) {
+                    fclose($stream);
+                }
             }
 
             if (! Storage::disk('private')->exists($path)) {
