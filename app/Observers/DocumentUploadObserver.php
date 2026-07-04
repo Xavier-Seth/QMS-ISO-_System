@@ -95,6 +95,10 @@ class DocumentUploadObserver
 
         $upload->loadMissing(['uploader', 'documentType.series', 'ofiRecord', 'dcrRecord']);
 
+        if ($this->isManual($upload)) {
+            return;
+        }
+
         $this->activityLogService->logModelEvent(
             module: $this->resolveModule($upload),
             action: 'deleted',
@@ -114,7 +118,9 @@ class DocumentUploadObserver
     /**
      * Uploads linked to a DCR/OFI/CAR record are audit-logged by the record
      * controllers (published/approved); the observer must stay silent for
-     * them to avoid duplicate activity log entries.
+     * them to avoid duplicate activity log entries. Manual deletions are
+     * likewise logged by ManualController::destroy, so deleted() skips
+     * manuals while created() remains their sole upload-audit source.
      */
     private function isRecordLinked(DocumentUpload $upload): bool
     {
