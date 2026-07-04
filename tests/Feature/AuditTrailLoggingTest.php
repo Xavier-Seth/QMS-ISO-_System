@@ -408,7 +408,7 @@ class AuditTrailLoggingTest extends TestCase
         $this->assertSame(0, ActivityLog::query()->count());
     }
 
-    public function test_standalone_document_upload_is_logged_once_by_observer(): void
+    public function test_standalone_document_upload_is_not_logged_by_observer(): void
     {
         $user = User::factory()->create([
             'username' => 'uploadauditdocs',
@@ -432,7 +432,7 @@ class AuditTrailLoggingTest extends TestCase
 
         ActivityLog::query()->delete();
 
-        $upload = DocumentUpload::query()->create([
+        DocumentUpload::query()->create([
             'document_type_id' => $documentType->id,
             'uploaded_by' => $user->id,
             'file_name' => 'standalone.pdf',
@@ -440,10 +440,8 @@ class AuditTrailLoggingTest extends TestCase
             'storage_disk' => 'private',
         ]);
 
-        $this->assertSame(1, ActivityLog::query()
-            ->where('module', 'documents')
+        $this->assertSame(0, ActivityLog::query()
             ->where('action', 'uploaded')
-            ->where('entity_id', $upload->id)
             ->count());
     }
 

@@ -7,6 +7,13 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class DocumentUpload extends Model
 {
+    /**
+     * Runtime-only flag (not persisted): set by a controller that writes its
+     * own "deleted" activity log entry before deleting this upload, so
+     * DocumentUploadObserver::deleted() stays silent for that deletion.
+     */
+    public bool $deletionAuditLoggedByController = false;
+
     protected $fillable = [
         'document_type_id',
         'uploaded_by',

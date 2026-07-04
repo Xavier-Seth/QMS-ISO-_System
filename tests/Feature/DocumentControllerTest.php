@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\CarRecord;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
@@ -304,7 +305,7 @@ class DocumentControllerTest extends TestCase
         $content = $response->getContent();
 
         $this->assertStringContainsString(
-            'documents\\/uploads\\/' . $upload->id . '\\/download',
+            'documents\\/uploads\\/'.$upload->id.'\\/download',
             $content
         );
         $this->assertStringContainsString('can_preview&quot;:false', $content);
@@ -391,5 +392,224 @@ class DocumentControllerTest extends TestCase
         $response->assertRedirect(route('documents.show', $documentType));
         $response->assertSessionHasErrors(['files.0']);
         $this->assertDatabaseCount('document_uploads', 0);
+    }
+
+    public function test_standalone_upload_creates_exactly_one_audit_entry(): void
+    {
+        Storage::fake('private');
+
+        $user = User::factory()->create([
+            'username' => 'adminauditupload',
+            'role' => 'admin',
+        ]);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'R-QMS',
+            'name' => 'Records',
+        ]);
+
+        $documentType = DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'R-QMS-030',
+            'title' => 'Standalone Audit Test',
+            'storage' => 'Electronic',
+            'status' => 'Active',
+            'requires_revision' => false,
+        ]);
+
+        ActivityLog::query()->delete();
+
+        $this->actingAs($user)
+            ->post(route('documents.upload', $documentType), [
+                'files' => [
+                    UploadedFile::fake()->create('standalone.pdf', 10, 'application/pdf'),
+                ],
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'uploaded')->count());
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'documents')
+            ->where('action', 'uploaded')
+            ->count());
+    }
+
+    public function test_performance_upload_via_documents_page_creates_exactly_one_audit_entry(): void
+    {
+        Storage::fake('private');
+
+        $user = User::factory()->create([
+            'username' => 'adminauditperfdocs',
+            'role' => 'admin',
+        ]);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'IPCR',
+            'name' => 'Individual Performance',
+        ]);
+
+        $documentType = DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'PERF-IPCR',
+            'title' => 'IPCR Performance Records',
+            'storage' => 'Electronic',
+            'status' => 'Active',
+            'requires_revision' => false,
+        ]);
+
+        ActivityLog::query()->delete();
+
+        $this->actingAs($user)
+            ->post(route('documents.upload', $documentType), [
+                'files' => [
+                    UploadedFile::fake()->create('ipcr-target.pdf', 10, 'application/pdf'),
+                ],
+                'performance_record_type' => 'TARGET',
+                'year' => 2026,
+                'period' => 'JAN_JUN',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'uploaded')->count());
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'performance')
+            ->where('action', 'uploaded')
+            ->count());
+    }
+
+    public function test_performance_upload_via_performance_page_creates_exactly_one_audit_entry(): void
+    {
+        Storage::fake('public');
+
+        $user = User::factory()->create([
+            'username' => 'adminauditperfpage',
+            'role' => 'admin',
+        ]);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'IPCR',
+            'name' => 'Individual Performance',
+        ]);
+
+        DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'PERF-IPCR',
+            'title' => 'IPCR Performance Records',
+            'storage' => 'Electronic',
+            'status' => 'Active',
+            'requires_revision' => false,
+        ]);
+
+        ActivityLog::query()->delete();
+
+        $this->actingAs($user)
+            ->post(route('performance.upload'), [
+                'performance_category' => 'IPCR',
+                'performance_record_type' => 'TARGET',
+                'year' => 2026,
+                'period' => 'JAN_JUN',
+                'files' => [
+                    UploadedFile::fake()->create('ipcr-target.pdf', 10, 'application/pdf'),
+                ],
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'uploaded')->count());
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'performance')
+            ->where('action', 'uploaded')
+            ->count());
+    }
+
+    public function test_single_upload_delete_creates_exactly_one_audit_entry(): void
+    {
+        Storage::fake('private');
+
+        $user = User::factory()->create([
+            'username' => 'adminauditdelete',
+            'role' => 'admin',
+        ]);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'R-QMS',
+            'name' => 'Records',
+        ]);
+
+        $documentType = DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'R-QMS-031',
+            'title' => 'Delete Audit Test',
+            'storage' => 'Electronic',
+            'status' => 'Active',
+            'requires_revision' => false,
+        ]);
+
+        $upload = DocumentUpload::query()->create([
+            'document_type_id' => $documentType->id,
+            'uploaded_by' => $user->id,
+            'file_name' => 'delete-me.pdf',
+            'file_path' => 'qms/R-QMS-031/delete-me.pdf',
+            'storage_disk' => 'private',
+        ]);
+
+        ActivityLog::query()->delete();
+
+        $this->actingAs($user)
+            ->delete(route('documents.uploads.destroy', $upload))
+            ->assertRedirect();
+
+        $this->assertDatabaseMissing('document_uploads', ['id' => $upload->id]);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'deleted')->count());
+    }
+
+    public function test_bulk_type_delete_keeps_summary_and_per_file_entries(): void
+    {
+        Storage::fake('private');
+
+        $user = User::factory()->create([
+            'username' => 'adminauditbulk',
+            'role' => 'admin',
+        ]);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'R-QMS',
+            'name' => 'Records',
+        ]);
+
+        $documentType = DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'R-QMS-032',
+            'title' => 'Bulk Delete Audit Test',
+            'storage' => 'Electronic',
+            'status' => 'Active',
+            'requires_revision' => false,
+        ]);
+
+        foreach (['bulk-one.pdf', 'bulk-two.pdf'] as $fileName) {
+            DocumentUpload::query()->create([
+                'document_type_id' => $documentType->id,
+                'uploaded_by' => $user->id,
+                'file_name' => $fileName,
+                'file_path' => 'qms/R-QMS-032/'.$fileName,
+                'storage_disk' => 'private',
+            ]);
+        }
+
+        ActivityLog::query()->delete();
+
+        $this->actingAs($user)
+            ->delete(route('documents.types.destroy', $documentType))
+            ->assertRedirect();
+
+        $this->assertDatabaseMissing('document_types', ['id' => $documentType->id]);
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('action', 'deleted')
+            ->where('entity_type', DocumentType::class)
+            ->count());
+        $this->assertSame(2, ActivityLog::query()
+            ->where('action', 'deleted')
+            ->where('entity_type', DocumentUpload::class)
+            ->count());
     }
 }

@@ -849,7 +849,7 @@ class DocumentController extends Controller
 
             try {
                 if ($isRevisionControlled && ! $isPerformanceForm) {
-                    DB::transaction(function () use ($documentType, $uploadAttributes) {
+                    $upload = DB::transaction(function () use ($documentType, $uploadAttributes) {
                         DocumentType::query()
                             ->whereKey($documentType->id)
                             ->lockForUpdate()
@@ -860,16 +860,28 @@ class DocumentController extends Controller
                             ->where('status', 'Active')
                             ->update(['status' => 'Obsolete']);
 
-                        DocumentUpload::create($uploadAttributes);
+                        return DocumentUpload::create($uploadAttributes);
                     });
                 } else {
-                    DocumentUpload::create($uploadAttributes);
+                    $upload = DocumentUpload::create($uploadAttributes);
                 }
             } catch (\Throwable $e) {
                 Storage::disk($storageDisk)->delete($path);
 
                 throw $e;
             }
+
+            $this->activityLogService->log([
+                'module' => $isPerformanceForm ? 'performance' : $this->resolveModuleFromUpload($upload),
+                'action' => 'uploaded',
+                'entity_type' => DocumentUpload::class,
+                'entity_id' => $upload->id,
+                'record_label' => $this->resolveDocumentRecordLabel($upload),
+                'file_type' => $this->activityLogService->extensionFromFileName($upload->file_name),
+                'description' => $isPerformanceForm
+                    ? 'Uploaded performance file '.($upload->file_name ?: 'Upload #'.$upload->id)
+                    : 'Uploaded document '.$this->resolveDocumentRecordLabel($upload).($upload->revision ? ' revision '.$upload->revision : ''),
+            ]);
 
             $created++;
         }
@@ -906,6 +918,8 @@ class DocumentController extends Controller
         $previewDisk = $upload->getPreviewDiskName();
         $previewPath = $upload->preview_path;
         $hasPreview = $upload->hasPreviewCache();
+
+        $upload->deletionAuditLoggedByController = true;
 
         DB::transaction(function () use ($upload, $shouldPromote) {
             if ($shouldPromote) {
