@@ -10,11 +10,14 @@ class DocumentUploadObserver
 {
     public function __construct(
         protected ActivityLogService $activityLogService
-    ) {
-    }
+    ) {}
 
     public function created(DocumentUpload $upload): void
     {
+        if ($this->isRecordLinked($upload)) {
+            return;
+        }
+
         $upload->loadMissing(['uploader', 'documentType.series', 'ofiRecord', 'dcrRecord']);
 
         [$module, $recordLabel, $description] = $this->buildCreatedMessage($upload);
@@ -32,6 +35,10 @@ class DocumentUploadObserver
 
     public function updated(DocumentUpload $upload): void
     {
+        if ($this->isRecordLinked($upload)) {
+            return;
+        }
+
         $upload->loadMissing(['uploader', 'documentType.series', 'ofiRecord', 'dcrRecord']);
 
         $important = [
@@ -82,6 +89,10 @@ class DocumentUploadObserver
 
     public function deleted(DocumentUpload $upload): void
     {
+        if ($this->isRecordLinked($upload)) {
+            return;
+        }
+
         $upload->loadMissing(['uploader', 'documentType.series', 'ofiRecord', 'dcrRecord']);
 
         $this->activityLogService->logModelEvent(
@@ -89,7 +100,7 @@ class DocumentUploadObserver
             action: 'deleted',
             model: $upload,
             recordLabel: $this->resolveRecordLabel($upload),
-            description: 'Deleted upload ' . $this->resolveRecordLabel($upload),
+            description: 'Deleted upload '.$this->resolveRecordLabel($upload),
             fileType: $this->resolveFileType($upload),
             oldValues: [
                 'file_name' => $upload->file_name,
@@ -100,10 +111,22 @@ class DocumentUploadObserver
         );
     }
 
+    /**
+     * Uploads linked to a DCR/OFI/CAR record are audit-logged by the record
+     * controllers (published/approved); the observer must stay silent for
+     * them to avoid duplicate activity log entries.
+     */
+    private function isRecordLinked(DocumentUpload $upload): bool
+    {
+        return $upload->ofi_record_id !== null
+            || $upload->dcr_record_id !== null
+            || $upload->car_record_id !== null;
+    }
+
     private function buildCreatedMessage(DocumentUpload $upload): array
     {
         if ($upload->ofi_record_id && $upload->ofiRecord) {
-            $record = $upload->ofiRecord->ofi_no ?: 'OFI #' . $upload->ofiRecord->id;
+            $record = $upload->ofiRecord->ofi_no ?: 'OFI #'.$upload->ofiRecord->id;
 
             return [
                 'ofi',
@@ -113,7 +136,7 @@ class DocumentUploadObserver
         }
 
         if ($upload->dcr_record_id && $upload->dcrRecord) {
-            $record = $upload->dcrRecord->dcr_no ?: 'DCR #' . $upload->dcrRecord->id;
+            $record = $upload->dcrRecord->dcr_no ?: 'DCR #'.$upload->dcrRecord->id;
 
             return [
                 'dcr',
@@ -178,16 +201,16 @@ class DocumentUploadObserver
     private function resolveRecordLabel(DocumentUpload $upload): string
     {
         if ($upload->ofi_record_id && $upload->ofiRecord) {
-            return $upload->ofiRecord->ofi_no ?: 'OFI #' . $upload->ofiRecord->id;
+            return $upload->ofiRecord->ofi_no ?: 'OFI #'.$upload->ofiRecord->id;
         }
 
         if ($upload->dcr_record_id && $upload->dcrRecord) {
-            return $upload->dcrRecord->dcr_no ?: 'DCR #' . $upload->dcrRecord->id;
+            return $upload->dcrRecord->dcr_no ?: 'DCR #'.$upload->dcrRecord->id;
         }
 
         return $upload->documentType?->code
             ?: $upload->file_name
-            ?: 'Upload #' . $upload->id;
+            ?: 'Upload #'.$upload->id;
     }
 
     private function resolveFileType(DocumentUpload $upload): ?string
@@ -200,7 +223,7 @@ class DocumentUploadObserver
     {
         $type = $upload->documentType;
 
-        if (!$type) {
+        if (! $type) {
             return false;
         }
 

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\CarRecord;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
@@ -421,6 +422,12 @@ class CarDynamicFieldsTest extends TestCase
         $this->assertStringContainsString('CAR-PUBLISH-001', $documentXml);
         $this->assertStringContainsString('QMS-CAR', $documentXml);
         $this->assertStringNotContainsString('${officeCode}', $documentXml);
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'car')
+            ->where('action', 'published')
+            ->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'uploaded')->count());
     }
 
     public function test_existing_public_car_upload_can_still_be_downloaded(): void
@@ -552,6 +559,14 @@ class CarDynamicFieldsTest extends TestCase
         Storage::disk('private')->assertExists($path);
         Storage::disk('public')->assertMissing($path);
         Storage::disk('private')->assertMissing('previews/old-car-preview.pdf');
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'car')
+            ->where('action', 'published')
+            ->count());
+        $this->assertSame(0, ActivityLog::query()
+            ->whereIn('action', ['uploaded', 'replaced'])
+            ->count());
     }
 
     public function test_published_car_download_regenerates_from_active_template(): void
@@ -628,11 +643,11 @@ class CarDynamicFieldsTest extends TestCase
 
     private function storeMinimalCarTemplate(string $disk, string $path, User $uploadedBy): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $phpWord->addSection()->addText('${carNo} ${officeCode}');
 
         $tmpBasePath = tempnam(sys_get_temp_dir(), 'car_template_');
-        $tmpPath = $tmpBasePath . '.docx';
+        $tmpPath = $tmpBasePath.'.docx';
         @unlink($tmpBasePath);
 
         IOFactory::createWriter($phpWord, 'Word2007')->save($tmpPath);
@@ -656,7 +671,7 @@ class CarDynamicFieldsTest extends TestCase
 
     private function readDocxDocumentXml(string $path): string
     {
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
 
         $this->assertTrue($zip->open($path));
 

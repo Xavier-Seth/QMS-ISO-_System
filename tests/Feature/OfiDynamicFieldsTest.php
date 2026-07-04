@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
@@ -473,6 +474,12 @@ class OfiDynamicFieldsTest extends TestCase
         $this->assertStringContainsString('OFI-PUBLISH-001', $documentXml);
         $this->assertStringContainsString('QMS-ISO', $documentXml);
         $this->assertStringNotContainsString('${officeCode}', $documentXml);
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'ofi')
+            ->where('action', 'published')
+            ->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'uploaded')->count());
     }
 
     public function test_existing_public_ofi_upload_can_still_be_downloaded(): void
@@ -677,11 +684,11 @@ class OfiDynamicFieldsTest extends TestCase
 
     private function storeMinimalOfiTemplate(string $disk, string $path, User $uploadedBy): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $phpWord->addSection()->addText('${ofiNo} ${officeCode}');
 
         $tmpBasePath = tempnam(sys_get_temp_dir(), 'ofi_template_');
-        $tmpPath = $tmpBasePath . '.docx';
+        $tmpPath = $tmpBasePath.'.docx';
         @unlink($tmpBasePath);
 
         IOFactory::createWriter($phpWord, 'Word2007')->save($tmpPath);
@@ -705,7 +712,7 @@ class OfiDynamicFieldsTest extends TestCase
 
     private function readDocxDocumentXml(string $path): string
     {
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
 
         $this->assertTrue($zip->open($path));
 

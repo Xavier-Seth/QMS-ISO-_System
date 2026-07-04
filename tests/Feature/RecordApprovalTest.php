@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\CarRecord;
 use App\Models\DcrRecord;
 use App\Models\DocumentSeries;
@@ -296,6 +297,12 @@ class RecordApprovalTest extends TestCase
         $this->assertNotNull($upload, 'Expected a DocumentUpload to be created on OFI approval.');
         $this->assertSame('private', $upload->storage_disk);
         $this->assertEmpty(Storage::disk('public')->allFiles());
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'ofi')
+            ->where('action', 'approved')
+            ->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'uploaded')->count());
     }
 
     // --- Finding #6: CAR ---
@@ -354,6 +361,12 @@ class RecordApprovalTest extends TestCase
         $this->assertNotNull($upload, 'Expected a DocumentUpload to be created on CAR approval.');
         $this->assertSame('private', $upload->storage_disk);
         $this->assertEmpty(Storage::disk('public')->allFiles());
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'car')
+            ->where('action', 'approved')
+            ->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'uploaded')->count());
     }
 
     public function test_car_approve_returns_error_when_record_deleted_before_lock(): void
@@ -461,6 +474,63 @@ class RecordApprovalTest extends TestCase
 
         $this->assertSame('private', $upload->storage_disk);
         $this->assertEmpty(Storage::disk('public')->allFiles());
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'dcr')
+            ->where('action', 'published')
+            ->count());
+        $this->assertSame(0, ActivityLog::query()
+            ->whereIn('action', ['uploaded', 'replaced'])
+            ->count());
+    }
+
+    public function test_dcr_approval_creates_exactly_one_audit_entry(): void
+    {
+        Storage::fake('private');
+        Storage::fake('public');
+
+        $admin = User::factory()->create(['username' => 'admindcraudit', 'role' => 'admin']);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'R-QMS',
+            'name' => 'Records',
+        ]);
+
+        DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'R-QMS-013',
+            'title' => 'Document Change Request Records',
+            'storage' => 'Electronic',
+            'status' => 'active',
+        ]);
+
+        $this->storeMinimalTemplate('DCR', 'private', 'qms/templates/dcr/test-dcr-audit.docx', $admin);
+
+        $record = DcrRecord::query()->create([
+            'document_type_id' => null,
+            'dcr_no' => 'DCR-AUDIT-001',
+            'status' => 'submitted',
+            'workflow_status' => 'pending',
+            'resolution_status' => 'open',
+            'data' => ['dcrNo' => 'DCR-AUDIT-001', 'dynamic' => []],
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        ActivityLog::query()->delete();
+
+        $response = $this
+            ->actingAs($admin)
+            ->post(route('dcr.inbox.approve', $record));
+
+        $response->assertRedirect();
+        $response->assertSessionHas('success');
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'dcr')
+            ->where('action', 'approved')
+            ->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'uploaded')->count());
     }
 
     private function storeMinimalTemplate(string $module, string $disk, string $path, User $uploadedBy): void

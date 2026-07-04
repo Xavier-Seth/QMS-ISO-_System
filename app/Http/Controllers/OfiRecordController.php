@@ -461,6 +461,18 @@ class OfiRecordController extends Controller
             'updated_by' => auth()->id(),
         ]);
 
+        $this->activityLogService->log([
+            'module' => 'ofi',
+            'action' => 'submitted',
+            'entity_type' => OfiRecord::class,
+            'entity_id' => $ofiRecord->id,
+            'record_label' => $ofiRecord->ofi_no ?: 'OFI #'.$ofiRecord->id,
+            'file_type' => null,
+            'description' => $isResubmission
+                ? 'OFI corrected and resubmitted to admin.'
+                : 'OFI submitted to admin for approval.',
+        ]);
+
         User::where('role', 'admin')->get()
             ->each->notify(new RecordSubmittedNotification($ofiRecord, 'ofi'));
 
@@ -658,6 +670,20 @@ class OfiRecordController extends Controller
             'updated_by' => auth()->id(),
         ]);
 
+        $this->activityLogService->log([
+            'module' => 'ofi',
+            'action' => 'rejected',
+            'entity_type' => OfiRecord::class,
+            'entity_id' => $ofiRecord->id,
+            'record_label' => $ofiRecord->ofi_no ?: 'OFI #'.$ofiRecord->id,
+            'file_type' => null,
+            'description' => 'Rejected OFI and returned for correction.',
+            'new_values' => [
+                'workflow_status' => 'rejected',
+                'rejection_reason' => $validated['rejection_reason'],
+            ],
+        ]);
+
         $ofiRecord->creator?->notify(
             new RecordDecisionNotification($ofiRecord, 'ofi', 'rejected', $validated['rejection_reason'])
         );
@@ -697,6 +723,17 @@ class OfiRecordController extends Controller
         $ofiRecord->update([
             'resolution_status' => $newStatus,
             'updated_by' => auth()->id(),
+        ]);
+
+        $this->activityLogService->log([
+            'module' => 'ofi',
+            'action' => 'resolution_status_changed',
+            'entity_type' => OfiRecord::class,
+            'entity_id' => $ofiRecord->id,
+            'record_label' => $ofiRecord->ofi_no ?: 'OFI #'.$ofiRecord->id,
+            'description' => "OFI resolution status changed from {$currentStatus} to {$newStatus}",
+            'old_values' => ['resolution_status' => $currentStatus],
+            'new_values' => ['resolution_status' => $newStatus],
         ]);
 
         return response()->json([
