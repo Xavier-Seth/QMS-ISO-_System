@@ -398,6 +398,14 @@ class DocumentController extends Controller
 
     public function show(Request $request, DocumentType $documentType)
     {
+        $documentType->loadMissing('series');
+
+        if (strtoupper((string) $documentType->series?->code_prefix) === 'MANUAL') {
+            return back()->withErrors([
+                'documents' => 'Manual document types cannot be viewed from the Documents module.',
+            ]);
+        }
+
         $q = trim((string) $request->input('q', ''));
         $status = (string) $request->input('status', 'All');
         $sort = (string) $request->input('sort', 'latest');
@@ -766,6 +774,14 @@ class DocumentController extends Controller
 
     public function upload(Request $request, DocumentType $documentType)
     {
+        $documentType->loadMissing('series');
+
+        if (strtoupper((string) $documentType->series?->code_prefix) === 'MANUAL') {
+            return back()->withErrors([
+                'upload' => 'Manual document types cannot be uploaded to from the Documents module.',
+            ]);
+        }
+
         if ($documentType->isObsolete()) {
             return back()->withErrors([
                 'upload' => "This document type ({$documentType->code}) is obsolete and cannot accept new uploads.",

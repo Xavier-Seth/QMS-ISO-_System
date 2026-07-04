@@ -612,4 +612,80 @@ class DocumentControllerTest extends TestCase
             ->where('entity_type', DocumentUpload::class)
             ->count());
     }
+
+    public function test_upload_rejects_manual_document_type(): void
+    {
+        Storage::fake('private');
+
+        $user = User::factory()->create([
+            'username' => 'adminmanualreject',
+            'role' => 'admin',
+        ]);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'MANUAL',
+            'name' => 'Manuals',
+        ]);
+
+        $documentType = DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'MANUAL-QSM-CONTROLLED',
+            'title' => 'QSM Controlled Manual',
+            'storage' => 'Electronic',
+            'status' => 'Active',
+        ]);
+
+        ActivityLog::query()->delete();
+
+        $response = $this
+            ->actingAs($user)
+            ->from(route('documents.index'))
+            ->post(route('documents.upload', $documentType), [
+                'files' => [
+                    UploadedFile::fake()->create('sneaky-manual.pdf', 10, 'application/pdf'),
+                ],
+            ]);
+
+        $response->assertRedirect(route('documents.index'));
+        $response->assertSessionHasErrors(['upload']);
+
+        $this->assertDatabaseCount('document_uploads', 0);
+        $this->assertSame(0, ActivityLog::query()->count());
+    }
+
+    public function test_upload_still_succeeds_for_standard_document_type(): void
+    {
+        Storage::fake('private');
+
+        $user = User::factory()->create([
+            'username' => 'adminstandardupload',
+            'role' => 'admin',
+        ]);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'R-QMS',
+            'name' => 'Records',
+        ]);
+
+        $documentType = DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'R-QMS-040',
+            'title' => 'Standard Upload Test',
+            'storage' => 'Electronic',
+            'status' => 'Active',
+            'requires_revision' => false,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->post(route('documents.upload', $documentType), [
+                'files' => [
+                    UploadedFile::fake()->create('standard.pdf', 10, 'application/pdf'),
+                ],
+            ]);
+
+        $response->assertRedirect();
+        $response->assertSessionDoesntHaveErrors();
+        $this->assertDatabaseCount('document_uploads', 1);
+    }
 }
