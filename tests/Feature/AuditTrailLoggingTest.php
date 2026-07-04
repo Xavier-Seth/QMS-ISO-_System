@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ActivityLog;
 use App\Models\CarRecord;
+use App\Models\DcrRecord;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
@@ -108,6 +109,24 @@ class AuditTrailLoggingTest extends TestCase
             $table->timestamps();
         });
 
+        Schema::create('dcr_records', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('document_type_id')->nullable()->constrained('document_types')->nullOnDelete();
+            $table->string('dcr_no')->nullable();
+            $table->string('to_for')->nullable();
+            $table->string('from')->nullable();
+            $table->string('status')->default('draft');
+            $table->string('workflow_status')->nullable();
+            $table->string('resolution_status')->default('open');
+            $table->text('rejection_reason')->nullable();
+            $table->timestamp('rejected_at')->nullable();
+            $table->foreignId('rejected_by')->nullable()->constrained('users')->nullOnDelete();
+            $table->json('data')->nullable();
+            $table->foreignId('created_by')->constrained('users')->restrictOnDelete();
+            $table->foreignId('updated_by')->constrained('users')->restrictOnDelete();
+            $table->timestamps();
+        });
+
         Schema::create('qms_dynamic_fields', function (Blueprint $table) {
             $table->id();
             $table->string('module', 50);
@@ -143,7 +162,7 @@ class AuditTrailLoggingTest extends TestCase
         });
     }
 
-    public function test_car_record_creation_is_logged_by_observer(): void
+    public function test_draft_record_creation_logs_nothing(): void
     {
         $user = User::factory()->create([
             'username' => 'carauditcreator',
@@ -152,7 +171,9 @@ class AuditTrailLoggingTest extends TestCase
 
         $this->actingAs($user);
 
-        $record = CarRecord::query()->create([
+        ActivityLog::query()->delete();
+
+        CarRecord::query()->create([
             'car_no' => 'CAR-AUDIT-001',
             'status' => 'draft',
             'data' => [],
@@ -160,17 +181,26 @@ class AuditTrailLoggingTest extends TestCase
             'updated_by' => $user->id,
         ]);
 
-        $this->assertDatabaseHas('activity_logs', [
-            'module' => 'car',
-            'action' => 'created',
-            'entity_type' => CarRecord::class,
-            'entity_id' => $record->id,
-            'record_label' => 'CAR-AUDIT-001',
-            'user_id' => $user->id,
+        OfiRecord::query()->create([
+            'ofi_no' => 'OFI-AUDIT-DRAFT',
+            'status' => 'draft',
+            'data' => [],
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
         ]);
+
+        DcrRecord::query()->create([
+            'dcr_no' => 'DCR-AUDIT-DRAFT',
+            'status' => 'draft',
+            'data' => [],
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        $this->assertSame(0, ActivityLog::query()->count());
     }
 
-    public function test_car_record_status_change_is_logged_by_observer(): void
+    public function test_draft_edit_and_status_change_log_nothing(): void
     {
         $user = User::factory()->create([
             'username' => 'carauditstatus',
@@ -187,13 +217,12 @@ class AuditTrailLoggingTest extends TestCase
             'updated_by' => $user->id,
         ]);
 
+        ActivityLog::query()->delete();
+
+        $record->update(['car_no' => 'CAR-AUDIT-002-EDITED', 'data' => ['carNo' => 'CAR-AUDIT-002-EDITED']]);
         $record->update(['status' => 'submitted']);
 
-        $this->assertDatabaseHas('activity_logs', [
-            'module' => 'car',
-            'action' => 'status_changed',
-            'entity_id' => $record->id,
-        ]);
+        $this->assertSame(0, ActivityLog::query()->count());
     }
 
     public function test_car_workflow_status_change_alone_is_not_logged_by_observer(): void
@@ -310,6 +339,76 @@ class AuditTrailLoggingTest extends TestCase
             ->where('action', 'submitted')
             ->where('entity_id', $record->id)
             ->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'status_changed')->count());
+        $this->assertSame(1, ActivityLog::query()->count());
+    }
+
+    public function test_car_submit_is_logged_exactly_once(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create([
+            'username' => 'carauditsubmitter',
+            'role' => 'user',
+        ]);
+
+        $record = CarRecord::query()->create([
+            'car_no' => 'CAR-AUDIT-SUBMIT',
+            'status' => 'draft',
+            'data' => [],
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        ActivityLog::query()->delete();
+
+        $response = $this
+            ->actingAs($user)
+            ->postJson(route('car.records.submit', $record));
+
+        $response->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'car')
+            ->where('action', 'submitted')
+            ->where('entity_id', $record->id)
+            ->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'status_changed')->count());
+        $this->assertSame(1, ActivityLog::query()->count());
+    }
+
+    public function test_dcr_submit_is_logged_exactly_once(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create([
+            'username' => 'dcrauditsubmitter',
+            'role' => 'user',
+        ]);
+
+        $record = DcrRecord::query()->create([
+            'dcr_no' => 'DCR-AUDIT-SUBMIT',
+            'status' => 'draft',
+            'data' => [],
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        ActivityLog::query()->delete();
+
+        $response = $this
+            ->actingAs($user)
+            ->postJson(route('dcr.records.submit', $record));
+
+        $response->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'dcr')
+            ->where('action', 'submitted')
+            ->where('entity_id', $record->id)
+            ->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'status_changed')->count());
+        $this->assertSame(1, ActivityLog::query()->count());
     }
 
     public function test_ofi_reject_is_logged_exactly_once(): void
