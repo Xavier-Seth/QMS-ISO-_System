@@ -336,6 +336,17 @@ class CarRecordController extends Controller
             'updated_by' => auth()->id(),
         ]);
 
+        $this->activityLogService->log([
+            'module' => 'car',
+            'action' => 'resolution_status_changed',
+            'entity_type' => CarRecord::class,
+            'entity_id' => $carRecord->id,
+            'record_label' => $carRecord->car_no ?: 'CAR #'.$carRecord->id,
+            'description' => "CAR resolution status changed from {$currentStatus} to {$newStatus}",
+            'old_values' => ['resolution_status' => $currentStatus],
+            'new_values' => ['resolution_status' => $newStatus],
+        ]);
+
         return response()->json([
             'message' => 'CAR resolution status updated successfully.',
             'resolution_status' => $carRecord->resolution_status,

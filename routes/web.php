@@ -315,8 +315,6 @@ Route::middleware('auth')->group(function () {
         Route::get('/performance/uploads/{upload}/download', [PerformanceController::class, 'download'])
             ->name('performance.uploads.download');
 
-        Route::get('/upload', fn () => Inertia::render('Upload'))->name('upload');
-
         /*
         |--------------------------------------------------------------------------
         | Unified Admin Inbox

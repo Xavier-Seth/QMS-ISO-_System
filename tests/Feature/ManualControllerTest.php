@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
 use App\Models\DocumentUpload;
@@ -400,6 +401,31 @@ class ManualControllerTest extends TestCase
             ->assertRedirect();
 
         $this->assertDatabaseMissing('document_uploads', ['id' => $upload->id]);
+    }
+
+    public function test_manual_delete_creates_exactly_one_audit_entry(): void
+    {
+        Storage::fake('public');
+
+        $series = $this->makeSeries();
+        $admin = $this->makeAdmin();
+        $type = $this->makeType($series, 'ASM', 'controlled');
+        $upload = $this->makeUpload($type, $admin, 'Active');
+
+        ActivityLog::query()->delete();
+
+        $this->actingAs($admin)
+            ->delete(route('manual.uploads.destroy', $upload))
+            ->assertRedirect();
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('action', 'deleted')
+            ->count());
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'manuals')
+            ->where('action', 'deleted')
+            ->where('entity_id', $upload->id)
+            ->count());
     }
 
     public function test_non_admin_cannot_delete_file(): void

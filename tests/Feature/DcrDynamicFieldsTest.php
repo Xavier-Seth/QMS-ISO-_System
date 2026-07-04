@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\DcrRecord;
 use App\Models\DocumentSeries;
 use App\Models\DocumentType;
@@ -428,15 +429,21 @@ class DcrDynamicFieldsTest extends TestCase
         $this->assertSame('private', $upload->storage_disk);
         Storage::disk('private')->assertExists($upload->file_path);
         Storage::disk('public')->assertMissing($upload->file_path);
+
+        $this->assertSame(1, ActivityLog::query()
+            ->where('module', 'dcr')
+            ->where('action', 'published')
+            ->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'uploaded')->count());
     }
 
     private function storeMinimalDcrTemplate(string $disk, string $path): string
     {
-        $phpWord = new PhpWord();
+        $phpWord = new PhpWord;
         $phpWord->addSection()->addText('${dcrNo}');
 
         $tmpBasePath = tempnam(sys_get_temp_dir(), 'dcr_template_');
-        $tmpPath = $tmpBasePath . '.docx';
+        $tmpPath = $tmpBasePath.'.docx';
         @unlink($tmpBasePath);
 
         IOFactory::createWriter($phpWord, 'Word2007')->save($tmpPath);

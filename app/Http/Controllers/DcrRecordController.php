@@ -306,37 +306,28 @@ class DcrRecordController extends Controller
 
     public function store(Request $request)
     {
-        try {
-            $payload = $request->all();
-            $isAdmin = $this->isAdminUser();
+        $payload = $request->all();
+        $isAdmin = $this->isAdminUser();
 
-            $record = DcrRecord::create([
-                'document_type_id' => $this->rQms013TypeId(),
-                'dcr_no' => $payload['dcrNo'] ?? null,
-                'to_for' => $payload['toFor'] ?? null,
-                'from' => $payload['from'] ?? null,
-                'status' => 'draft',
-                'workflow_status' => $isAdmin ? 'approved' : null,
-                'resolution_status' => 'open',
-                'data' => $payload,
-                'created_by' => auth()->id(),
-                'updated_by' => auth()->id(),
-            ]);
+        $record = DcrRecord::create([
+            'document_type_id' => $this->rQms013TypeId(),
+            'dcr_no' => $payload['dcrNo'] ?? null,
+            'to_for' => $payload['toFor'] ?? null,
+            'from' => $payload['from'] ?? null,
+            'status' => 'draft',
+            'workflow_status' => $isAdmin ? 'approved' : null,
+            'resolution_status' => 'open',
+            'data' => $payload,
+            'created_by' => auth()->id(),
+            'updated_by' => auth()->id(),
+        ]);
 
-            return response()->json([
-                'id' => $record->id,
-                'status' => $record->status,
-                'workflow_status' => $record->workflow_status,
-                'resolution_status' => $record->resolution_status,
-            ]);
-        } catch (\Throwable $e) {
-            return response()->json([
-                'message' => 'Failed to save DCR draft.',
-                'error' => $e->getMessage(),
-                'line' => $e->getLine(),
-                'file' => $e->getFile(),
-            ], 500);
-        }
+        return response()->json([
+            'id' => $record->id,
+            'status' => $record->status,
+            'workflow_status' => $record->workflow_status,
+            'resolution_status' => $record->resolution_status,
+        ]);
     }
 
     public function show(Request $request, DcrRecord $dcrRecord)

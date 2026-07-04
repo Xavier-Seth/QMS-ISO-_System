@@ -2,10 +2,12 @@
 
 namespace App\Providers;
 
+use App\Models\CarRecord;
 use App\Models\DcrRecord;
 use App\Models\DocumentUpload;
 use App\Models\OfiRecord;
 use App\Models\User;
+use App\Observers\CarRecordObserver;
 use App\Observers\DcrRecordObserver;
 use App\Observers\DocumentUploadObserver;
 use App\Observers\OfiRecordObserver;
@@ -30,6 +32,7 @@ class AppServiceProvider extends ServiceProvider
         DocumentUpload::observe(DocumentUploadObserver::class);
         OfiRecord::observe(OfiRecordObserver::class);
         DcrRecord::observe(DcrRecordObserver::class);
+        CarRecord::observe(CarRecordObserver::class);
         User::observe(UserObserver::class);
     }
 }
