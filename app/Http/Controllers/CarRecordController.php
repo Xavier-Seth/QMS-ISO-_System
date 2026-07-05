@@ -434,6 +434,23 @@ class CarRecordController extends Controller
         ]);
     }
 
+    public function destroy(CarRecord $carRecord)
+    {
+        abort_unless(
+            (int) $carRecord->created_by === (int) auth()->id(),
+            403,
+            'You are not allowed to delete this CAR record.'
+        );
+
+        if ($carRecord->status !== 'draft' || $carRecord->workflow_status !== null) {
+            return back()->with('error', 'Only open drafts can be deleted.');
+        }
+
+        $carRecord->delete();
+
+        return back()->with('success', 'CAR draft deleted.');
+    }
+
     public function submitForApproval(CarRecord $carRecord)
     {
         $this->ensureCanManageRecord($carRecord);

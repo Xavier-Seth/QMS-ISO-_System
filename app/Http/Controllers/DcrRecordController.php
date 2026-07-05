@@ -436,6 +436,23 @@ class DcrRecordController extends Controller
         }
     }
 
+    public function destroy(DcrRecord $dcrRecord)
+    {
+        abort_unless(
+            (int) $dcrRecord->created_by === (int) auth()->id(),
+            403,
+            'You are not allowed to delete this DCR record.'
+        );
+
+        if ($dcrRecord->status !== 'draft' || $dcrRecord->workflow_status !== null) {
+            return back()->with('error', 'Only open drafts can be deleted.');
+        }
+
+        $dcrRecord->delete();
+
+        return back()->with('success', 'DCR draft deleted.');
+    }
+
     public function submitForApproval(DcrRecord $dcrRecord)
     {
         $this->ensureCanManageRecord($dcrRecord);

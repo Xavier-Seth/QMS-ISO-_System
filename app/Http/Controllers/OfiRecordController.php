@@ -427,6 +427,23 @@ class OfiRecordController extends Controller
         ]);
     }
 
+    public function destroy(OfiRecord $ofiRecord)
+    {
+        abort_unless(
+            (int) $ofiRecord->created_by === (int) auth()->id(),
+            403,
+            'You are not allowed to delete this OFI record.'
+        );
+
+        if ($ofiRecord->status !== 'draft' || $ofiRecord->workflow_status !== null) {
+            return back()->with('error', 'Only open drafts can be deleted.');
+        }
+
+        $ofiRecord->delete();
+
+        return back()->with('success', 'OFI draft deleted.');
+    }
+
     public function submitForApproval(OfiRecord $ofiRecord)
     {
         $this->ensureCanManageRecord($ofiRecord);

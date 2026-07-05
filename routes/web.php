@@ -126,6 +126,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/ofi/records', [OfiRecordController::class, 'store'])->name('ofi.records.store');
     Route::get('/ofi/records/{ofiRecord}', [OfiRecordController::class, 'show'])->name('ofi.records.show');
     Route::put('/ofi/records/{ofiRecord}', [OfiRecordController::class, 'update'])->name('ofi.records.update');
+    Route::delete('/ofi/records/{ofiRecord}', [OfiRecordController::class, 'destroy'])->name('ofi.records.destroy');
     Route::get('/ofi/records/{ofiRecord}/download', [OfiRecordController::class, 'download'])->name('ofi.records.download');
     Route::post('/ofi/records/{ofiRecord}/publish', [OfiRecordController::class, 'publish'])
         ->name('ofi.records.publish');
@@ -149,6 +150,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/dcr/records', [DcrRecordController::class, 'store'])->name('dcr.records.store');
     Route::get('/dcr/records/{dcrRecord}', [DcrRecordController::class, 'show'])->name('dcr.records.show');
     Route::put('/dcr/records/{dcrRecord}', [DcrRecordController::class, 'update'])->name('dcr.records.update');
+    Route::delete('/dcr/records/{dcrRecord}', [DcrRecordController::class, 'destroy'])->name('dcr.records.destroy');
     Route::get('/dcr/records/{dcrRecord}/download', [DcrRecordController::class, 'download'])->name('dcr.records.download');
     Route::post('/dcr/records/{dcrRecord}/publish', [DcrRecordController::class, 'publish'])
         ->name('dcr.records.publish');
@@ -171,6 +173,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/car/records', [CarRecordController::class, 'store'])->name('car.records.store');
     Route::get('/car/records/{carRecord}', [CarRecordController::class, 'show'])->name('car.records.show');
     Route::put('/car/records/{carRecord}', [CarRecordController::class, 'update'])->name('car.records.update');
+    Route::delete('/car/records/{carRecord}', [CarRecordController::class, 'destroy'])->name('car.records.destroy');
     Route::post('/car/records/{carRecord}/submit', [CarRecordController::class, 'submitForApproval'])->name('car.records.submit');
     Route::get('/car/records/{carRecord}/download', [CarRecordController::class, 'download'])->name('car.records.download');
     Route::post('/car/records/{carRecord}/publish', [CarRecordController::class, 'publish'])->name('car.records.publish');
