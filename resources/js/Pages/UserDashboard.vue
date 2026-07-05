@@ -279,7 +279,9 @@ function submitDelete() {
             </span>
           </div>
 
-          <ul class="divide-y divide-slate-100">
+          <ul
+            class="max-h-72 overflow-y-auto divide-y divide-slate-100 [scrollbar-width:thin] [scrollbar-color:#cbd5e1_transparent] [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300"
+          >
             <li
               v-for="item in my_drafts"
               :key="item.type + item.id"
