@@ -248,7 +248,7 @@ class AuditTrailLoggingTest extends TestCase
         $this->assertSame(0, ActivityLog::query()->count());
     }
 
-    public function test_car_record_deletion_is_logged_by_observer(): void
+    public function test_car_record_deletion_is_not_audit_logged(): void
     {
         $user = User::factory()->create([
             'username' => 'carauditdeleter',
@@ -265,14 +265,11 @@ class AuditTrailLoggingTest extends TestCase
             'updated_by' => $user->id,
         ]);
 
+        ActivityLog::query()->delete();
+
         $record->delete();
 
-        $this->assertDatabaseHas('activity_logs', [
-            'module' => 'car',
-            'action' => 'deleted',
-            'entity_id' => $record->id,
-            'record_label' => 'CAR-AUDIT-004',
-        ]);
+        $this->assertSame(0, ActivityLog::query()->count());
     }
 
     public function test_car_resolution_status_update_is_logged_exactly_once(): void

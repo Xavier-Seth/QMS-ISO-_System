@@ -159,11 +159,11 @@ class DraftDeleteTest extends TestCase
             $response->assertSessionHas('success');
 
             $this->assertNull($model::query()->find($record->id), "Expected {$module} draft to be deleted.");
-            $this->assertSame(1, ActivityLog::query()
-                ->where('module', $module)
-                ->where('action', 'deleted')
-                ->count(), "Expected exactly one deleted log entry for {$module}.");
         }
+
+        $this->assertSame(0, ActivityLog::query()
+            ->where('action', 'deleted')
+            ->count(), 'Draft deletions must not be audit-logged.');
     }
 
     public function test_cannot_delete_another_users_open_draft(): void
