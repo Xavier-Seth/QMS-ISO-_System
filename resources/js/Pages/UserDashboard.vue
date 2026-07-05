@@ -1,9 +1,11 @@
 <script setup>
 import AdminLayoutWithHeader from '@/Layouts/AdminLayoutWithHeader.vue'
-import { computed } from 'vue'
-import { Link, usePage } from '@inertiajs/vue3'
+import { computed, ref } from 'vue'
+import { Link, router, usePage } from '@inertiajs/vue3'
+import { useToast } from '@/Composables/useToast'
 
 const user = usePage().props.auth.user
+const toast = useToast()
 
 const greeting = computed(() => {
   const h = new Date().getHours()
@@ -53,6 +55,45 @@ function showRoute(type, id) {
 const totalPending = computed(
   () => props.summary.ofi.pending + props.summary.dcr.pending + props.summary.car.pending
 )
+
+// Delete draft. The success/error toast comes from the controller flash via
+// the layout watcher — onSuccess must not toast, or the message shows twice.
+const deleteModalOpen = ref(false)
+const selectedDraft = ref(null)
+const deletingDraft = ref(false)
+
+const deleteButtonText = computed(() => (deletingDraft.value ? 'Deleting...' : 'Delete Permanently'))
+
+function openDeleteModal(item) {
+  selectedDraft.value = item
+  deleteModalOpen.value = true
+}
+
+function closeDeleteModal() {
+  if (deletingDraft.value) return
+  deleteModalOpen.value = false
+}
+
+function submitDelete() {
+  if (!selectedDraft.value || deletingDraft.value) return
+
+  const item = selectedDraft.value
+  deletingDraft.value = true
+
+  router.delete(showRoute(item.type, item.id), {
+    preserveScroll: true,
+    onSuccess: () => {
+      deleteModalOpen.value = false
+      selectedDraft.value = null
+    },
+    onError: () => {
+      toast.error('Failed to delete draft. Please try again.')
+    },
+    onFinish: () => {
+      deletingDraft.value = false
+    },
+  })
+}
 </script>
 
 <template>
@@ -260,6 +301,13 @@ const totalPending = computed(
               >
                 Continue
               </Link>
+              <button
+                type="button"
+                class="shrink-0 text-xs font-medium text-rose-500 hover:underline"
+                @click="openDeleteModal(item)"
+              >
+                Delete
+              </button>
             </li>
           </ul>
         </div>
@@ -365,6 +413,49 @@ const totalPending = computed(
         <p class="text-sm text-amber-700 font-medium">
           You have <strong>{{ totalPending }}</strong> record{{ totalPending !== 1 ? 's' : '' }} awaiting admin review.
         </p>
+      </div>
+
+      <!-- Delete Draft Modal -->
+      <div
+        v-if="deleteModalOpen"
+        class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"
+      >
+        <div class="w-full max-w-xl rounded-2xl bg-white shadow-xl">
+          <div class="border-b border-slate-200 px-6 py-4">
+            <h2 class="text-lg font-semibold text-rose-700">Delete Permanently</h2>
+            <p class="mt-1 text-sm text-slate-500">This action cannot be undone.</p>
+          </div>
+
+          <div class="px-6 py-5">
+            <div class="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+              <div class="break-words font-semibold">
+                {{ selectedDraft?.record_no || `${selectedDraft?.type} #${selectedDraft?.id}` }}
+              </div>
+              <div class="mt-2">
+                This will permanently delete this {{ selectedDraft?.type }} draft and cannot be undone.
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 border-t border-slate-200 px-6 py-4">
+            <button
+              type="button"
+              :disabled="deletingDraft"
+              class="rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="closeDeleteModal"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              :disabled="deletingDraft"
+              class="rounded-xl bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              @click="submitDelete"
+            >
+              {{ deleteButtonText }}
+            </button>
+          </div>
+        </div>
       </div>
 
     </div>
