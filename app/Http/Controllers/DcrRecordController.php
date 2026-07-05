@@ -548,6 +548,12 @@ class DcrRecordController extends Controller
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can publish DCR records.');
 
+        if (in_array($dcrRecord->workflow_status, ['pending', 'rejected'], true)) {
+            return response()->json([
+                'message' => 'Pending or rejected DCR records must go through the review workflow and cannot be published directly.',
+            ], 422);
+        }
+
         try {
             $data = $request->validate([
                 'remarks' => ['nullable', 'string', 'max:1000'],

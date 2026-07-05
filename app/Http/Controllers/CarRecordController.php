@@ -549,6 +549,12 @@ class CarRecordController extends Controller
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can publish CAR records.');
 
+        if (in_array($carRecord->workflow_status, ['pending', 'rejected'], true)) {
+            return response()->json([
+                'message' => 'Pending or rejected CAR records must go through the review workflow and cannot be published directly.',
+            ], 422);
+        }
+
         $data = $request->validate([
             'remarks' => ['nullable', 'string', 'max:1000'],
             'file_name' => ['nullable', 'string', 'max:200'],

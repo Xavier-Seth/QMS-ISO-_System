@@ -542,6 +542,12 @@ class OfiRecordController extends Controller
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can publish OFI records.');
 
+        if (in_array($ofiRecord->workflow_status, ['pending', 'rejected'], true)) {
+            return response()->json([
+                'message' => 'Pending or rejected OFI records must go through the review workflow and cannot be published directly.',
+            ], 422);
+        }
+
         $data = $request->validate([
             'remarks' => ['nullable', 'string', 'max:1000'],
             'file_name' => ['nullable', 'string', 'max:200'],
