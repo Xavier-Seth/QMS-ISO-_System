@@ -533,6 +533,115 @@ class RecordApprovalTest extends TestCase
         $this->assertSame(0, ActivityLog::query()->where('action', 'uploaded')->count());
     }
 
+    public function test_admin_publish_marks_dcr_record_submitted_and_approved(): void
+    {
+        Storage::fake('private');
+        Storage::fake('public');
+
+        $admin = User::factory()->create(['username' => 'admindcrpublish', 'role' => 'admin']);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'R-QMS',
+            'name' => 'Records',
+        ]);
+
+        DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'R-QMS-013',
+            'title' => 'Document Change Request Records',
+            'storage' => 'Electronic',
+            'status' => 'active',
+        ]);
+
+        $this->storeMinimalTemplate('DCR', 'private', 'qms/templates/dcr/test-dcr-publish.docx', $admin);
+
+        $record = DcrRecord::query()->create([
+            'document_type_id' => null,
+            'dcr_no' => 'DCR-PUB-001',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => ['dcrNo' => 'DCR-PUB-001', 'dynamic' => []],
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->postJson(route('dcr.records.publish', $record), [
+                'remarks' => 'First publish',
+            ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('workflow_status', 'approved');
+
+        $record->refresh();
+        $this->assertSame('submitted', $record->status);
+        $this->assertSame('approved', $record->workflow_status);
+        $this->assertSame(1, DocumentUpload::query()->where('dcr_record_id', $record->id)->count());
+
+        // Republishing an already-approved record is idempotent.
+        $this
+            ->actingAs($admin)
+            ->postJson(route('dcr.records.publish', $record), [
+                'remarks' => 'Republish',
+            ])
+            ->assertOk();
+
+        $record->refresh();
+        $this->assertSame('submitted', $record->status);
+        $this->assertSame('approved', $record->workflow_status);
+        $this->assertSame(1, DocumentUpload::query()->where('dcr_record_id', $record->id)->count());
+    }
+
+    public function test_admin_publish_marks_ofi_record_submitted_and_approved(): void
+    {
+        Storage::fake('private');
+        Storage::fake('public');
+
+        $admin = User::factory()->create(['username' => 'adminofipublish', 'role' => 'admin']);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'R-QMS',
+            'name' => 'Records',
+        ]);
+
+        DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'R-QMS-018',
+            'title' => 'Opportunity for Improvement Records',
+            'storage' => 'Electronic',
+            'status' => 'active',
+        ]);
+
+        $this->storeMinimalTemplate(QmsTemplateModules::OFI, 'private', 'qms/templates/ofi/test-ofi-publish.docx', $admin);
+
+        $record = OfiRecord::query()->create([
+            'document_type_id' => null,
+            'ofi_no' => 'OFI-PUB-001',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => ['ofiNo' => 'OFI-PUB-001', 'dynamic' => []],
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->postJson(route('ofi.records.publish', $record), [
+                'remarks' => 'First publish',
+            ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('workflow_status', 'approved');
+
+        $record->refresh();
+        $this->assertSame('submitted', $record->status);
+        $this->assertSame('approved', $record->workflow_status);
+        $this->assertSame(1, DocumentUpload::query()->where('ofi_record_id', $record->id)->count());
+    }
+
     private function storeMinimalTemplate(string $module, string $disk, string $path, User $uploadedBy): void
     {
         $phpWord = new PhpWord;

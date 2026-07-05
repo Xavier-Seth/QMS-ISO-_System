@@ -309,7 +309,17 @@ class OfiRecordController extends Controller
     public function store(Request $request)
     {
         $payload = $request->all();
-        $isAdmin = $this->isAdminUser();
+
+        $openDrafts = OfiRecord::where('created_by', auth()->id())
+            ->where('status', 'draft')
+            ->whereNull('workflow_status')
+            ->count();
+
+        if ($openDrafts >= 3) {
+            return response()->json([
+                'message' => 'You already have 3 open OFI drafts. Please submit or delete one before creating a new one.',
+            ], 422);
+        }
 
         $record = OfiRecord::create([
             'document_type_id' => $this->rQms018TypeId(),
@@ -317,7 +327,7 @@ class OfiRecordController extends Controller
             'ref_no' => $payload['refNo'] ?? null,
             'to' => $payload['to'] ?? null,
             'status' => 'draft',
-            'workflow_status' => $isAdmin ? 'approved' : null,
+            'workflow_status' => null,
             'resolution_status' => 'open',
             'data' => $payload,
             'created_by' => auth()->id(),
@@ -557,6 +567,12 @@ class OfiRecordController extends Controller
             $data['file_name'] ?? null,
             $data['remarks'] ?? null
         );
+
+        $ofiRecord->update([
+            'status' => 'submitted',
+            'workflow_status' => 'approved',
+            'updated_by' => auth()->id(),
+        ]);
 
         $this->activityLogService->log([
             'module' => 'ofi',

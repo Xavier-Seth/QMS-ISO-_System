@@ -278,7 +278,17 @@ class CarRecordController extends Controller
         ]);
 
         $payload = (array) ($validated['data'] ?? []);
-        $isAdmin = $this->isAdminUser();
+
+        $openDrafts = CarRecord::where('created_by', auth()->id())
+            ->where('status', 'draft')
+            ->whereNull('workflow_status')
+            ->count();
+
+        if ($openDrafts >= 3) {
+            return response()->json([
+                'message' => 'You already have 3 open CAR drafts. Please submit or delete one before creating a new one.',
+            ], 422);
+        }
 
         $record = CarRecord::create([
             'document_type_id' => $validated['document_type_id'],
@@ -287,7 +297,7 @@ class CarRecordController extends Controller
             'dept_section' => $payload['deptSection'] ?? null,
             'auditor' => $payload['auditor'] ?? null,
             'status' => 'draft',
-            'workflow_status' => $isAdmin ? 'approved' : null,
+            'workflow_status' => null,
             'resolution_status' => 'open',
             'data' => $payload,
             'created_by' => auth()->id(),
@@ -565,6 +575,12 @@ class CarRecordController extends Controller
             $data['file_name'] ?? null,
             $data['remarks'] ?? null
         );
+
+        $carRecord->update([
+            'status' => 'submitted',
+            'workflow_status' => 'approved',
+            'updated_by' => auth()->id(),
+        ]);
 
         $this->activityLogService->log([
             'module' => 'car',

@@ -19,7 +19,10 @@ use App\Http\Controllers\QmsDynamicFieldController;
 use App\Http\Controllers\QmsTemplateSettingsController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\UsersController;
+use App\Models\CarRecord;
+use App\Models\DcrRecord;
 use App\Models\DocumentType;
+use App\Models\OfiRecord;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -41,10 +44,59 @@ Route::middleware('auth')->group(function () {
             : $controller->userDashboard();
     })->name('dashboard');
 
-    Route::get('/dcr', fn () => Inertia::render('DCR'))->name('dcr');
-    Route::get('/ofi-form', fn () => Inertia::render('OFIForm'))->name('ofi.form');
+    Route::get('/dcr', function () {
+        // The cap only blocks creating a new draft; continuing an existing
+        // record (?record={id}) must always be allowed.
+        if (! request()->filled('record')) {
+            $openDrafts = DcrRecord::where('created_by', auth()->id())
+                ->where('status', 'draft')
+                ->whereNull('workflow_status')
+                ->count();
+
+            if ($openDrafts >= 3) {
+                return redirect()->route('dashboard')->with(
+                    'error',
+                    'You already have 3 open DCR drafts. Please submit or delete one before creating a new one.'
+                );
+            }
+        }
+
+        return Inertia::render('DCR');
+    })->name('dcr');
+
+    Route::get('/ofi-form', function () {
+        if (! request()->filled('record')) {
+            $openDrafts = OfiRecord::where('created_by', auth()->id())
+                ->where('status', 'draft')
+                ->whereNull('workflow_status')
+                ->count();
+
+            if ($openDrafts >= 3) {
+                return redirect()->route('dashboard')->with(
+                    'error',
+                    'You already have 3 open OFI drafts. Please submit or delete one before creating a new one.'
+                );
+            }
+        }
+
+        return Inertia::render('OFIForm');
+    })->name('ofi.form');
 
     Route::get('/car', function () {
+        if (! request()->filled('record')) {
+            $openDrafts = CarRecord::where('created_by', auth()->id())
+                ->where('status', 'draft')
+                ->whereNull('workflow_status')
+                ->count();
+
+            if ($openDrafts >= 3) {
+                return redirect()->route('dashboard')->with(
+                    'error',
+                    'You already have 3 open CAR drafts. Please submit or delete one before creating a new one.'
+                );
+            }
+        }
+
         $carType = DocumentType::where('code', 'F-QMS-006')->first();
 
         return Inertia::render('CARForm', [
