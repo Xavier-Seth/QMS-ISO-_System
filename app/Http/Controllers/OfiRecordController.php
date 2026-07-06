@@ -309,7 +309,17 @@ class OfiRecordController extends Controller
     public function store(Request $request)
     {
         $payload = $request->all();
-        $isAdmin = $this->isAdminUser();
+
+        $openDrafts = OfiRecord::where('created_by', auth()->id())
+            ->where('status', 'draft')
+            ->whereNull('workflow_status')
+            ->count();
+
+        if ($openDrafts >= 3) {
+            return response()->json([
+                'message' => 'You already have 3 open OFI drafts. Please submit or delete one before creating a new one.',
+            ], 422);
+        }
 
         $record = OfiRecord::create([
             'document_type_id' => $this->rQms018TypeId(),
@@ -317,7 +327,7 @@ class OfiRecordController extends Controller
             'ref_no' => $payload['refNo'] ?? null,
             'to' => $payload['to'] ?? null,
             'status' => 'draft',
-            'workflow_status' => $isAdmin ? 'approved' : null,
+            'workflow_status' => null,
             'resolution_status' => 'open',
             'data' => $payload,
             'created_by' => auth()->id(),
@@ -415,6 +425,23 @@ class OfiRecordController extends Controller
             'workflow_status' => $fresh->workflow_status,
             'resolution_status' => $fresh->resolution_status,
         ]);
+    }
+
+    public function destroy(OfiRecord $ofiRecord)
+    {
+        abort_unless(
+            (int) $ofiRecord->created_by === (int) auth()->id(),
+            403,
+            'You are not allowed to delete this OFI record.'
+        );
+
+        if ($ofiRecord->status !== 'draft' || $ofiRecord->workflow_status !== null) {
+            return back()->with('error', 'Only open drafts can be deleted.');
+        }
+
+        $ofiRecord->delete();
+
+        return back()->with('success', 'OFI draft deleted.');
     }
 
     public function submitForApproval(OfiRecord $ofiRecord)
@@ -515,6 +542,12 @@ class OfiRecordController extends Controller
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can publish OFI records.');
 
+        if (in_array($ofiRecord->workflow_status, ['pending', 'rejected'], true)) {
+            return response()->json([
+                'message' => 'Pending or rejected OFI records must go through the review workflow and cannot be published directly.',
+            ], 422);
+        }
+
         $data = $request->validate([
             'remarks' => ['nullable', 'string', 'max:1000'],
             'file_name' => ['nullable', 'string', 'max:200'],
@@ -557,6 +590,12 @@ class OfiRecordController extends Controller
             $data['file_name'] ?? null,
             $data['remarks'] ?? null
         );
+
+        $ofiRecord->update([
+            'status' => 'submitted',
+            'workflow_status' => 'approved',
+            'updated_by' => auth()->id(),
+        ]);
 
         $this->activityLogService->log([
             'module' => 'ofi',

@@ -307,7 +307,17 @@ class DcrRecordController extends Controller
     public function store(Request $request)
     {
         $payload = $request->all();
-        $isAdmin = $this->isAdminUser();
+
+        $openDrafts = DcrRecord::where('created_by', auth()->id())
+            ->where('status', 'draft')
+            ->whereNull('workflow_status')
+            ->count();
+
+        if ($openDrafts >= 3) {
+            return response()->json([
+                'message' => 'You already have 3 open DCR drafts. Please submit or delete one before creating a new one.',
+            ], 422);
+        }
 
         $record = DcrRecord::create([
             'document_type_id' => $this->rQms013TypeId(),
@@ -315,7 +325,7 @@ class DcrRecordController extends Controller
             'to_for' => $payload['toFor'] ?? null,
             'from' => $payload['from'] ?? null,
             'status' => 'draft',
-            'workflow_status' => $isAdmin ? 'approved' : null,
+            'workflow_status' => null,
             'resolution_status' => 'open',
             'data' => $payload,
             'created_by' => auth()->id(),
@@ -426,6 +436,23 @@ class DcrRecordController extends Controller
         }
     }
 
+    public function destroy(DcrRecord $dcrRecord)
+    {
+        abort_unless(
+            (int) $dcrRecord->created_by === (int) auth()->id(),
+            403,
+            'You are not allowed to delete this DCR record.'
+        );
+
+        if ($dcrRecord->status !== 'draft' || $dcrRecord->workflow_status !== null) {
+            return back()->with('error', 'Only open drafts can be deleted.');
+        }
+
+        $dcrRecord->delete();
+
+        return back()->with('success', 'DCR draft deleted.');
+    }
+
     public function submitForApproval(DcrRecord $dcrRecord)
     {
         $this->ensureCanManageRecord($dcrRecord);
@@ -521,6 +548,12 @@ class DcrRecordController extends Controller
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can publish DCR records.');
 
+        if (in_array($dcrRecord->workflow_status, ['pending', 'rejected'], true)) {
+            return response()->json([
+                'message' => 'Pending or rejected DCR records must go through the review workflow and cannot be published directly.',
+            ], 422);
+        }
+
         try {
             $data = $request->validate([
                 'remarks' => ['nullable', 'string', 'max:1000'],
@@ -557,6 +590,12 @@ class DcrRecordController extends Controller
                 $data['file_name'] ?? null,
                 $data['remarks'] ?? null
             );
+
+            $dcrRecord->update([
+                'status' => 'submitted',
+                'workflow_status' => 'approved',
+                'updated_by' => auth()->id(),
+            ]);
 
             $this->activityLogService->log([
                 'module' => 'dcr',

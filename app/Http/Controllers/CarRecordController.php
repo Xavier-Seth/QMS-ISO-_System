@@ -278,7 +278,17 @@ class CarRecordController extends Controller
         ]);
 
         $payload = (array) ($validated['data'] ?? []);
-        $isAdmin = $this->isAdminUser();
+
+        $openDrafts = CarRecord::where('created_by', auth()->id())
+            ->where('status', 'draft')
+            ->whereNull('workflow_status')
+            ->count();
+
+        if ($openDrafts >= 3) {
+            return response()->json([
+                'message' => 'You already have 3 open CAR drafts. Please submit or delete one before creating a new one.',
+            ], 422);
+        }
 
         $record = CarRecord::create([
             'document_type_id' => $validated['document_type_id'],
@@ -287,7 +297,7 @@ class CarRecordController extends Controller
             'dept_section' => $payload['deptSection'] ?? null,
             'auditor' => $payload['auditor'] ?? null,
             'status' => 'draft',
-            'workflow_status' => $isAdmin ? 'approved' : null,
+            'workflow_status' => null,
             'resolution_status' => 'open',
             'data' => $payload,
             'created_by' => auth()->id(),
@@ -424,6 +434,23 @@ class CarRecordController extends Controller
         ]);
     }
 
+    public function destroy(CarRecord $carRecord)
+    {
+        abort_unless(
+            (int) $carRecord->created_by === (int) auth()->id(),
+            403,
+            'You are not allowed to delete this CAR record.'
+        );
+
+        if ($carRecord->status !== 'draft' || $carRecord->workflow_status !== null) {
+            return back()->with('error', 'Only open drafts can be deleted.');
+        }
+
+        $carRecord->delete();
+
+        return back()->with('success', 'CAR draft deleted.');
+    }
+
     public function submitForApproval(CarRecord $carRecord)
     {
         $this->ensureCanManageRecord($carRecord);
@@ -522,6 +549,12 @@ class CarRecordController extends Controller
     {
         abort_unless($this->isAdminUser(), 403, 'Only admins can publish CAR records.');
 
+        if (in_array($carRecord->workflow_status, ['pending', 'rejected'], true)) {
+            return response()->json([
+                'message' => 'Pending or rejected CAR records must go through the review workflow and cannot be published directly.',
+            ], 422);
+        }
+
         $data = $request->validate([
             'remarks' => ['nullable', 'string', 'max:1000'],
             'file_name' => ['nullable', 'string', 'max:200'],
@@ -565,6 +598,12 @@ class CarRecordController extends Controller
             $data['file_name'] ?? null,
             $data['remarks'] ?? null
         );
+
+        $carRecord->update([
+            'status' => 'submitted',
+            'workflow_status' => 'approved',
+            'updated_by' => auth()->id(),
+        ]);
 
         $this->activityLogService->log([
             'module' => 'car',

@@ -533,6 +533,218 @@ class RecordApprovalTest extends TestCase
         $this->assertSame(0, ActivityLog::query()->where('action', 'uploaded')->count());
     }
 
+    public function test_admin_publish_marks_dcr_record_submitted_and_approved(): void
+    {
+        Storage::fake('private');
+        Storage::fake('public');
+
+        $admin = User::factory()->create(['username' => 'admindcrpublish', 'role' => 'admin']);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'R-QMS',
+            'name' => 'Records',
+        ]);
+
+        DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'R-QMS-013',
+            'title' => 'Document Change Request Records',
+            'storage' => 'Electronic',
+            'status' => 'active',
+        ]);
+
+        $this->storeMinimalTemplate('DCR', 'private', 'qms/templates/dcr/test-dcr-publish.docx', $admin);
+
+        $record = DcrRecord::query()->create([
+            'document_type_id' => null,
+            'dcr_no' => 'DCR-PUB-001',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => ['dcrNo' => 'DCR-PUB-001', 'dynamic' => []],
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->postJson(route('dcr.records.publish', $record), [
+                'remarks' => 'First publish',
+            ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('workflow_status', 'approved');
+
+        $record->refresh();
+        $this->assertSame('submitted', $record->status);
+        $this->assertSame('approved', $record->workflow_status);
+        $this->assertSame(1, DocumentUpload::query()->where('dcr_record_id', $record->id)->count());
+
+        // Republishing an already-approved record is idempotent.
+        $this
+            ->actingAs($admin)
+            ->postJson(route('dcr.records.publish', $record), [
+                'remarks' => 'Republish',
+            ])
+            ->assertOk();
+
+        $record->refresh();
+        $this->assertSame('submitted', $record->status);
+        $this->assertSame('approved', $record->workflow_status);
+        $this->assertSame(1, DocumentUpload::query()->where('dcr_record_id', $record->id)->count());
+    }
+
+    public function test_admin_publish_marks_ofi_record_submitted_and_approved(): void
+    {
+        Storage::fake('private');
+        Storage::fake('public');
+
+        $admin = User::factory()->create(['username' => 'adminofipublish', 'role' => 'admin']);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'R-QMS',
+            'name' => 'Records',
+        ]);
+
+        DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'R-QMS-018',
+            'title' => 'Opportunity for Improvement Records',
+            'storage' => 'Electronic',
+            'status' => 'active',
+        ]);
+
+        $this->storeMinimalTemplate(QmsTemplateModules::OFI, 'private', 'qms/templates/ofi/test-ofi-publish.docx', $admin);
+
+        $record = OfiRecord::query()->create([
+            'document_type_id' => null,
+            'ofi_no' => 'OFI-PUB-001',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => ['ofiNo' => 'OFI-PUB-001', 'dynamic' => []],
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->postJson(route('ofi.records.publish', $record), [
+                'remarks' => 'First publish',
+            ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('workflow_status', 'approved');
+
+        $record->refresh();
+        $this->assertSame('submitted', $record->status);
+        $this->assertSame('approved', $record->workflow_status);
+        $this->assertSame(1, DocumentUpload::query()->where('ofi_record_id', $record->id)->count());
+    }
+
+    public function test_admin_publish_marks_car_record_submitted_and_approved(): void
+    {
+        Storage::fake('private');
+        Storage::fake('public');
+
+        $admin = User::factory()->create(['username' => 'admincarpublish', 'role' => 'admin']);
+
+        $series = DocumentSeries::query()->create([
+            'code_prefix' => 'R-QMS',
+            'name' => 'Records',
+        ]);
+
+        DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => 'R-QMS-017',
+            'title' => 'Corrective Action Request Records',
+            'storage' => 'Electronic',
+            'status' => 'active',
+        ]);
+
+        $this->storeMinimalTemplate(QmsTemplateModules::CAR, 'private', 'qms/templates/car/test-car-publish.docx', $admin);
+
+        $record = CarRecord::query()->create([
+            'document_type_id' => null,
+            'car_no' => 'CAR-PUB-001',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => ['carNo' => 'CAR-PUB-001', 'dynamic' => []],
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        $response = $this
+            ->actingAs($admin)
+            ->postJson(route('car.records.publish', $record), [
+                'remarks' => 'First publish',
+            ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('workflow_status', 'approved');
+
+        $record->refresh();
+        $this->assertSame('submitted', $record->status);
+        $this->assertSame('approved', $record->workflow_status);
+        $this->assertSame(1, DocumentUpload::query()->where('car_record_id', $record->id)->count());
+    }
+
+    public function test_publish_rejects_pending_and_rejected_records(): void
+    {
+        $admin = User::factory()->create(['username' => 'adminpublishguard', 'role' => 'admin']);
+        $staff = User::factory()->create(['username' => 'staffpublishguard']);
+
+        $modules = [
+            [OfiRecord::class, 'ofi_no', 'ofi.records.publish'],
+            [DcrRecord::class, 'dcr_no', 'dcr.records.publish'],
+            [CarRecord::class, 'car_no', 'car.records.publish'],
+        ];
+
+        foreach ($modules as [$model, $noColumn, $routeName]) {
+            $pending = $model::query()->create([
+                $noColumn => 'GUARD-PENDING',
+                'status' => 'submitted',
+                'workflow_status' => 'pending',
+                'data' => [],
+                'created_by' => $staff->id,
+                'updated_by' => $staff->id,
+            ]);
+
+            $this->actingAs($admin)
+                ->postJson(route($routeName, $pending))
+                ->assertStatus(422);
+
+            $pending->refresh();
+            $this->assertSame('pending', $pending->workflow_status);
+            $this->assertSame('submitted', $pending->status);
+
+            $rejected = $model::query()->create([
+                $noColumn => 'GUARD-REJECTED',
+                'status' => 'submitted',
+                'workflow_status' => 'rejected',
+                'rejection_reason' => 'Needs correction.',
+                'rejected_at' => now()->subDay(),
+                'rejected_by' => $admin->id,
+                'data' => [],
+                'created_by' => $staff->id,
+                'updated_by' => $staff->id,
+            ]);
+
+            $this->actingAs($admin)
+                ->postJson(route($routeName, $rejected))
+                ->assertStatus(422);
+
+            $rejected->refresh();
+            $this->assertSame('rejected', $rejected->workflow_status);
+            $this->assertSame('Needs correction.', $rejected->rejection_reason);
+            $this->assertNotNull($rejected->rejected_at);
+            $this->assertSame($admin->id, (int) $rejected->rejected_by);
+
+            $this->assertSame(0, DocumentUpload::query()->count());
+        }
+    }
+
     private function storeMinimalTemplate(string $module, string $disk, string $path, User $uploadedBy): void
     {
         $phpWord = new PhpWord;
