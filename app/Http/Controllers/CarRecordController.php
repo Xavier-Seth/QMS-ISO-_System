@@ -279,6 +279,11 @@ class CarRecordController extends Controller
             'data.deptSection' => ['nullable', 'string', 'max:255'],
             'data.auditor' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'in:draft,submitted'],
+        ], [], [
+            'data.carNo' => 'car no',
+            'data.refNo' => 'ref no',
+            'data.deptSection' => 'dept section',
+            'data.auditor' => 'auditor',
         ]);
 
         $payload = (array) $request->input('data', []);
@@ -406,6 +411,11 @@ class CarRecordController extends Controller
             'data.deptSection' => ['sometimes', 'nullable', 'string', 'max:255'],
             'data.auditor' => ['sometimes', 'nullable', 'string', 'max:255'],
             'status' => ['nullable', 'in:draft,submitted'],
+        ], [], [
+            'data.carNo' => 'car no',
+            'data.refNo' => 'ref no',
+            'data.deptSection' => 'dept section',
+            'data.auditor' => 'auditor',
         ]);
 
         $payload = (array) $request->input('data', []);

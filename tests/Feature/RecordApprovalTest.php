@@ -903,6 +903,11 @@ class RecordApprovalTest extends TestCase
 
         $response->assertStatus(422);
         $this->assertSame(0, CarRecord::query()->count());
+
+        // The message reads the clean field name, not the leaked "data." prefix.
+        $message = $response->json('message');
+        $this->assertStringContainsString('car no', $message);
+        $this->assertStringNotContainsString('data.', $message);
     }
 
     public function test_car_store_allows_short_draft(): void
