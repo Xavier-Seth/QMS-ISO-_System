@@ -18,7 +18,7 @@ const currentPath = computed(() => {
 const user = computed(() => page.props.auth?.user ?? null);
 const isAdmin = computed(() => user.value?.role === "admin");
 const systemName = computed(() => page.props.system_settings?.system_name ?? "Quality Management System");
-const logoUrl = computed(() => page.props.system_settings?.logo_url ?? "/images/QMS_logo.png");
+const logoUrl = computed(() => page.props.system_settings?.logo_url ?? "/images/QMS_Logo.png");
 
 const openCreateDocuments = ref(false);
 const openManual = ref(false);
