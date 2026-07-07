@@ -274,10 +274,19 @@ class CarRecordController extends Controller
         $validated = $request->validate([
             'document_type_id' => ['required', 'exists:document_types,id'],
             'data' => ['nullable', 'array'],
+            'data.carNo' => ['nullable', 'string', 'max:255'],
+            'data.refNo' => ['nullable', 'string', 'max:255'],
+            'data.deptSection' => ['nullable', 'string', 'max:255'],
+            'data.auditor' => ['nullable', 'string', 'max:255'],
             'status' => ['nullable', 'in:draft,submitted'],
+        ], [], [
+            'data.carNo' => 'car no',
+            'data.refNo' => 'ref no',
+            'data.deptSection' => 'dept section',
+            'data.auditor' => 'auditor',
         ]);
 
-        $payload = (array) ($validated['data'] ?? []);
+        $payload = (array) $request->input('data', []);
 
         $openDrafts = CarRecord::where('created_by', auth()->id())
             ->where('status', 'draft')
@@ -397,10 +406,19 @@ class CarRecordController extends Controller
 
         $validated = $request->validate([
             'data' => ['nullable', 'array'],
+            'data.carNo' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'data.refNo' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'data.deptSection' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'data.auditor' => ['sometimes', 'nullable', 'string', 'max:255'],
             'status' => ['nullable', 'in:draft,submitted'],
+        ], [], [
+            'data.carNo' => 'car no',
+            'data.refNo' => 'ref no',
+            'data.deptSection' => 'dept section',
+            'data.auditor' => 'auditor',
         ]);
 
-        $payload = (array) ($validated['data'] ?? []);
+        $payload = (array) $request->input('data', []);
         if ($payload === [] && is_array($carRecord->data)) {
             $payload = $carRecord->data;
         }

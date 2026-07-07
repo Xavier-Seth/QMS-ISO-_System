@@ -306,6 +306,14 @@ class DcrRecordController extends Controller
 
     public function store(Request $request)
     {
+        $request->validate([
+            'dcrNo' => ['nullable', 'string', 'max:255'],
+            'toFor' => ['nullable', 'string', 'max:255'],
+            'from' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'in:draft,submitted'],
+            'dynamic' => ['nullable', 'array'],
+        ]);
+
         $payload = $request->all();
 
         $openDrafts = DcrRecord::where('created_by', auth()->id())
@@ -371,6 +379,14 @@ class DcrRecordController extends Controller
     {
         $this->ensureCanManageRecord($dcrRecord);
         $this->ensureCanEditRecordContent($dcrRecord);
+
+        $request->validate([
+            'dcrNo' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'toFor' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'from' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'status' => ['sometimes', 'nullable', 'in:draft,submitted'],
+            'dynamic' => ['sometimes', 'nullable', 'array'],
+        ]);
 
         try {
             $incomingPayload = $request->all();

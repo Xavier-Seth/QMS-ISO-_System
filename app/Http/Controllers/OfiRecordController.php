@@ -308,6 +308,14 @@ class OfiRecordController extends Controller
 
     public function store(Request $request)
     {
+        $request->validate([
+            'ofiNo' => ['nullable', 'string', 'max:255'],
+            'refNo' => ['nullable', 'string', 'max:255'],
+            'to' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'in:draft,submitted'],
+            'dynamic' => ['nullable', 'array'],
+        ]);
+
         $payload = $request->all();
 
         $openDrafts = OfiRecord::where('created_by', auth()->id())
@@ -373,6 +381,14 @@ class OfiRecordController extends Controller
     {
         $this->ensureCanManageRecord($ofiRecord);
         $this->ensureCanEditRecordContent($ofiRecord);
+
+        $request->validate([
+            'ofiNo' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'refNo' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'to' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'status' => ['sometimes', 'nullable', 'in:draft,submitted'],
+            'dynamic' => ['sometimes', 'nullable', 'array'],
+        ]);
 
         $incomingPayload = $request->all();
         $existingPayload = is_array($ofiRecord->data) ? $ofiRecord->data : [];
