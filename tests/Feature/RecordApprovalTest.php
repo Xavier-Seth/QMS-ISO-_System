@@ -745,6 +745,216 @@ class RecordApprovalTest extends TestCase
         }
     }
 
+    // --- M-2: record write validation (guard-only) ---
+
+    private function seedDocumentType(string $code): DocumentType
+    {
+        $series = DocumentSeries::query()->firstOrCreate(
+            ['code_prefix' => 'R-QMS'],
+            ['name' => 'Records']
+        );
+
+        return DocumentType::query()->create([
+            'series_id' => $series->id,
+            'code' => $code,
+            'title' => $code.' Records',
+            'storage' => 'Electronic',
+            'status' => 'active',
+        ]);
+    }
+
+    public function test_dcr_store_rejects_oversize_scalar_and_creates_nothing(): void
+    {
+        $this->seedDocumentType('R-QMS-013');
+        $user = User::factory()->create(['username' => 'dcrstorebad']);
+
+        $response = $this
+            ->actingAs($user)
+            ->postJson(route('dcr.records.store'), [
+                'dcrNo' => str_repeat('a', 300),
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(0, DcrRecord::query()->count());
+    }
+
+    public function test_dcr_store_allows_short_draft(): void
+    {
+        $this->seedDocumentType('R-QMS-013');
+        $user = User::factory()->create(['username' => 'dcrstoreok']);
+
+        $response = $this
+            ->actingAs($user)
+            ->postJson(route('dcr.records.store'), [
+                'dcrNo' => 'DCR-OK-1',
+                'toFor' => 'Someone',
+            ]);
+
+        $response->assertOk();
+        $this->assertSame(1, DcrRecord::query()->count());
+        $this->assertSame('DCR-OK-1', DcrRecord::query()->first()->dcr_no);
+    }
+
+    public function test_dcr_update_rejects_oversize_scalar_and_leaves_record_intact(): void
+    {
+        $user = User::factory()->create(['username' => 'dcrupdatebad']);
+
+        $record = DcrRecord::query()->create([
+            'document_type_id' => null,
+            'dcr_no' => 'DCR-ORIG',
+            'to_for' => 'Original To',
+            'from' => 'Original From',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => ['dcrNo' => 'DCR-ORIG', 'dynamic' => []],
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->putJson(route('dcr.records.update', $record), [
+                'dcrNo' => str_repeat('a', 300),
+            ]);
+
+        $response->assertStatus(422);
+
+        $record->refresh();
+        $this->assertSame('DCR-ORIG', $record->dcr_no);
+        $this->assertSame('Original To', $record->to_for);
+        $this->assertSame('Original From', $record->from);
+    }
+
+    public function test_ofi_store_rejects_oversize_scalar_and_creates_nothing(): void
+    {
+        $this->seedDocumentType('R-QMS-018');
+        $user = User::factory()->create(['username' => 'ofistorebad']);
+
+        $response = $this
+            ->actingAs($user)
+            ->postJson(route('ofi.records.store'), [
+                'ofiNo' => str_repeat('a', 300),
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(0, OfiRecord::query()->count());
+    }
+
+    public function test_ofi_store_allows_short_draft(): void
+    {
+        $this->seedDocumentType('R-QMS-018');
+        $user = User::factory()->create(['username' => 'ofistoreok']);
+
+        $response = $this
+            ->actingAs($user)
+            ->postJson(route('ofi.records.store'), [
+                'ofiNo' => 'OFI-OK-1',
+                'to' => 'Someone',
+            ]);
+
+        $response->assertOk();
+        $this->assertSame(1, OfiRecord::query()->count());
+        $this->assertSame('OFI-OK-1', OfiRecord::query()->first()->ofi_no);
+    }
+
+    public function test_ofi_update_rejects_oversize_scalar_and_leaves_record_intact(): void
+    {
+        $user = User::factory()->create(['username' => 'ofiupdatebad']);
+
+        $record = OfiRecord::query()->create([
+            'document_type_id' => null,
+            'ofi_no' => 'OFI-ORIG',
+            'ref_no' => 'REF-ORIG',
+            'to' => 'Original To',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => ['ofiNo' => 'OFI-ORIG', 'dynamic' => []],
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->putJson(route('ofi.records.update', $record), [
+                'ofiNo' => str_repeat('a', 300),
+            ]);
+
+        $response->assertStatus(422);
+
+        $record->refresh();
+        $this->assertSame('OFI-ORIG', $record->ofi_no);
+        $this->assertSame('REF-ORIG', $record->ref_no);
+        $this->assertSame('Original To', $record->to);
+    }
+
+    public function test_car_store_rejects_oversize_scalar_and_creates_nothing(): void
+    {
+        $type = $this->seedDocumentType('R-QMS-017');
+        $user = User::factory()->create(['username' => 'carstorebad']);
+
+        $response = $this
+            ->actingAs($user)
+            ->postJson(route('car.records.store'), [
+                'document_type_id' => $type->id,
+                'data' => ['carNo' => str_repeat('a', 300)],
+            ]);
+
+        $response->assertStatus(422);
+        $this->assertSame(0, CarRecord::query()->count());
+    }
+
+    public function test_car_store_allows_short_draft(): void
+    {
+        $type = $this->seedDocumentType('R-QMS-017');
+        $user = User::factory()->create(['username' => 'carstoreok']);
+
+        $response = $this
+            ->actingAs($user)
+            ->postJson(route('car.records.store'), [
+                'document_type_id' => $type->id,
+                'data' => ['carNo' => 'CAR-OK-1'],
+            ]);
+
+        $response->assertOk();
+        $this->assertSame(1, CarRecord::query()->count());
+        $this->assertSame('CAR-OK-1', CarRecord::query()->first()->car_no);
+    }
+
+    public function test_car_update_rejects_oversize_scalar_and_leaves_record_intact(): void
+    {
+        $user = User::factory()->create(['username' => 'carupdatebad']);
+
+        $record = CarRecord::query()->create([
+            'document_type_id' => null,
+            'car_no' => 'CAR-ORIG',
+            'ref_no' => 'REF-ORIG',
+            'dept_section' => 'Original Dept',
+            'auditor' => 'Original Auditor',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => ['carNo' => 'CAR-ORIG', 'dynamic' => []],
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->putJson(route('car.records.update', $record), [
+                'data' => ['carNo' => str_repeat('a', 300)],
+            ]);
+
+        $response->assertStatus(422);
+
+        $record->refresh();
+        $this->assertSame('CAR-ORIG', $record->car_no);
+        $this->assertSame('REF-ORIG', $record->ref_no);
+        $this->assertSame('Original Dept', $record->dept_section);
+        $this->assertSame('Original Auditor', $record->auditor);
+    }
+
     private function storeMinimalTemplate(string $module, string $disk, string $path, User $uploadedBy): void
     {
         $phpWord = new PhpWord;
