@@ -281,7 +281,7 @@ class CarRecordController extends Controller
             'status' => ['nullable', 'in:draft,submitted'],
         ]);
 
-        $payload = (array) ($validated['data'] ?? []);
+        $payload = (array) $request->input('data', []);
 
         $openDrafts = CarRecord::where('created_by', auth()->id())
             ->where('status', 'draft')
@@ -408,7 +408,7 @@ class CarRecordController extends Controller
             'status' => ['nullable', 'in:draft,submitted'],
         ]);
 
-        $payload = (array) ($validated['data'] ?? []);
+        $payload = (array) $request->input('data', []);
         if ($payload === [] && is_array($carRecord->data)) {
             $payload = $carRecord->data;
         }

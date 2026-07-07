@@ -914,12 +914,24 @@ class RecordApprovalTest extends TestCase
             ->actingAs($user)
             ->postJson(route('car.records.store'), [
                 'document_type_id' => $type->id,
-                'data' => ['carNo' => 'CAR-OK-1'],
+                'data' => [
+                    'carNo' => 'CAR-OK-1',
+                    'dynamic' => ['officeCode' => 'QMS-CAR'],
+                    'followUp' => [
+                        ['date' => '2026-07-01', 'status' => 'Done', 'effective' => 'Yes', 'auditor' => 'A. Auditor', 'rep' => 'R. Rep'],
+                    ],
+                    'notedBy' => 'QMR Head',
+                ],
             ]);
 
         $response->assertOk();
         $this->assertSame(1, CarRecord::query()->count());
-        $this->assertSame('CAR-OK-1', CarRecord::query()->first()->car_no);
+
+        $record = CarRecord::query()->first();
+        $this->assertSame('CAR-OK-1', $record->car_no);
+        $this->assertSame('QMS-CAR', $record->data['dynamic']['officeCode'] ?? null);
+        $this->assertSame('2026-07-01', $record->data['followUp'][0]['date'] ?? null);
+        $this->assertSame('QMR Head', $record->data['notedBy'] ?? null);
     }
 
     public function test_car_update_rejects_oversize_scalar_and_leaves_record_intact(): void
@@ -953,6 +965,43 @@ class RecordApprovalTest extends TestCase
         $this->assertSame('REF-ORIG', $record->ref_no);
         $this->assertSame('Original Dept', $record->dept_section);
         $this->assertSame('Original Auditor', $record->auditor);
+    }
+
+    public function test_car_update_preserves_nested_data_alongside_validated_scalars(): void
+    {
+        $user = User::factory()->create(['username' => 'carupdatenested']);
+
+        $record = CarRecord::query()->create([
+            'document_type_id' => null,
+            'car_no' => 'CAR-NEST-ORIG',
+            'status' => 'draft',
+            'workflow_status' => null,
+            'resolution_status' => 'open',
+            'data' => ['carNo' => 'CAR-NEST-ORIG', 'dynamic' => []],
+            'created_by' => $user->id,
+            'updated_by' => $user->id,
+        ]);
+
+        $response = $this
+            ->actingAs($user)
+            ->putJson(route('car.records.update', $record), [
+                'data' => [
+                    'carNo' => 'CAR-NEST-NEW',
+                    'dynamic' => ['officeCode' => 'QMS-CAR'],
+                    'followUp' => [
+                        ['date' => '2026-07-02', 'status' => 'Ongoing', 'effective' => 'No', 'auditor' => 'B. Auditor', 'rep' => 'S. Rep'],
+                    ],
+                    'notedBy' => 'QMR Head',
+                ],
+            ]);
+
+        $response->assertOk();
+
+        $record->refresh();
+        $this->assertSame('CAR-NEST-NEW', $record->car_no);
+        $this->assertSame('QMS-CAR', $record->data['dynamic']['officeCode'] ?? null);
+        $this->assertSame('2026-07-02', $record->data['followUp'][0]['date'] ?? null);
+        $this->assertSame('QMR Head', $record->data['notedBy'] ?? null);
     }
 
     private function storeMinimalTemplate(string $module, string $disk, string $path, User $uploadedBy): void
