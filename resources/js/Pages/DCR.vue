@@ -25,6 +25,7 @@ const isGenerating = ref(false)
 const isPublishing = ref(false)
 const isSubmitting = ref(false)
 const isLoadingRecord = ref(false)
+const isUpdatingResolution = ref(false)
 const isLoadingDynamicFields = ref(false)
 
 const publishFileName = ref('')
@@ -38,6 +39,7 @@ const isAdditionalFieldsOpen = ref(true)
 const recordStatus = ref('draft')
 const workflowStatus = ref(null)
 const resolutionStatus = ref('open')
+const lastConfirmedResolutionStatus = ref('open')
 
 const isAdmin = computed(() => {
   const role = String(page.props.auth?.user?.role || '').toLowerCase().trim()
@@ -46,6 +48,24 @@ const isAdmin = computed(() => {
 
 const canSubmitToAdmin = computed(() => {
   return !isAdmin.value && !!recordId.value && workflowStatus.value !== 'pending' && workflowStatus.value !== 'approved'
+})
+
+const canUpdateResolution = computed(() => {
+  return isAdmin.value && workflowStatus.value === 'approved' && !!recordId.value
+})
+
+const allowedResolutionOptions = computed(() => {
+  if (workflowStatus.value !== 'approved') {
+    return ['open', 'ongoing', 'closed']
+  }
+
+  const current = lastConfirmedResolutionStatus.value || resolutionStatus.value || 'open'
+
+  if (current === 'open') return ['open', 'ongoing', 'closed']
+  if (current === 'ongoing') return ['ongoing', 'closed']
+  if (current === 'closed') return ['closed']
+
+  return ['open', 'ongoing', 'closed']
 })
 
 const isFormLocked = computed(() => {
@@ -265,6 +285,7 @@ async function loadRecord(id) {
     recordStatus.value = res.data.status ?? 'draft'
     workflowStatus.value = res.data.workflow_status ?? null
     resolutionStatus.value = res.data.resolution_status ?? 'open'
+    lastConfirmedResolutionStatus.value = resolutionStatus.value
     applyDataToForm(res.data.data || {})
 
     const fileShown = withDocx(currentFileLabel()) || `Record #${id}`
@@ -301,6 +322,7 @@ async function upsertRecord(requestedStatus = null) {
     recordStatus.value = res.data.status ?? 'draft'
     workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
     resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
+    lastConfirmedResolutionStatus.value = resolutionStatus.value
 
     const url = new URL(window.location.href)
     url.searchParams.set('record', recordId.value)
@@ -310,6 +332,7 @@ async function upsertRecord(requestedStatus = null) {
     recordStatus.value = res.data.status ?? recordStatus.value
     workflowStatus.value = res.data.workflow_status ?? workflowStatus.value
     resolutionStatus.value = res.data.resolution_status ?? resolutionStatus.value
+    lastConfirmedResolutionStatus.value = resolutionStatus.value
   }
 
   if (!publishFileName.value) {
@@ -441,6 +464,49 @@ async function publishToUploads() {
       (err?.response?.status === 403
         ? 'You are not allowed to publish this DCR record.'
         : 'Failed to publish to uploads. Please try again.')
+
+    toast.error(message)
+  })
+}
+
+async function updateResolutionStatus() {
+  if (!recordId.value) {
+    toast.error('Save the record first before updating resolution status.')
+    return
+  }
+
+  if (workflowStatus.value !== 'approved') {
+    resolutionStatus.value = lastConfirmedResolutionStatus.value || 'open'
+    toast.error('Only approved DCR records can update resolution status.')
+    return
+  }
+
+  const previousResolutionStatus = lastConfirmedResolutionStatus.value || resolutionStatus.value || 'open'
+
+  await runTask(isUpdatingResolution, 'Updating resolution status...', async () => {
+    const res = await axios.patch(`/dcr/records/${recordId.value}/resolution-status`, {
+      resolution_status: resolutionStatus.value,
+    })
+
+    resolutionStatus.value = res?.data?.resolution_status ?? resolutionStatus.value
+    lastConfirmedResolutionStatus.value = resolutionStatus.value || previousResolutionStatus
+
+    toast.success(
+      res?.data?.message || `Resolution status updated to ${resolutionStatus.value}.`
+    )
+  }).catch((err) => {
+    console.error(err)
+
+    resolutionStatus.value = previousResolutionStatus
+    lastConfirmedResolutionStatus.value = previousResolutionStatus
+
+    const message =
+      err?.response?.data?.errors?.resolution_status?.[0] ||
+      (err?.response?.status === 403
+        ? 'Only admins can update the resolution status.'
+        : err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          'Failed to update resolution status.')
 
     toast.error(message)
   })
@@ -602,6 +668,35 @@ onBeforeUnmount(() => {
               >
                 {{ workflowStatus === 'pending' ? 'Read-only while under review' : 'Read-only after approval' }}
               </span>
+
+              <template v-if="isAdmin">
+                <div class="flex flex-wrap items-center gap-2">
+                  <label class="text-[12px] font-semibold text-slate-600">Update Resolution:</label>
+
+                  <select
+                    v-model="resolutionStatus"
+                    class="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-[12px] text-slate-700 outline-none disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                    :disabled="!canUpdateResolution || isUpdatingResolution"
+                  >
+                    <option
+                      v-for="option in allowedResolutionOptions"
+                      :key="option"
+                      :value="option"
+                    >
+                      {{ option }}
+                    </option>
+                  </select>
+
+                  <button
+                    type="button"
+                    class="rounded-lg bg-slate-800 px-3 py-1.5 text-[12px] font-semibold text-white hover:bg-slate-900 disabled:cursor-not-allowed disabled:opacity-60"
+                    @click="updateResolutionStatus"
+                    :disabled="!canUpdateResolution || isUpdatingResolution"
+                  >
+                    {{ isUpdatingResolution ? 'Updating...' : 'Update Status' }}
+                  </button>
+                </div>
+              </template>
             </div>
           </div>
 
@@ -609,7 +704,7 @@ onBeforeUnmount(() => {
             <button
               class="rounded-xl border border-slate-200 bg-white px-5 py-2 text-[13.5px] font-medium text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
               @click="cancelForm"
-              :disabled="isSaving || isGenerating || isPublishing || isSubmitting || isLoadingRecord"
+              :disabled="isSaving || isGenerating || isPublishing || isSubmitting || isLoadingRecord || isUpdatingResolution"
             >
               Cancel
             </button>
