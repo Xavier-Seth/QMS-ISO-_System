@@ -1,12 +1,16 @@
 <script setup>
-import { ref } from 'vue';
-import { useForm } from '@inertiajs/vue3';
+import { ref, computed } from 'vue';
+import { useForm, usePage } from '@inertiajs/vue3';
+
+const page = usePage();
 
 const form = useForm({
   username: '',
   password: '',
   remember: false,
 });
+
+const logoUrl = computed(() => page.props.system_settings?.logo_url ?? '/images/QMS_Logo.png');
 
 const showPassword = ref(false);
 const showForgotModal = ref(false);
@@ -21,7 +25,7 @@ const submit = () => {
 <template>
   <div class="login-wrapper">
     <header class="header">
-      <img :src="'/images/QMS_Logo.png'" alt="Logo" class="logo" />
+      <img :src="logoUrl" alt="Logo" class="logo" />
       <h2 class="brand-name">Quality Management System</h2>
     </header>
 
