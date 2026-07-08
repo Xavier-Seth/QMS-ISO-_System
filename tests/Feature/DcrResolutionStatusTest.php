@@ -153,4 +153,22 @@ class DcrResolutionStatusTest extends TestCase
             'resolution_status' => 'open',
         ]);
     }
+
+    public function test_non_admin_cannot_update_resolution_status(): void
+    {
+        $admin = User::factory()->create(['username' => 'admindcrres4', 'role' => 'admin']);
+        $user = User::factory()->create(['username' => 'userdcrres1', 'role' => 'user']);
+        $record = $this->createApprovedDcrRecord($admin);
+
+        $this->actingAs($user)
+            ->patchJson(route('dcr.records.resolution-status', $record), [
+                'resolution_status' => 'ongoing',
+            ])
+            ->assertForbidden();
+
+        $this->assertDatabaseHas('dcr_records', [
+            'id' => $record->id,
+            'resolution_status' => 'open',
+        ]);
+    }
 }

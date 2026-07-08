@@ -501,12 +501,12 @@ async function updateResolutionStatus() {
     lastConfirmedResolutionStatus.value = previousResolutionStatus
 
     const message =
-      err?.response?.data?.message ||
-      err?.response?.data?.error ||
       err?.response?.data?.errors?.resolution_status?.[0] ||
       (err?.response?.status === 403
         ? 'Only admins can update the resolution status.'
-        : 'Failed to update resolution status.')
+        : err?.response?.data?.message ||
+          err?.response?.data?.error ||
+          'Failed to update resolution status.')
 
     toast.error(message)
   })
